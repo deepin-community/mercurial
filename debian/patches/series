@@ -1,0 +1,7 @@
+proposed_upstream__doctest.path
+deb_specific__test_zstd_s390x.patch
+deb_specific__hgk.py.patch
+deb_specific__optional-dependencies
+deb_specific__disable_libdir_replacement.patch
+0005-Tolerate-SIGINT-getting-the-kill-in-test-stdio.py.patch
+deb_specific__which_silence_warning.patch

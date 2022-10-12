@@ -1,0 +1,5 @@
+#!/bin/sh
+
+set -ex
+
+exec make tests TESTFLAGS="--verbose --timeout 1440 --with-hg=/usr/bin/hg --blacklist=$(pwd)/debian/mercurial.test_blacklist" PYTHON=python3

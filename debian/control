@@ -1,0 +1,78 @@
+Source: mercurial
+Section: vcs
+Priority: optional
+Maintainer: Debian Python Team <team+python@tracker.debian.org>
+Uploaders:
+ Tristan Seligmann <mithrandi@debian.org>,
+ Julien Cristau <jcristau@debian.org>,
+Build-Depends:
+ bash-completion,
+ debhelper-compat (= 13),
+ dh-python,
+ gettext,
+ netbase <!nocheck>,
+ patchutils (>= 0.2.25) <!nocheck>,
+ python3-all-dev,
+ python3-docutils,
+ python3-roman,
+ rename <!nocheck>,
+ unzip <!nocheck>,
+ zip <!nocheck>,
+ less <!nocheck>,
+Standards-Version: 4.5.0
+Homepage: https://www.mercurial-scm.org/
+Vcs-Git: https://salsa.debian.org/python-team/packages/mercurial.git
+Vcs-Browser: https://salsa.debian.org/python-team/packages/mercurial
+Rules-Requires-Root: no
+
+Package: mercurial-common
+Architecture: all
+Depends: ${misc:Depends}, ${python3:Depends}
+Recommends: ca-certificates, mercurial (>= ${source:Version}), sensible-utils
+Suggests: python3-mysqldb, python3-openssl, python3-pygments, wish
+Breaks: mercurial (<< ${source:Version})
+Replaces: mercurial (<< 2.6.3)
+Description: easy-to-use, scalable distributed version control system (common files)
+ Mercurial is a fast, lightweight Source Control Management system designed
+ for efficient handling of very large distributed projects.
+ .
+ This package contains the architecture independent components of Mercurial,
+ and is generally useless without the mercurial package.
+
+Package: mercurial
+Architecture: any
+Depends:
+ mercurial-common (= ${source:Version}),
+ ucf (>= 2.0020),
+ ${misc:Depends},
+ ${python3:Depends},
+ ${shlibs:Depends},
+Recommends: openssh-client
+Suggests: kdiff3 | kdiff3-qt | kompare | meld | tkcvs | mgdiff, qct
+Breaks:
+ hgsubversion (<= 1.9.3+git20190419+6a6ce-3),
+ hgview-common,
+ mercurial-crecord (<< 0.20151121-2~),
+ mercurial-git (<= 0.8.12-1.2),
+ qct,
+ mercurial-keyring (<= 1.3.0-1),
+ mercurial-server,
+ python-sphinx-patchqueue,
+ trac-mercurial,
+Provides: python3-mercurial
+Description: easy-to-use, scalable distributed version control system
+ Mercurial is a fast, lightweight Source Control Management system designed
+ for efficient handling of very large distributed projects.
+ .
+ Its features include:
+  * O(1) delta-compressed file storage and retrieval scheme
+  * Complete cross-indexing of files and changesets for efficient exploration
+    of project history
+  * Robust SHA1-based integrity checking and append-only storage model
+  * Decentralized development model with arbitrary merging between trees
+  * High-speed HTTP-based network merge protocol
+  * Easy-to-use command-line interface
+  * Integrated stand-alone web interface
+  * Small Python codebase
+ .
+ This package contains the architecture dependent files.

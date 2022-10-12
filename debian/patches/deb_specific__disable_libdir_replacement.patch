@@ -1,0 +1,29 @@
+From: Stefano Rivera <stefanor@debian.org>
+Date: Sun, 16 Aug 2020 11:03:07 +0200
+Subject: Disabled hginstallscripts @LIBDIR@ replacement in setup.py.
+
+Bug-Debian: http://bugs.debian.org/620087
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/745250
+Forwarded: not-needed
+
+setup.py replaces @LIBDIR@ in the hg script, with a path that differs between
+Python versions.
+libdir in hg doesn't need to be set if mercurial is available in the public
+namespace, as it is in Debian.
+hg doesn't alter sys.paths if this replacement hasn't happened.
+---
+ setup.py | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/setup.py b/setup.py
+index 5d3a018..afc7831 100644
+--- a/setup.py
++++ b/setup.py
+@@ -1279,7 +1279,6 @@ cmdclass = {
+     'build_hgextindex': buildhgextindex,
+     'install': hginstall,
+     'install_lib': hginstalllib,
+-    'install_scripts': hginstallscripts,
+     'build_hgexe': buildhgexe,
+ }
+ 

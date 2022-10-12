@@ -1,0 +1,183 @@
+From: Python Applications Packaging Team
+ <python-apps-team@lists.alioth.debian.org>
+Date: Sun, 16 Aug 2020 11:03:07 +0200
+Subject: deb_specific__optional-dependencies
+
+Suggest Debian packages for some optional dependencies.
+---
+ hgext/bugzilla.py           |  3 ++-
+ hgext/convert/bzr.py        |  3 ++-
+ hgext/convert/common.py     |  5 +++--
+ hgext/convert/cvs.py        |  2 +-
+ hgext/convert/darcs.py      |  2 +-
+ hgext/convert/git.py        |  2 +-
+ hgext/convert/gnuarch.py    |  3 ++-
+ hgext/convert/monotone.py   |  2 +-
+ hgext/convert/subversion.py | 11 ++++++++---
+ mercurial/sslutil.py        |  3 ++-
+ tests/test-https.t          |  2 +-
+ 11 files changed, 24 insertions(+), 14 deletions(-)
+
+--- a/hgext/bugzilla.py
++++ b/hgext/bugzilla.py
+@@ -504,7 +504,8 @@ class bzmysql(bzaccess):
+             bzmysql._MySQLdb = mysql
+         except ImportError as err:
+             raise error.Abort(
+-                _(b'python mysql support not available: %s') % err
++                _(b'python mysql support not available: %s') % err +
++                _(b' (try installing the %s package)') % b'python3-mysqldb'
+             )
+ 
+         bzaccess.__init__(self, ui)
+--- a/hgext/convert/bzr.py
++++ b/hgext/convert/bzr.py
+@@ -64,7 +64,8 @@ class bzr_source(common.converter_source
+             # access breezy stuff
+             bzrdir
+         except NameError:
+-            raise common.NoRepo(_(b'Bazaar modules could not be loaded'))
++            raise common.NoRepo(_(b'Bazaar modules could not be loaded') +
++                                _(b' (try installing the %s package)') % b'bzr')
+ 
+         path = util.abspath(path)
+         self._checkrepotype(path)
+--- a/hgext/convert/common.py
++++ b/hgext/convert/common.py
+@@ -111,14 +111,15 @@ class MissingTool(Exception):
+     pass
+ 
+ 
+-def checktool(exe, name=None, abort=True):
++def checktool(exe, name=None, abort=True, debname=None):
+     name = name or exe
+     if not procutil.findexe(exe):
+         if abort:
+             exc = error.Abort
+         else:
+             exc = MissingTool
+-        raise exc(_(b'cannot find required "%s" tool') % name)
++        raise exc(_(b'cannot find required "%s" tool') % name +
++                  (debname and _(b' (try installing the %s package)') % debname or b''))
+ 
+ 
+ class NoRepo(Exception):
+--- a/hgext/convert/cvs.py
++++ b/hgext/convert/cvs.py
+@@ -48,7 +48,7 @@ class convert_cvs(converter_source):
+         if not os.path.exists(cvs):
+             raise NoRepo(_(b"%s does not look like a CVS checkout") % path)
+ 
+-        checktool(b'cvs')
++        checktool(b'cvs', debname=b'cvs')
+ 
+         self.changeset = None
+         self.files = {}
+--- a/hgext/convert/darcs.py
++++ b/hgext/convert/darcs.py
+@@ -53,7 +53,7 @@ class darcs_source(common.converter_sour
+         if not os.path.exists(os.path.join(path, b'_darcs')):
+             raise NoRepo(_(b"%s does not look like a darcs repository") % path)
+ 
+-        common.checktool(b'darcs')
++        common.checktool(b'darcs', debname=b'darcs')
+         version = self.run0(b'--version').splitlines()[0].strip()
+         if version < b'2.1':
+             raise error.Abort(
+--- a/hgext/convert/git.py
++++ b/hgext/convert/git.py
+@@ -101,7 +101,7 @@ class convert_git(common.converter_sourc
+         else:
+             self.simopt = []
+ 
+-        common.checktool(b'git', b'git')
++        common.checktool(b'git', b'git', debname=b'git')
+ 
+         self.path = path
+         self.submodules = []
+--- a/hgext/convert/gnuarch.py
++++ b/hgext/convert/gnuarch.py
+@@ -57,7 +57,8 @@ class gnuarch_source(common.converter_so
+             if procutil.findexe(b'tla'):
+                 self.execmd = b'tla'
+             else:
+-                raise error.Abort(_(b'cannot find a GNU Arch tool'))
++                raise error.Abort(_(b'cannot find a GNU Arch tool') +
++                                  _(b' (try installing the %s package)') % b'tla')
+ 
+         common.commandline.__init__(self, ui, self.execmd)
+ 
+--- a/hgext/convert/monotone.py
++++ b/hgext/convert/monotone.py
+@@ -87,7 +87,7 @@ class monotone_source(common.converter_s
+         self.files = None
+         self.dirs = None
+ 
+-        common.checktool(b'mtn', abort=False)
++        common.checktool(b'mtn', abort=False, debname=b'monotone')
+ 
+     def mtnrun(self, *args, **kwargs):
+         if self.automatestdio:
+--- a/hgext/convert/subversion.py
++++ b/hgext/convert/subversion.py
+@@ -494,7 +494,8 @@ class svn_source(converter_source):
+                 _(b"%s does not look like a Subversion repository") % url
+             )
+         if svn is None:
+-            raise MissingTool(_(b'could not load Subversion python bindings'))
++            raise MissingTool(_(b'could not load Subversion python bindings') +
++                              _(b' (try installing the %s package)') % b'python3-subversion')
+ 
+         try:
+             version = svn.core.SVN_VER_MAJOR, svn.core.SVN_VER_MINOR
+@@ -504,14 +505,16 @@ class svn_source(converter_source):
+                         b'Subversion python bindings %d.%d found, '
+                         b'1.4 or later required'
+                     )
+-                    % version
++                    % version +
++                    _(b' (try upgrading the %s package)') % b'python-subversion'
+                 )
+         except AttributeError:
+             raise MissingTool(
+                 _(
+                     b'Subversion python bindings are too old, 1.4 '
+                     b'or later required'
+-                )
++                ) +
++                _(b' (try upgrading the %s package)') % b'python-subversion'
+             )
+ 
+         self.lastrevs = {}
+@@ -1436,6 +1439,8 @@ class svn_sink(converter_sink, commandli
+         return self.join(b'hg-authormap')
+ 
+     def __init__(self, ui, repotype, path):
++        common.checktool(b'svn', debname=b'subversion')
++        common.checktool(b'svnadmin', debname=b'subversion')
+ 
+         converter_sink.__init__(self, ui, repotype, path)
+         commandline.__init__(self, ui, b'svn')
+--- a/mercurial/sslutil.py
++++ b/mercurial/sslutil.py
+@@ -199,7 +199,8 @@ def _hostsettings(ui, hostname):
+                 cafile = util.expandpath(cafile)
+                 if not os.path.exists(cafile):
+                     raise error.Abort(
+-                        _(b'could not find web.cacerts: %s') % cafile
++                        _(b'could not find web.cacerts: %s') % cafile +
++                        _(b' (try installing the %s package)') % b'ca-certificates'
+                     )
+             elif s[b'allowloaddefaultcerts']:
+                 # CAs not defined in config. Try to find system bundles.
+--- a/tests/test-https.t
++++ b/tests/test-https.t
+@@ -34,7 +34,7 @@ Make server certificates:
+ cacert not found
+ 
+   $ hg in --config web.cacerts=no-such.pem https://localhost:$HGPORT/
+-  abort: could not find web.cacerts: no-such.pem
++  abort: could not find web.cacerts: no-such.pem (try installing the ca-certificates package)
+   [255]
+ 
+ Test server address cannot be reused
