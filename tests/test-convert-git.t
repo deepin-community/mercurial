@@ -2,6 +2,7 @@
 
   $ git config -f $HOME/.gitconfig init.defaultBranch master
   $ git config -f $HOME/.gitconfig core.autocrlf false
+  $ git config -f $HOME/.gitconfig protocol.file.allow always
   $ echo "[extensions]" >> $HGRCPATH
   $ echo "convert=" >> $HGRCPATH
   $ cat >> $HGRCPATH <<EOF
@@ -50,7 +51,7 @@ Remove the directory, then try to replace it with a file (issue754)
   $ echo a >> a
   $ commit -a -m t4.2
   $ git checkout master >/dev/null 2>/dev/null
-  $ git pull --no-commit . other > /dev/null 2>/dev/null
+  $ git pull --no-commit . other --no-rebase > /dev/null 2>/dev/null
   $ commit -m 'Merge branch other'
   $ cd ..
   $ hg convert --config extensions.progress= --config progress.assume-tty=1 \
@@ -137,7 +138,7 @@ Remove the directory, then try to replace it with a file (issue754)
   $ git add baz
   $ commit -a -m 'add baz'
   $ git checkout master >/dev/null 2>/dev/null
-  $ git pull --no-commit . Bar Baz > /dev/null 2>/dev/null
+  $ git pull --no-commit . Bar Baz --no-rebase > /dev/null 2>/dev/null
   $ commit -m 'Octopus merge'
   $ echo bar >> bar
   $ commit -a -m 'change bar'
@@ -145,7 +146,7 @@ Remove the directory, then try to replace it with a file (issue754)
   $ echo >> foo
   $ commit -a -m 'change foo'
   $ git checkout master >/dev/null 2>/dev/null
-  $ git pull --no-commit -s ours . Foo > /dev/null 2>/dev/null
+  $ git pull --no-commit -s ours . Foo --no-rebase > /dev/null 2>/dev/null
   $ commit -m 'Discard change to foo'
   $ cd ..
   $ glog()
@@ -435,7 +436,7 @@ convert binary file
   $ cd git-repo3-hg
   $ hg up -C
   1 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ "$PYTHON" -c 'from __future__ import print_function; print(len(open("b", "rb").read()))'
+  $ "$PYTHON" -c 'print(len(open("b", "rb").read()))'
   4096
   $ cd ..
 

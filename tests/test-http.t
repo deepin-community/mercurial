@@ -34,12 +34,7 @@ clone via stream
   transferred * bytes in * seconds (*/sec) (glob)
   updating to branch default
   4 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ hg verify -R copy
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 4 changes to 4 files
+  $ hg verify -R copy -q
 #endif
 
 try to clone via stream, should use pull instead
@@ -59,8 +54,10 @@ try to clone via stream but missing requirements, so should use pull instead
 
   $ cat > $TESTTMP/removesupportedformat.py << EOF
   > from mercurial import localrepo
-  > def extsetup(ui):
-  >     localrepo.localrepository.supportedformats.remove(b'generaldelta')
+  > def reposetup(ui, repo):
+  >     local = repo.local()
+  >     if local is not None:
+  >         local.supported.remove(b'generaldelta')
   > EOF
 
   $ hg clone --config extensions.rsf=$TESTTMP/removesupportedformat.py --stream http://localhost:$HGPORT/ copy3
@@ -86,12 +83,7 @@ clone via pull
   new changesets 8b6053c928fe
   updating to branch default
   4 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ hg verify -R copy-pull
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 4 changes to 4 files
+  $ hg verify -R copy-pull -q
   $ cd test
   $ echo bar > bar
   $ hg commit -A -d '1 0' -m 2
@@ -349,20 +341,20 @@ test http authentication
   list of changesets:
   7f4e523d01f2cc3765ac8934da3d14db775ff872
   bundle2-output-bundle: "HG20", 5 parts total
-  bundle2-output-part: "replycaps" 207 bytes payload
+  bundle2-output-part: "replycaps" 210 bytes payload
   bundle2-output-part: "check:phases" 24 bytes payload
   bundle2-output-part: "check:updated-heads" streamed payload
   bundle2-output-part: "changegroup" (params: 1 mandatory) streamed payload
   bundle2-output-part: "phase-heads" 24 bytes payload
   sending unbundle command
-  sending 1023 bytes
+  sending 1036 bytes
   devel-peer-request: POST http://localhost:$HGPORT2/?cmd=unbundle
-  devel-peer-request:   Content-length 1023
+  devel-peer-request:   Content-length 1036
   devel-peer-request:   Content-type application/mercurial-0.1
   devel-peer-request:   Vary X-HgArg-1,X-HgProto-1
   devel-peer-request:   X-hgproto-1 0.1 0.2 comp=$USUAL_COMPRESSIONS$ partial-pull
   devel-peer-request:   16 bytes of commands arguments in headers
-  devel-peer-request:   1023 bytes of data
+  devel-peer-request:   1036 bytes of data
   devel-peer-request:   finished in *.???? seconds (200) (glob)
   bundle2-input-bundle: no-transaction
   bundle2-input-part: "reply:changegroup" (advisory) (params: 0 advisory) supported

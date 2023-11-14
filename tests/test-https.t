@@ -137,12 +137,7 @@ Inability to verify peer certificate will result in abort
   new changesets 8b6053c928fe
   updating to branch default
   4 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ hg verify -R copy-pull
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 4 changes to 4 files
+  $ hg verify -R copy-pull -q
   $ cd test
   $ echo bar > bar
   $ hg commit -A -d '1 0' -m 2
@@ -349,21 +344,21 @@ Start servers running supported TLS versions
 
   $ cd test
   $ hg serve -p $HGPORT -d --pid-file=../hg0.pid --certificate=$PRIV \
-  > --config devel.serverexactprotocol=tls1.0
+  > --config devel.server-insecure-exact-protocol=tls1.0
   $ cat ../hg0.pid >> $DAEMON_PIDS
   $ hg serve -p $HGPORT1 -d --pid-file=../hg1.pid --certificate=$PRIV \
-  > --config devel.serverexactprotocol=tls1.1
+  > --config devel.server-insecure-exact-protocol=tls1.1
   $ cat ../hg1.pid >> $DAEMON_PIDS
   $ hg serve -p $HGPORT2 -d --pid-file=../hg2.pid --certificate=$PRIV \
-  > --config devel.serverexactprotocol=tls1.2
+  > --config devel.server-insecure-exact-protocol=tls1.2
   $ cat ../hg2.pid >> $DAEMON_PIDS
   $ cd ..
 
 Clients talking same TLS versions work
 
-  $ P="$CERTSDIR" hg --config hostsecurity.minimumprotocol=tls1.0 id https://localhost:$HGPORT/
+  $ P="$CERTSDIR" hg --config hostsecurity.minimumprotocol=tls1.0 --config hostsecurity.ciphers="DEFAULT:@SECLEVEL=0" id https://localhost:$HGPORT/
   5fed3813f7f5
-  $ P="$CERTSDIR" hg --config hostsecurity.minimumprotocol=tls1.1 id https://localhost:$HGPORT1/
+  $ P="$CERTSDIR" hg --config hostsecurity.minimumprotocol=tls1.1 --config hostsecurity.ciphers="DEFAULT:@SECLEVEL=0" id https://localhost:$HGPORT1/
   5fed3813f7f5
   $ P="$CERTSDIR" hg --config hostsecurity.minimumprotocol=tls1.2 id https://localhost:$HGPORT2/
   5fed3813f7f5
@@ -374,26 +369,26 @@ Clients requiring newer TLS version than what server supports fail
   (could not negotiate a common security protocol (tls1.1+) with localhost; the likely cause is Mercurial is configured to be more secure than the server can support)
   (consider contacting the operator of this server and ask them to support modern TLS protocol versions; or, set hostsecurity.localhost:minimumprotocol=tls1.0 to allow use of legacy, less secure protocols when communicating with this server)
   (see https://mercurial-scm.org/wiki/SecureConnections for more info)
-  abort: error: .*(unsupported protocol|wrong ssl version).* (re)
+  abort: error: .*(unsupported protocol|wrong ssl version|alert protocol version).* (re)
   [100]
 
   $ P="$CERTSDIR" hg --config hostsecurity.minimumprotocol=tls1.1 id https://localhost:$HGPORT/
   (could not negotiate a common security protocol (tls1.1+) with localhost; the likely cause is Mercurial is configured to be more secure than the server can support)
   (consider contacting the operator of this server and ask them to support modern TLS protocol versions; or, set hostsecurity.localhost:minimumprotocol=tls1.0 to allow use of legacy, less secure protocols when communicating with this server)
   (see https://mercurial-scm.org/wiki/SecureConnections for more info)
-  abort: error: .*(unsupported protocol|wrong ssl version).* (re)
+  abort: error: .*(unsupported protocol|wrong ssl version|alert protocol version).* (re)
   [100]
   $ P="$CERTSDIR" hg --config hostsecurity.minimumprotocol=tls1.2 id https://localhost:$HGPORT/
   (could not negotiate a common security protocol (tls1.2+) with localhost; the likely cause is Mercurial is configured to be more secure than the server can support)
   (consider contacting the operator of this server and ask them to support modern TLS protocol versions; or, set hostsecurity.localhost:minimumprotocol=tls1.0 to allow use of legacy, less secure protocols when communicating with this server)
   (see https://mercurial-scm.org/wiki/SecureConnections for more info)
-  abort: error: .*(unsupported protocol|wrong ssl version).* (re)
+  abort: error: .*(unsupported protocol|wrong ssl version|alert protocol version).* (re)
   [100]
   $ P="$CERTSDIR" hg --config hostsecurity.minimumprotocol=tls1.2 id https://localhost:$HGPORT1/
   (could not negotiate a common security protocol (tls1.2+) with localhost; the likely cause is Mercurial is configured to be more secure than the server can support)
   (consider contacting the operator of this server and ask them to support modern TLS protocol versions; or, set hostsecurity.localhost:minimumprotocol=tls1.0 to allow use of legacy, less secure protocols when communicating with this server)
   (see https://mercurial-scm.org/wiki/SecureConnections for more info)
-  abort: error: .*(unsupported protocol|wrong ssl version).* (re)
+  abort: error: .*(unsupported protocol|wrong ssl version|alert protocol version).* (re)
   [100]
 
 --insecure will allow TLS 1.0 connections and override configs
@@ -405,6 +400,7 @@ Clients requiring newer TLS version than what server supports fail
 The per-host config option overrides the default
 
   $ P="$CERTSDIR" hg id https://localhost:$HGPORT/ \
+  > --config hostsecurity.ciphers="DEFAULT:@SECLEVEL=0" \
   > --config hostsecurity.minimumprotocol=tls1.2 \
   > --config hostsecurity.localhost:minimumprotocol=tls1.0
   5fed3813f7f5
@@ -416,7 +412,7 @@ The per-host config option by itself works
   (could not negotiate a common security protocol (tls1.2+) with localhost; the likely cause is Mercurial is configured to be more secure than the server can support)
   (consider contacting the operator of this server and ask them to support modern TLS protocol versions; or, set hostsecurity.localhost:minimumprotocol=tls1.0 to allow use of legacy, less secure protocols when communicating with this server)
   (see https://mercurial-scm.org/wiki/SecureConnections for more info)
-  abort: error: .*(unsupported protocol|wrong ssl version).* (re)
+  abort: error: .*(unsupported protocol|wrong ssl version|alert protocol version).* (re)
   [100]
 
 .hg/hgrc file [hostsecurity] settings are applied to remote ui instances (issue5305)
@@ -429,7 +425,7 @@ The per-host config option by itself works
   (could not negotiate a common security protocol (tls1.2+) with localhost; the likely cause is Mercurial is configured to be more secure than the server can support)
   (consider contacting the operator of this server and ask them to support modern TLS protocol versions; or, set hostsecurity.localhost:minimumprotocol=tls1.0 to allow use of legacy, less secure protocols when communicating with this server)
   (see https://mercurial-scm.org/wiki/SecureConnections for more info)
-  abort: error: .*(unsupported protocol|wrong ssl version).* (re)
+  abort: error: .*(unsupported protocol|wrong ssl version|alert protocol version).* (re)
   [100]
 
   $ killdaemons.py hg0.pid
@@ -490,6 +486,13 @@ Test https with cert problems through proxy
   abort: error: *certificate verify failed* (glob)
   [100]
 
+Test when proxy can't connect to server
+
+  $ http_proxy=http://localhost:$HGPORT1/ hg -R copy-pull pull --insecure https://localhost:0/
+  pulling from https://localhost:0/
+  abort: error: Tunnel connection failed: 404 (Connection refused|\$EADDRNOTAVAIL\$) (re)
+  [100]
+
 
   $ killdaemons.py hg0.pid
 
@@ -517,7 +520,7 @@ Start hgweb that requires client certificates:
 without client certificate:
 
   $ P="$CERTSDIR" hg id https://localhost:$HGPORT/
-  abort: error: .*(\$ECONNRESET\$|certificate required|handshake failure).* (re)
+  abort: error: .*(\$ECONNRESET\$|certificate required|handshake failure|EOF occurred).* (re)
   [100]
 
 with client certificate:

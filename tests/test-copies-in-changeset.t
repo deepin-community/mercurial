@@ -32,41 +32,17 @@ Check that copies are recorded correctly
   $ hg init repo
   $ cd repo
 #if sidedata
-  $ hg debugformat -v
+  $ hg debugformat -v | grep -E 'format-variant|revlog-v2|copies-sdc|changelog-v2'
   format-variant     repo config default
-  fncache:            yes    yes     yes
-  dirstate-v2:         no     no      no
-  dotencode:          yes    yes     yes
-  generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
-  sparserevlog:       yes    yes     yes
-  persistent-nodemap:  no     no      no (no-rust !)
-  persistent-nodemap: yes    yes      no (rust !)
   copies-sdc:         yes    yes      no
   revlog-v2:           no     no      no
   changelog-v2:       yes    yes      no
-  plain-cl-delta:     yes    yes     yes
-  compression:        zlib   zlib    zlib (no-zstd !)
-  compression:        zstd   zstd    zstd (zstd !)
-  compression-level:  default default default
 #else
-  $ hg debugformat -v
+  $ hg debugformat -v | grep -E 'format-variant|revlog-v2|copies-sdc|changelog-v2'
   format-variant     repo config default
-  fncache:            yes    yes     yes
-  dirstate-v2:         no     no      no
-  dotencode:          yes    yes     yes
-  generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
-  sparserevlog:       yes    yes     yes
-  persistent-nodemap:  no     no      no (no-rust !)
-  persistent-nodemap: yes    yes      no (rust !)
   copies-sdc:          no     no      no
   revlog-v2:           no     no      no
   changelog-v2:        no     no      no
-  plain-cl-delta:     yes    yes     yes
-  compression:        zlib   zlib    zlib (no-zstd !)
-  compression:        zstd   zstd    zstd (zstd !)
-  compression-level:  default default default
 #endif
   $ echo a > a
   $ hg add a
@@ -145,13 +121,13 @@ even though there is no filelog entry.
 #if extra
 
   $ hg debugindex c
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       1 b789fdd96dc2 000000000000 000000000000
 
 #else
 
   $ hg debugindex c
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       1 37d9b5d994ea 000000000000 000000000000
 
 #endif
@@ -179,13 +155,13 @@ even though there is no filelog entry.
 #if extra
 
   $ hg debugindex c
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       1 b789fdd96dc2 000000000000 000000000000
 
 #else
 
   $ hg debugindex c
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       1 37d9b5d994ea 000000000000 000000000000
        1       3 029625640347 000000000000 000000000000
 
@@ -340,6 +316,24 @@ Test writing only to filelog
   a -> k
 #endif
 
+Existing copy information is preserved by amend
+  $ hg cp a l
+  $ hg ci -m 'copy a to l'
+  $ hg showcopies
+  a -> l
+  $ hg ci --amend -m 'new description'
+  saved backup bundle to $TESTTMP/repo/.hg/strip-backup/*-*-amend.hg (glob)
+  $ hg showcopies
+  a -> l
+
+No crash on partial amend
+  $ hg st --change .
+  A l
+  $ echo modified >> a
+  $ hg rm l
+  $ hg commit --amend a
+  saved backup bundle to $TESTTMP/repo/.hg/strip-backup/*-*-amend.hg (glob)
+
   $ cd ..
 
 Test rebasing a commit with copy information
@@ -425,23 +419,11 @@ Test upgrading/downgrading to sidedata storage
 
 downgrading
 
-  $ hg debugformat -v
+  $ hg debugformat -v | grep -E 'format-variant|revlog-v2|copies-sdc|changelog-v2'
   format-variant     repo config default
-  fncache:            yes    yes     yes
-  dirstate-v2:         no     no      no
-  dotencode:          yes    yes     yes
-  generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
-  sparserevlog:       yes    yes     yes
-  persistent-nodemap:  no     no      no (no-rust !)
-  persistent-nodemap: yes    yes      no (rust !)
   copies-sdc:         yes    yes      no
   revlog-v2:           no     no      no
   changelog-v2:       yes    yes      no
-  plain-cl-delta:     yes    yes     yes
-  compression:        zlib   zlib    zlib (no-zstd !)
-  compression:        zstd   zstd    zstd (zstd !)
-  compression-level:  default default default
   $ hg debugsidedata -c -- 0
   1 sidedata entries
    entry-0014 size 14
@@ -452,27 +434,22 @@ downgrading
   $ cat << EOF > .hg/hgrc
   > [format]
   > exp-use-copies-side-data-changeset = no
-  > [experimental]
-  > revlogv2 = enable-unstable-format-and-corrupt-my-data
   > EOF
-  $ hg debugupgraderepo --run --quiet --no-backup > /dev/null
-  $ hg debugformat -v
+  $ hg debugupgraderepo --run --quiet --no-backup
+  upgrade will perform the following actions:
+  
+  requirements
+     preserved: * (glob)
+     removed: exp-changelog-v2, exp-copies-sidedata-changeset
+  
+  processed revlogs:
+    - changelog
+  
+  $ hg debugformat -v | grep -E 'format-variant|revlog-v2|copies-sdc|changelog-v2'
   format-variant     repo config default
-  fncache:            yes    yes     yes
-  dirstate-v2:         no     no      no
-  dotencode:          yes    yes     yes
-  generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
-  sparserevlog:       yes    yes     yes
-  persistent-nodemap:  no     no      no (no-rust !)
-  persistent-nodemap: yes    yes      no (rust !)
   copies-sdc:          no     no      no
-  revlog-v2:          yes    yes      no
+  revlog-v2:           no     no      no
   changelog-v2:        no     no      no
-  plain-cl-delta:     yes    yes     yes
-  compression:        zlib   zlib    zlib (no-zstd !)
-  compression:        zstd   zstd    zstd (zstd !)
-  compression-level:  default default default
   $ hg debugsidedata -c -- 0
   $ hg debugsidedata -c -- 1
   $ hg debugsidedata -m -- 0
@@ -483,24 +460,21 @@ upgrading
   > [format]
   > exp-use-copies-side-data-changeset = yes
   > EOF
-  $ hg debugupgraderepo --run --quiet --no-backup > /dev/null
-  $ hg debugformat -v
+  $ hg debugupgraderepo --run --quiet --no-backup
+  upgrade will perform the following actions:
+  
+  requirements
+     preserved: * (glob)
+     added: exp-changelog-v2, exp-copies-sidedata-changeset
+  
+  processed revlogs:
+    - changelog
+  
+  $ hg debugformat -v | grep -E 'format-variant|revlog-v2|copies-sdc|changelog-v2'
   format-variant     repo config default
-  fncache:            yes    yes     yes
-  dirstate-v2:         no     no      no
-  dotencode:          yes    yes     yes
-  generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
-  sparserevlog:       yes    yes     yes
-  persistent-nodemap:  no     no      no (no-rust !)
-  persistent-nodemap: yes    yes      no (rust !)
   copies-sdc:         yes    yes      no
   revlog-v2:           no     no      no
   changelog-v2:       yes    yes      no
-  plain-cl-delta:     yes    yes     yes
-  compression:        zlib   zlib    zlib (no-zstd !)
-  compression:        zstd   zstd    zstd (zstd !)
-  compression-level:  default default default
   $ hg debugsidedata -c -- 0
   1 sidedata entries
    entry-0014 size 14

@@ -1029,14 +1029,7 @@ Test cloning with --all-largefiles flag
   2 largefiles updated, 0 removed
   4 files updated, 0 files merged, 0 files removed, 0 files unresolved
   8 additional largefiles cached
-  $ hg -R a-clone1 verify --large --lfa --lfc
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 8 changesets with 24 changes to 10 files
-  searching 8 changesets for largefiles
-  verified contents of 13 revisions of 6 largefiles
+  $ hg -R a-clone1 verify --large --lfa --lfc -q
   $ hg -R a-clone1 sum
   parent: 1:ce8896473775 
    edit files
@@ -1121,16 +1114,16 @@ redo pull with --lfrev and check it pulls largefiles for the right revs
   all local changesets known remotely
   6 changesets found
   uncompressed size of bundle content:
-      1389 (changelog)
-      1599 (manifests)
-       254  .hglf/large1
-       564  .hglf/large3
-       572  .hglf/sub/large4
-       182  .hglf/sub2/large6
-       182  .hglf/sub2/large7
-       212  normal1
-       457  normal3
-       465  sub/normal4
+      1401 (changelog)
+      1710 (manifests)
+       256  .hglf/large1
+       570  .hglf/large3
+       578  .hglf/sub/large4
+       184  .hglf/sub2/large6
+       184  .hglf/sub2/large7
+       214  normal1
+       463  normal3
+       471  sub/normal4
   adding changesets
   adding manifests
   adding file changes
@@ -1552,6 +1545,7 @@ revert some files to an older revision
   checking manifests
   crosschecking files in changesets and manifests
   checking files
+  checking dirstate
   checked 10 changesets with 28 changes to 10 files
   searching 1 changesets for largefiles
   verified existence of 3 revisions of 3 largefiles
@@ -1561,15 +1555,8 @@ and make sure that this is caught:
 
   $ mv $TESTTMP/d/.hg/largefiles/e166e74c7303192238d60af5a9c4ce9bef0b7928 .
   $ rm .hg/largefiles/e166e74c7303192238d60af5a9c4ce9bef0b7928
-  $ hg verify --large
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 10 changesets with 28 changes to 10 files
-  searching 1 changesets for largefiles
+  $ hg verify --large -q
   changeset 9:598410d3eb9a: sub/large4 references missing $TESTTMP/d/.hg/largefiles/e166e74c7303192238d60af5a9c4ce9bef0b7928
-  verified existence of 3 revisions of 3 largefiles
   [1]
 
 - introduce corruption and make sure that it is caught when checking content:

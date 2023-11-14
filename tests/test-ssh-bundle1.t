@@ -1,16 +1,6 @@
 This test is a duplicate of 'test-http.t' feel free to factor out
 parts that are not bundle1/bundle2 specific.
 
-#testcases sshv1 sshv2
-
-#if sshv2
-  $ cat >> $HGRCPATH << EOF
-  > [experimental]
-  > sshpeer.advertise-v2 = true
-  > sshserver.support-v2 = true
-  > EOF
-#endif
-
   $ cat << EOF >> $HGRCPATH
   > [devel]
   > # This test is dedicated to interaction through old bundle
@@ -52,7 +42,7 @@ configure for serving
 
 repo not found error
 
-  $ hg clone -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" ssh://user@dummy/nonexistent local
+  $ hg clone ssh://user@dummy/nonexistent local
   remote: abort: repository nonexistent not found
   abort: no suitable response from remote hg
   [255]
@@ -60,7 +50,7 @@ repo not found error
 non-existent absolute path
 
 #if no-msys
-  $ hg clone -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" ssh://user@dummy//`pwd`/nonexistent local
+  $ hg clone ssh://user@dummy//`pwd`/nonexistent local
   remote: abort: repository /$TESTTMP/nonexistent not found
   abort: no suitable response from remote hg
   [255]
@@ -70,7 +60,7 @@ clone remote via stream
 
 #if no-reposimplestore
 
-  $ hg clone -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" --stream ssh://user@dummy/remote local-stream
+  $ hg clone --stream ssh://user@dummy/remote local-stream
   streaming all changes
   4 files to transfer, 602 bytes of data (no-zstd !)
   transferred 602 bytes in * seconds (*) (glob) (no-zstd !)
@@ -81,12 +71,7 @@ clone remote via stream
   updating to branch default
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ cd local-stream
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 2 changes to 2 files
+  $ hg verify -q
   $ hg branches
   default                        0:1160648e36ce
   $ cd $TESTTMP
@@ -94,7 +79,7 @@ clone remote via stream
 clone bookmarks via stream
 
   $ hg -R local-stream book mybook
-  $ hg clone -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" --stream ssh://user@dummy/local-stream stream2
+  $ hg clone --stream ssh://user@dummy/local-stream stream2
   streaming all changes
   4 files to transfer, 602 bytes of data (no-zstd !)
   transferred 602 bytes in * seconds (*) (glob) (no-zstd !)
@@ -114,7 +99,7 @@ clone bookmarks via stream
 
 clone remote via pull
 
-  $ hg clone -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" ssh://user@dummy/remote local
+  $ hg clone ssh://user@dummy/remote local
   requesting all changes
   adding changesets
   adding manifests
@@ -127,12 +112,7 @@ clone remote via pull
 verify
 
   $ cd local
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 2 changes to 2 files
+  $ hg verify -q
   $ cat >> .hg/hgrc <<EOF
   > [hooks]
   > changegroup = sh -c "printenv.py --line changegroup-in-local 0 ../dummylog"
@@ -142,14 +122,14 @@ empty default pull
 
   $ hg paths
   default = ssh://user@dummy/remote
-  $ hg pull -e "\"$PYTHON\" \"$TESTDIR/dummyssh\""
+  $ hg pull
   pulling from ssh://user@dummy/remote
   searching for changes
   no changes found
 
 pull from wrong ssh URL
 
-  $ hg pull -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" ssh://user@dummy/doesnotexist
+  $ hg pull ssh://user@dummy/doesnotexist
   pulling from ssh://user@dummy/doesnotexist
   remote: abort: repository doesnotexist not found
   abort: no suitable response from remote hg
@@ -163,8 +143,6 @@ local change
 updating rc
 
   $ echo "default-push = ssh://user@dummy/remote" >> .hg/hgrc
-  $ echo "[ui]" >> .hg/hgrc
-  $ echo "ssh = \"$PYTHON\" \"$TESTDIR/dummyssh\"" >> .hg/hgrc
 
 find outgoing
 
@@ -181,7 +159,7 @@ find outgoing
 
 find incoming on the remote side
 
-  $ hg incoming -R ../remote -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" ssh://user@dummy/local
+  $ hg incoming -R ../remote ssh://user@dummy/local
   comparing with ssh://user@dummy/local
   searching for changes
   changeset:   3:a28a9d1a809c
@@ -194,7 +172,7 @@ find incoming on the remote side
 
 find incoming on the remote side (using absolute path)
 
-  $ hg incoming -R ../remote -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" "ssh://user@dummy/`pwd`"
+  $ hg incoming -R ../remote "ssh://user@dummy/`pwd`"
   comparing with ssh://user@dummy/$TESTTMP/local
   searching for changes
   changeset:   3:a28a9d1a809c
@@ -226,12 +204,7 @@ check remote tip
   date:        Thu Jan 01 00:00:00 1970 +0000
   summary:     add
   
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 4 changesets with 3 changes to 2 files
+  $ hg verify -q
   $ hg cat -r tip foo
   bleah
   $ echo z > z
@@ -241,7 +214,7 @@ check remote tip
 test pushkeys and bookmarks
 
   $ cd $TESTTMP/local
-  $ hg debugpushkey --config ui.ssh="\"$PYTHON\" \"$TESTDIR/dummyssh\"" ssh://user@dummy/remote namespaces
+  $ hg debugpushkey ssh://user@dummy/remote namespaces
   bookmarks	
   namespaces	
   phases	
@@ -256,7 +229,7 @@ test pushkeys and bookmarks
   no changes found
   exporting bookmark foo
   [1]
-  $ hg debugpushkey --config ui.ssh="\"$PYTHON\" \"$TESTDIR/dummyssh\"" ssh://user@dummy/remote bookmarks
+  $ hg debugpushkey ssh://user@dummy/remote bookmarks
   foo	1160648e36cec0054048a7edc4110c6f84fde594
   $ hg book -f foo
   $ hg push --traceback
@@ -304,10 +277,8 @@ push should succeed even though it has an unexpected response
   remote: adding changesets
   remote: adding manifests
   remote: adding file changes
-  remote: added 1 changesets with 1 changes to 1 files (py3 !)
-  remote: added 1 changesets with 1 changes to 1 files (no-py3 no-chg !)
+  remote: added 1 changesets with 1 changes to 1 files
   remote: KABOOM
-  remote: added 1 changesets with 1 changes to 1 files (no-py3 chg !)
   $ hg -R ../remote heads
   changeset:   5:1383141674ec
   tag:         tip
@@ -328,7 +299,7 @@ clone bookmarks
   $ hg -R ../remote bookmark test
   $ hg -R ../remote bookmarks
    * test                      4:6c0482d977a3
-  $ hg clone -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" ssh://user@dummy/remote local-bookmarks
+  $ hg clone ssh://user@dummy/remote local-bookmarks
   requesting all changes
   adding changesets
   adding manifests
@@ -356,21 +327,21 @@ hide outer repo
 
 Test remote paths with spaces (issue2983):
 
-  $ hg init --ssh "\"$PYTHON\" \"$TESTDIR/dummyssh\"" "ssh://user@dummy/a repo"
+  $ hg init "ssh://user@dummy/a repo"
   $ touch "$TESTTMP/a repo/test"
   $ hg -R 'a repo' commit -A -m "test"
   adding test
   $ hg -R 'a repo' tag tag
-  $ hg id --ssh "\"$PYTHON\" \"$TESTDIR/dummyssh\"" "ssh://user@dummy/a repo"
+  $ hg id "ssh://user@dummy/a repo"
   73649e48688a
 
-  $ hg id --ssh "\"$PYTHON\" \"$TESTDIR/dummyssh\"" "ssh://user@dummy/a repo#noNoNO"
+  $ hg id "ssh://user@dummy/a repo#noNoNO"
   abort: unknown revision 'noNoNO'
   [255]
 
 Test (non-)escaping of remote paths with spaces when cloning (issue3145):
 
-  $ hg clone --ssh "\"$PYTHON\" \"$TESTDIR/dummyssh\"" "ssh://user@dummy/a repo"
+  $ hg clone "ssh://user@dummy/a repo"
   destination directory: a repo
   abort: destination 'a repo' is not empty
   [10]
@@ -432,9 +403,9 @@ Test hg-ssh in read-only mode:
   $ hg push --ssh "sh ../ssh.sh"
   pushing to ssh://user@dummy/*/remote (glob)
   searching for changes
-  remote: Permission denied
+  remote: $EACCES$
   remote: abort: pretxnopen.hg-ssh hook failed
-  remote: Permission denied
+  remote: $EACCES$
   remote: pushkey-abort: prepushkey.hg-ssh hook failed
   updating 6c0482d977a3 to public failed!
   [1]
@@ -462,8 +433,6 @@ stderr from remote commands should be printed before stdout from local code (iss
   $ cat >> .hg/hgrc << EOF
   > [paths]
   > default-push = ssh://user@dummy/remote
-  > [ui]
-  > ssh = "$PYTHON" "$TESTDIR/dummyssh"
   > [extensions]
   > localwrite = localwrite.py
   > EOF
@@ -476,26 +445,20 @@ stderr from remote commands should be printed before stdout from local code (iss
   remote: adding changesets
   remote: adding manifests
   remote: adding file changes
-  remote: added 1 changesets with 1 changes to 1 files (py3 !)
-  remote: added 1 changesets with 1 changes to 1 files (no-py3 no-chg !)
+  remote: added 1 changesets with 1 changes to 1 files
   remote: KABOOM
-  remote: added 1 changesets with 1 changes to 1 files (no-py3 chg !)
   local stdout
 
 debug output
 
   $ hg pull --debug ssh://user@dummy/remote
   pulling from ssh://user@dummy/remote
-  running .* ".*/dummyssh" ['"]user@dummy['"] ('|")hg -R remote serve --stdio('|") (re)
-  sending upgrade request: * proto=exp-ssh-v2-0003 (glob) (sshv2 !)
+  running .* ".*[/\\]dummyssh" ['"]user@dummy['"] ['"]hg -R remote serve --stdio['"] (re)
   sending hello command
   sending between command
-  remote: 444 (sshv1 no-rust !)
-  remote: 463 (sshv1 rust !)
-  protocol upgraded to exp-ssh-v2-0003 (sshv2 !)
-  remote: capabilities: batch branchmap $USUAL_BUNDLE2_CAPS$ changegroupsubset getbundle known lookup protocaps pushkey streamreqs=generaldelta,revlogv1,sparserevlog unbundle=HG10GZ,HG10BZ,HG10UN unbundlehash (no-rust !)
-  remote: capabilities: batch branchmap $USUAL_BUNDLE2_CAPS$ changegroupsubset getbundle known lookup protocaps pushkey streamreqs=generaldelta,persistent-nodemap,revlogv1,sparserevlog unbundle=HG10GZ,HG10BZ,HG10UN unbundlehash (rust !)
-  remote: 1 (sshv1 !)
+  remote: \d+ (re)
+  remote: capabilities: batch branchmap \$USUAL_BUNDLE2_CAPS\$ changegroupsubset getbundle known lookup protocaps pushkey streamreqs=[^ ,]+(,[^ ,]+)* unbundle=HG10GZ,HG10BZ,HG10UN unbundlehash (re)
+  remote: 1
   sending protocaps command
   preparing listkeys for "bookmarks"
   sending listkeys command
@@ -583,11 +546,11 @@ remote hook failure is attributed to remote
 
   $ echo "pretxnchangegroup.fail = python:$TESTTMP/failhook:hook" >> remote/.hg/hgrc
 
-  $ hg -q --config ui.ssh="\"$PYTHON\" $TESTDIR/dummyssh" clone ssh://user@dummy/remote hookout
+  $ hg -q clone ssh://user@dummy/remote hookout
   $ cd hookout
   $ touch hookfailure
   $ hg -q commit -A -m 'remote hook failure'
-  $ hg --config ui.ssh="\"$PYTHON\" $TESTDIR/dummyssh" push
+  $ hg push
   pushing to ssh://user@dummy/remote
   searching for changes
   remote: adding changesets
@@ -607,7 +570,7 @@ abort during pull is properly reported as such
   > [extensions]
   > crash = ${TESTDIR}/crashgetbundler.py
   > EOF
-  $ hg --config ui.ssh="\"$PYTHON\" $TESTDIR/dummyssh" pull
+  $ hg pull
   pulling from ssh://user@dummy/remote
   searching for changes
   adding changesets

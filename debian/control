@@ -3,7 +3,6 @@ Section: vcs
 Priority: optional
 Maintainer: Debian Python Team <team+python@tracker.debian.org>
 Uploaders:
- Tristan Seligmann <mithrandi@debian.org>,
  Julien Cristau <jcristau@debian.org>,
 Build-Depends:
  bash-completion,
@@ -15,6 +14,7 @@ Build-Depends:
  python3-all-dev,
  python3-docutils,
  python3-roman,
+ python3-packaging <!nocheck>,
  rename <!nocheck>,
  unzip <!nocheck>,
  zip <!nocheck>,

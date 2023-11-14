@@ -74,7 +74,7 @@ have this method available in narrowhg proper at the moment.
   >   narrowspec.copytoworkingcopy(repo)
   >   newmatcher = narrowspec.match(repo.root, includes, excludes)
   >   added = matchmod.differencematcher(newmatcher, currentmatcher)
-  >   with repo.dirstate.parentchange():
+  >   with repo.dirstate.changing_parents(repo):
   >       for f in repo[b'.'].manifest().walk(added):
   >           repo.dirstate.update_file(
   >               f,
@@ -142,7 +142,7 @@ This patch will not apply cleanly at the moment, so `hg import` will break
   Hunk #1 FAILED at 0
   1 out of 1 hunks FAILED -- saving rejects to file patchdir/f3.rej
   abort: patch failed to apply
-  [255]
+  [20]
   $ hg tracked | grep patchdir
   [1]
   $ hg files | grep patchdir > /dev/null

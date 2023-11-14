@@ -7,7 +7,6 @@
 # The format specification for fast-import streams can be found at
 # https://git-scm.com/docs/git-fast-import#_input_format
 
-from __future__ import absolute_import
 import re
 
 from mercurial.i18n import _
@@ -15,6 +14,7 @@ from mercurial.node import hex, nullrev
 from mercurial.utils import stringutil
 from mercurial import (
     error,
+    logcmdutil,
     pycompat,
     registrar,
     scmutil,
@@ -69,10 +69,10 @@ def convert_to_git_ref(branch):
     return b"refs/heads/" + branch
 
 
-def write_data(buf, data, skip_newline):
+def write_data(buf, data, add_newline=False):
     buf.append(b"data %d\n" % len(data))
     buf.append(data)
-    if not skip_newline or data[-1:] != b"\n":
+    if add_newline or data[-1:] != b"\n":
         buf.append(b"\n")
 
 
@@ -103,7 +103,7 @@ def export_commit(ui, repo, rev, marks, authormap):
             marks[filerev] = mark
             data = filectx.data()
             buf = [b"blob\n", b"mark :%d\n" % mark]
-            write_data(buf, data, False)
+            write_data(buf, data, True)
             ui.write(*buf, keepprogressbar=True)
             del buf
 
@@ -122,7 +122,7 @@ def export_commit(ui, repo, rev, marks, authormap):
             convert_to_git_date(ctx.date()),
         ),
     ]
-    write_data(buf, ctx.description(), True)
+    write_data(buf, ctx.description())
     if parents:
         buf.append(b"from :%d\n" % marks[parents[0].hex()])
     if len(parents) == 2:
@@ -182,7 +182,7 @@ def fastexport(ui, repo, *revs, **opts):
     if not revs:
         revs = scmutil.revrange(repo, [b":"])
     else:
-        revs = scmutil.revrange(repo, revs)
+        revs = logcmdutil.revrange(repo, revs)
     if not revs:
         raise error.Abort(_(b"no revisions matched"))
     authorfile = opts.get(b"authormap")

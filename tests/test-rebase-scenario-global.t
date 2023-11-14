@@ -380,7 +380,7 @@ Check that temporary bundle doesn't lose phase when not using generaldelta
 
   $ hg --config format.usegeneraldelta=no init issue5678
   $ cd issue5678
-  $ grep generaldelta .hg/requires
+  $ hg debugrequires | grep generaldelta
   [1]
   $ echo a > a
   $ hg ci -Aqm a
@@ -949,7 +949,6 @@ Testing rebase being called inside another transaction
   $ hg init tr-state
   $ cd tr-state
   $ cat > $TESTTMP/wraprebase.py <<EOF
-  > from __future__ import absolute_import
   > from mercurial import extensions
   > def _rebase(orig, ui, repo, *args, **kwargs):
   >     with repo.wlock():

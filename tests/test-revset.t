@@ -36,7 +36,6 @@ extension to build '_intlist()' and '_hexlist()', which is necessary because
 these predicates use '\0' as a separator:
 
   $ cat <<EOF > debugrevlistspec.py
-  > from __future__ import absolute_import
   > from mercurial import (
   >     node as nodemod,
   >     registrar,
@@ -306,7 +305,7 @@ names that should be caught by fallback mechanism
     (negate
       (symbol 'a')))
   abort: unknown revision '-a'
-  [255]
+  [10]
   $ try é
   (symbol '\xc3\xa9')
   * set:
@@ -407,7 +406,7 @@ quoting needed
   [10]
   $ log 'date'
   abort: unknown revision 'date'
-  [255]
+  [10]
   $ log 'date('
   hg: parse error at 5: not a prefix: end
   (date(
@@ -421,10 +420,10 @@ quoting needed
   [10]
   $ log '0:date'
   abort: unknown revision 'date'
-  [255]
+  [10]
   $ log '::"date"'
   abort: unknown revision 'date'
-  [255]
+  [10]
   $ hg book date -r 4
   $ log '0:date'
   0
@@ -2975,6 +2974,25 @@ test sorting by multiple keys including variable-length strings
   1 b11  m12  u111 112 7200
   0 b12  m111 u112 111 10800
 
+random sort
+
+  $ hg log --rev 'sort(all(), "random")' | wc -l
+  \s*8 (re)
+  $ hg log --rev 'sort(all(), "-random")' | wc -l
+  \s*8 (re)
+  $ hg log --rev 'sort(all(), "random", random.seed=celeste)'
+  0 b12  m111 u112 111 10800
+  4 b111 m112 u111 110 14400
+  2 b111 m11  u12  111 3600
+  6 b111 t2   tu   130 0
+  1 b11  m12  u111 112 7200
+  7 b111 t3   tu   130 0
+  5 b111 t1   tu   130 0
+  3 b112 m111 u11  120 0
+  $ hg log --rev 'first(sort(all(), "random", random.seed=celeste))'
+  0 b12  m111 u112 111 10800
+
+
 topographical sorting can't be combined with other sort keys, and you can't
 use the topo.firstbranch option when topo sort is not active:
 
@@ -3067,7 +3085,7 @@ abort if the revset doesn't expect given size
   0
   $ log 'expectsize(0:1, 1)'
   abort: revset size mismatch. expected 1, got 2
-  [255]
+  [10]
   $ log 'expectsize(0:4, -1)'
   hg: parse error: negative size
   [10]
@@ -3077,7 +3095,7 @@ abort if the revset doesn't expect given size
   2
   $ log 'expectsize(0:1, 3:5)'
   abort: revset size mismatch. expected between 3 and 5, got 2
-  [255]
+  [10]
   $ log 'expectsize(0:1, -1:2)'
   hg: parse error: negative size
   [10]
@@ -3104,10 +3122,10 @@ abort if the revset doesn't expect given size
   2
   $ log 'expectsize(0:2, 4:)'
   abort: revset size mismatch. expected between 4 and 11, got 3
-  [255]
+  [10]
   $ log 'expectsize(0:2, :2)'
   abort: revset size mismatch. expected between 0 and 2, got 3
-  [255]
+  [10]
 
 Test getting list of node from file
 

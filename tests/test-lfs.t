@@ -40,7 +40,7 @@
   > EOF
 
   $ hg config extensions
-  \*\*\* failed to import extension lfs from missing.py: [Errno *] $ENOENT$: 'missing.py' (glob)
+  \*\*\* failed to import extension "lfs" from missing.py: [Errno *] $ENOENT$: 'missing.py' (glob)
   abort: repository requires features unknown to this Mercurial: lfs
   (see https://mercurial-scm.org/wiki/MissingRequirement for more information)
   [255]
@@ -75,10 +75,10 @@
 
 # Commit large file
   $ echo $LONG > largefile
-  $ grep lfs .hg/requires
+  $ hg debugrequires | grep lfs
   [1]
   $ hg commit --traceback -Aqm "add large file"
-  $ grep lfs .hg/requires
+  $ hg debugrequires | grep lfs
   lfs
 
 # Ensure metadata is stored
@@ -114,9 +114,9 @@
 Push to a local non-lfs repo with the extension enabled will add the
 lfs requirement
 
-  $ grep lfs $TESTTMP/server/.hg/requires
+  $ hg debugrequires -R $TESTTMP/server/ | grep lfs
   [1]
-  $ hg push -v | egrep -v '^(uncompressed| )'
+  $ hg push -v | grep -E -v '^(uncompressed| )'
   pushing to $TESTTMP/server
   searching for changes
   lfs: found f11e77c257047a398492d8d6cb9f6acf3aa7c4384bb23080b43546053e183e4b in the local lfs store
@@ -126,7 +126,7 @@ lfs requirement
   adding file changes
   calling hook pretxnchangegroup.lfs: hgext.lfs.checkrequireslfs
   added 2 changesets with 3 changes to 3 files
-  $ grep lfs $TESTTMP/server/.hg/requires
+  $ hg debugrequires -R $TESTTMP/server/ | grep lfs
   lfs
 
 # Unknown URL scheme
@@ -150,8 +150,9 @@ lfs requirement
 Pulling a local lfs repo into a local non-lfs repo with the extension
 enabled adds the lfs requirement
 
-  $ grep lfs .hg/requires $TESTTMP/server/.hg/requires
-  $TESTTMP/server/.hg/requires:lfs
+  $ hg debugrequires | grep lfs || true
+  $ hg debugrequires -R $TESTTMP/server/ | grep lfs
+  lfs
   $ hg pull default
   pulling from $TESTTMP/server
   requesting all changes
@@ -161,9 +162,10 @@ enabled adds the lfs requirement
   added 2 changesets with 3 changes to 3 files
   new changesets 0ead593177f7:b88141481348
   (run 'hg update' to get a working copy)
-  $ grep lfs .hg/requires $TESTTMP/server/.hg/requires
-  .hg/requires:lfs
-  $TESTTMP/server/.hg/requires:lfs
+  $ hg debugrequires | grep lfs
+  lfs
+  $ hg debugrequires -R $TESTTMP/server/ | grep lfs
+  lfs
 
 # Check the blobstore is not yet populated
   $ [ -d .hg/store/lfs/objects ]
@@ -314,7 +316,7 @@ enabled adds the lfs requirement
   $ hg --config extensions.share= share repo7 sharedrepo
   updating working directory
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ grep lfs sharedrepo/.hg/requires
+  $ hg debugrequires -R sharedrepo/ | grep lfs
   lfs
 
 # Test rename and status
@@ -785,8 +787,9 @@ Repo with damaged lfs objects in any revision will fail verification.
   checking manifests
   crosschecking files in changesets and manifests
   checking files
-   l@1: unpacking 46a2f24864bc: integrity check failed on data/l:0
-   large@0: unpacking 2c531e0992ff: integrity check failed on data/large:0
+   l@1: unpacking 46a2f24864bc: integrity check failed on l:0
+   large@0: unpacking 2c531e0992ff: integrity check failed on large:0
+  not checking dirstate because of previous errors
   checked 5 changesets with 10 changes to 4 files
   2 integrity errors encountered!
   (first damaged changeset appears to be 0)
@@ -849,6 +852,7 @@ blob, and the output shows that it isn't fetched.
   checking files
   lfs: found 22f66a3fc0b9bf3f012c814303995ec07099b3a9ce02a7af84b5970811074a3b in the local lfs store
   lfs blob sha256:66100b384bf761271b407d79fc30cdd0554f3b2c5d944836e936d584b88ce88e renamed large -> l
+  checking dirstate
   checked 5 changesets with 10 changes to 4 files
 
 Verify will not try to download lfs blobs, if told not to by the config option
@@ -863,6 +867,7 @@ Verify will not try to download lfs blobs, if told not to by the config option
   checking files
   lfs: found 22f66a3fc0b9bf3f012c814303995ec07099b3a9ce02a7af84b5970811074a3b in the local lfs store
   lfs blob sha256:66100b384bf761271b407d79fc30cdd0554f3b2c5d944836e936d584b88ce88e renamed large -> l
+  checking dirstate
   checked 5 changesets with 10 changes to 4 files
 
 Verify will copy/link all lfs objects into the local store that aren't already
@@ -883,6 +888,7 @@ the (uncorrupted) remote store.
   lfs: found 89b6070915a3d573ff3599d1cda305bc5e38549b15c4847ab034169da66e1ca8 in the local lfs store
   lfs: adding b1a6ea88da0017a0e77db139a54618986e9a2489bee24af9fe596de9daac498c to the usercache
   lfs: found b1a6ea88da0017a0e77db139a54618986e9a2489bee24af9fe596de9daac498c in the local lfs store
+  checking dirstate
   checked 5 changesets with 10 changes to 4 files
 
 Verify will not copy/link a corrupted file from the usercache into the local
@@ -895,11 +901,12 @@ store, and poison it.  (The verify with a good remote now works.)
   checking manifests
   crosschecking files in changesets and manifests
   checking files
-   l@1: unpacking 46a2f24864bc: integrity check failed on data/l:0
+   l@1: unpacking 46a2f24864bc: integrity check failed on l:0
   lfs: found 22f66a3fc0b9bf3f012c814303995ec07099b3a9ce02a7af84b5970811074a3b in the local lfs store
-   large@0: unpacking 2c531e0992ff: integrity check failed on data/large:0
+   large@0: unpacking 2c531e0992ff: integrity check failed on large:0
   lfs: found 89b6070915a3d573ff3599d1cda305bc5e38549b15c4847ab034169da66e1ca8 in the local lfs store
   lfs: found b1a6ea88da0017a0e77db139a54618986e9a2489bee24af9fe596de9daac498c in the local lfs store
+  not checking dirstate because of previous errors
   checked 5 changesets with 10 changes to 4 files
   2 integrity errors encountered!
   (first damaged changeset appears to be 0)
@@ -915,6 +922,7 @@ store, and poison it.  (The verify with a good remote now works.)
   lfs: found 66100b384bf761271b407d79fc30cdd0554f3b2c5d944836e936d584b88ce88e in the local lfs store
   lfs: found 89b6070915a3d573ff3599d1cda305bc5e38549b15c4847ab034169da66e1ca8 in the local lfs store
   lfs: found b1a6ea88da0017a0e77db139a54618986e9a2489bee24af9fe596de9daac498c in the local lfs store
+  checking dirstate
   checked 5 changesets with 10 changes to 4 files
 
 Damaging a file required by the update destination fails the update.
@@ -939,8 +947,9 @@ usercache or local store.
   checking manifests
   crosschecking files in changesets and manifests
   checking files
-   l@1: unpacking 46a2f24864bc: integrity check failed on data/l:0
-   large@0: unpacking 2c531e0992ff: integrity check failed on data/large:0
+   l@1: unpacking 46a2f24864bc: integrity check failed on l:0
+   large@0: unpacking 2c531e0992ff: integrity check failed on large:0
+  not checking dirstate because of previous errors
   checked 5 changesets with 10 changes to 4 files
   2 integrity errors encountered!
   (first damaged changeset appears to be 0)
@@ -965,11 +974,12 @@ avoids the corrupt lfs object in the original remote.)
   checking manifests
   crosschecking files in changesets and manifests
   checking files
-   l@1: unpacking 46a2f24864bc: integrity check failed on data/l:0
+   l@1: unpacking 46a2f24864bc: integrity check failed on l:0
   lfs: found 22f66a3fc0b9bf3f012c814303995ec07099b3a9ce02a7af84b5970811074a3b in the local lfs store
-   large@0: unpacking 2c531e0992ff: integrity check failed on data/large:0
+   large@0: unpacking 2c531e0992ff: integrity check failed on large:0
   lfs: found 89b6070915a3d573ff3599d1cda305bc5e38549b15c4847ab034169da66e1ca8 in the local lfs store
   lfs: found b1a6ea88da0017a0e77db139a54618986e9a2489bee24af9fe596de9daac498c in the local lfs store
+  not checking dirstate because of previous errors
   checked 5 changesets with 10 changes to 4 files
   2 integrity errors encountered!
   (first damaged changeset appears to be 0)
@@ -985,7 +995,7 @@ avoids the corrupt lfs object in the original remote.)
 Accessing a corrupt file will complain
 
   $ hg --cwd fromcorrupt2 cat -r 0 large
-  abort: integrity check failed on data/large:0
+  abort: integrity check failed on large:0
   [50]
 
 lfs -> normal -> lfs round trip conversions are possible.  The 'none()'
@@ -1002,7 +1012,7 @@ there's no 'lfs' destination repo requirement.  For normal -> lfs, there is.
   2 a
   1 b
   0 meta
-  $ grep 'lfs' convert_normal/.hg/requires
+  $ hg debugrequires -R convert_normal | grep 'lfs'
   [1]
   $ hg --cwd convert_normal cat a1 -r 0 -T '{rawdata}'
   THIS-IS-LFS-BECAUSE-10-BYTES
@@ -1044,7 +1054,7 @@ there's no 'lfs' destination repo requirement.  For normal -> lfs, there is.
   1: a2: 5bb8341bee63b3649f222b2215bde37322bea075a30575aa685d8f8d21c77024
   2: a2: 876dadc86a8542f9798048f2c47f51dbf8e4359aed883e8ec80c5db825f0d943
 
-  $ grep 'lfs' convert_lfs/.hg/requires
+  $ hg debugrequires -R convert_lfs | grep 'lfs'
   lfs
 
 The hashes in all stages of the conversion are unchanged.
@@ -1075,7 +1085,7 @@ This convert is trickier, because it contains deleted files (via `hg mv`)
   2 large to small, small to large
   1 random modifications
   0 switch large and small again
-  $ grep 'lfs' convert_normal2/.hg/requires
+  $ hg debugrequires -R convert_normal2 | grep 'lfs'
   [1]
   $ hg --cwd convert_normal2 debugdata large 0
   LONGER-THAN-TEN-BYTES-WILL-TRIGGER-LFS
@@ -1091,7 +1101,7 @@ This convert is trickier, because it contains deleted files (via `hg mv`)
   2 large to small, small to large
   1 random modifications
   0 switch large and small again
-  $ grep 'lfs' convert_lfs2/.hg/requires
+  $ hg debugrequires -R convert_lfs2 | grep 'lfs'
   lfs
   $ hg --cwd convert_lfs2 debugdata large 0
   version https://git-lfs.github.com/spec/v1
@@ -1202,10 +1212,10 @@ Unbundling adds a requirement to a non-lfs repo, if necessary.
   $ hg bundle -R convert_lfs2 -qr tip --base null lfs.hg
   $ hg init unbundle
   $ hg pull -R unbundle -q nolfs.hg
-  $ grep lfs unbundle/.hg/requires
+  $ hg debugrequires -R unbundle | grep lfs
   [1]
   $ hg pull -R unbundle -q lfs.hg
-  $ grep lfs unbundle/.hg/requires
+  $ hg debugrequires -R unbundle | grep lfs
   lfs
 
   $ hg init no_lfs
@@ -1224,7 +1234,7 @@ with lfs disabled, fails.
   pushing to no_lfs
   abort: required features are not supported in the destination: lfs
   [255]
-  $ grep lfs no_lfs/.hg/requires
+  $ hg debugrequires -R no_lfs/ | grep lfs
   [1]
 
 Pulling from a local lfs repo to a local repo without an lfs requirement and
@@ -1234,5 +1244,5 @@ with lfs disabled, fails.
   pulling from convert_lfs2
   abort: required features are not supported in the destination: lfs
   [255]
-  $ grep lfs no_lfs2/.hg/requires
+  $ hg debugrequires -R no_lfs2/ | grep lfs
   [1]

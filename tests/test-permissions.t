@@ -1,17 +1,14 @@
 #require unix-permissions no-root reporevlogstore
 
-#testcases dirstate-v1 dirstate-v1-tree dirstate-v2
-
-#if dirstate-v1-tree
-#require rust
-  $ echo '[experimental]' >> $HGRCPATH
-  $ echo 'dirstate-tree.in-memory=1' >> $HGRCPATH
-#endif
+#testcases dirstate-v1 dirstate-v2
 
 #if dirstate-v2
-#require rust
-  $ echo '[format]' >> $HGRCPATH
-  $ echo 'exp-dirstate-v2=1' >> $HGRCPATH
+  $ cat >> $HGRCPATH << EOF
+  > [format]
+  > use-dirstate-v2=1
+  > [storage]
+  > dirstate-v2.slow-path=allow
+  > EOF
 #endif
 
   $ hg init t
@@ -22,38 +19,24 @@
 
   $ hg commit -m "1"
 
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 1 changes to 1 files
+  $ hg verify -q
 
   $ chmod -r .hg/store/data/a.i
 
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  abort: Permission denied: '$TESTTMP/t/.hg/store/data/a.i'
+  $ hg verify -q
+  abort: $EACCES$: '$TESTTMP/t/.hg/store/data/a.i'
   [255]
 
   $ chmod +r .hg/store/data/a.i
 
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 1 changes to 1 files
+  $ hg verify -q
 
   $ chmod -w .hg/store/data/a.i
 
   $ echo barber > a
   $ hg commit -m "2"
   trouble committing a!
-  abort: Permission denied: '$TESTTMP/t/.hg/store/data/a.i'
+  abort: $EACCES$: '$TESTTMP/t/.hg/store/data/a.i'
   [255]
 
   $ chmod -w .
@@ -81,7 +64,7 @@
 (fsmonitor makes "hg status" avoid accessing to "dir")
 
   $ hg status
-  dir: Permission denied
+  dir: $EACCES$* (glob)
   M a
 
 #endif

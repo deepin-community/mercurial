@@ -1,0 +1,20 @@
+https://bz.mercurial-scm.org/show_bug.cgi?id=6762
+
+diff --git a/tests/test-hghave.t b/tests/test-hghave.t
+index d51fdcbf..a49caa42 100644
+--- a/tests/test-hghave.t
++++ b/tests/test-hghave.t
+@@ -1,5 +1,3 @@
+-  $ . "$TESTDIR/helpers-testrepo.sh"
+-
+ Testing that hghave does not crash when checking features
+ 
+   $ hghave --test-features 2>/dev/null
+@@ -21,7 +19,6 @@ Testing hghave extensibility for third party tools
+   >   foo
+   > EOF
+   $ ( \
+-  > testrepohgenv; \
+   > "$PYTHON" $TESTDIR/run-tests.py --with-hg=$HGTEST_REAL_HG -j 1 \
+   >    $HGTEST_RUN_TESTS_PURE test-hghaveaddon.t \
+   > )

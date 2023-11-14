@@ -74,7 +74,12 @@ Do not show debug commands if there are other candidates
 
 Show debug commands if there are no other candidates
   $ hg debugcomplete debug
+  debug-delta-find
   debug-repair-issue6528
+  debug-revlog-index
+  debug-revlog-stats
+  debug::stable-tail-sort
+  debug::stable-tail-sort-leaps
   debugancestor
   debugantivirusrunning
   debugapplystreamclonebundle
@@ -103,7 +108,6 @@ Show debug commands if there are no other candidates
   debugfsinfo
   debuggetbundle
   debugignore
-  debugindex
   debugindexdot
   debugindexstats
   debuginstall
@@ -260,19 +264,24 @@ Show all commands + options
   bookmarks: force, rev, delete, rename, inactive, list, template
   branch: force, clean, rev
   branches: active, closed, rev, template
-  bundle: force, rev, branch, base, all, type, ssh, remotecmd, insecure
+  bundle: exact, force, rev, branch, base, all, type, ssh, remotecmd, insecure
   cat: output, rev, decode, include, exclude, template
   clone: noupdate, updaterev, rev, branch, pull, uncompressed, stream, ssh, remotecmd, insecure
-  commit: addremove, close-branch, amend, secret, edit, force-close-branch, interactive, include, exclude, message, logfile, date, user, subrepos
+  commit: addremove, close-branch, amend, secret, draft, edit, force-close-branch, interactive, include, exclude, message, logfile, date, user, subrepos
   config: untrusted, exp-all-known, edit, local, source, shared, non-shared, global, template
   continue: dry-run
   copy: forget, after, at-rev, force, include, exclude, dry-run
+  debug-delta-find: changelog, manifest, dir, template, source
   debug-repair-issue6528: to-report, from-report, paranoid, dry-run
+  debug-revlog-index: changelog, manifest, dir, template
+  debug-revlog-stats: changelog, manifest, filelogs, template
+  debug::stable-tail-sort: template
+  debug::stable-tail-sort-leaps: template, specific
   debugancestor: 
   debugantivirusrunning: 
   debugapplystreamclonebundle: 
   debugbackupbundle: recover, patch, git, limit, no-merges, stat, graph, style, template
-  debugbuilddag: mergeable-file, overwritten-file, new-file
+  debugbuilddag: mergeable-file, overwritten-file, new-file, from-existing
   debugbundle: all, part-type, spec
   debugcapabilities: 
   debugchangedfiles: compute
@@ -286,7 +295,7 @@ Show all commands + options
   debugdate: extended
   debugdeltachain: changelog, manifest, dir, template
   debugdirstateignorepatternshash: 
-  debugdirstate: nodates, dates, datesort, all
+  debugdirstate: nodates, dates, datesort, docket, all
   debugdiscovery: old, nonheads, rev, seed, local-as-revs, remote-as-revs, ssh, remotecmd, insecure, template
   debugdownload: output
   debugextensions: template
@@ -295,7 +304,6 @@ Show all commands + options
   debugfsinfo: 
   debuggetbundle: head, common, type
   debugignore: 
-  debugindex: changelog, manifest, dir, template
   debugindexdot: changelog, manifest, dir
   debugindexstats: 
   debuginstall: template
@@ -305,7 +313,7 @@ Show all commands + options
   debugmanifestfulltextcache: clear, add
   debugmergestate: style, template
   debugnamecomplete: 
-  debugnodemap: dump-new, dump-disk, check, metadata
+  debugnodemap: changelog, manifest, dir, dump-new, dump-disk, check, metadata
   debugobsolete: flags, record-parents, rev, exclusive, index, delete, date, user, template
   debugp1copies: rev
   debugp2copies: rev
@@ -316,7 +324,7 @@ Show all commands + options
   debugpushkey: 
   debugpvec: 
   debugrebuilddirstate: rev, minimal
-  debugrebuildfncache: 
+  debugrebuildfncache: only-data
   debugrename: rev
   debugrequires: 
   debugrevlog: changelog, manifest, dir, dump
@@ -324,7 +332,7 @@ Show all commands + options
   debugrevspec: optimize, show-revs, show-set, show-stage, no-optimized, verify-optimized
   debugserve: sshstdio, logiofd, logiofile
   debugsetparents: 
-  debugshell: 
+  debugshell: command
   debugsidedata: changelog, manifest, dir
   debugssl: 
   debugstrip: rev, force, no-backup, nobackup, , keep, bookmark, soft
@@ -360,7 +368,7 @@ Show all commands + options
   parents: rev, style, template
   paths: template
   phase: public, draft, secret, force, rev
-  pull: update, force, confirm, rev, bookmark, branch, ssh, remotecmd, insecure
+  pull: update, force, confirm, rev, bookmark, branch, remote-hidden, ssh, remotecmd, insecure
   purge: abort-on-err, all, ignored, dirs, files, print, print0, confirm, include, exclude
   push: force, rev, bookmark, all-bookmarks, branch, new-branch, pushvars, publish, ssh, remotecmd, insecure
   recover: verify

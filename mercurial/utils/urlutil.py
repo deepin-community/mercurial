@@ -1,6 +1,6 @@
 # utils.urlutil - code related to [paths] management
 #
-# Copyright 2005-2021 Olivia Mackall <olivia@selenic.com> and others
+# Copyright 2005-2023 Olivia Mackall <olivia@selenic.com> and others
 #
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
@@ -22,6 +22,10 @@ from .. import (
 
 from . import (
     stringutil,
+)
+
+from ..revlogutils import (
+    constants as revlog_constants,
 )
 
 
@@ -54,7 +58,7 @@ def getport(port):
         )
 
 
-class url(object):
+class url:
     r"""Reliable URL parser.
 
     This parses URLs and provides attributes for the following
@@ -229,7 +233,7 @@ class url(object):
         self.path = path
 
         # leave the query string escaped
-        for a in (b'user', b'passwd', b'host', b'port', b'path', b'fragment'):
+        for a in ('user', 'passwd', 'host', 'port', 'path', 'fragment'):
             v = getattr(self, a)
             if v is not None:
                 setattr(self, a, urlreq.unquote(v))
@@ -241,7 +245,7 @@ class url(object):
         u.user = self.user
         u.passwd = self.passwd
         u.host = self.host
-        u.path = self.path
+        u.port = self.port
         u.query = self.query
         u.fragment = self.fragment
         u._localpath = self._localpath
@@ -453,7 +457,7 @@ def list_paths(ui, target_path=None):
     """list all the (name, paths) in the passed ui"""
     result = []
     if target_path is None:
-        for name, paths in sorted(pycompat.iteritems(ui.paths)):
+        for name, paths in sorted(ui.paths.items()):
             for p in paths:
                 result.append((name, p))
 
@@ -480,10 +484,10 @@ def get_push_paths(repo, ui, dests):
     if not dests:
         if b'default-push' in ui.paths:
             for p in ui.paths[b'default-push']:
-                yield p
+                yield p.get_push_variant()
         elif b'default' in ui.paths:
             for p in ui.paths[b'default']:
-                yield p
+                yield p.get_push_variant()
         else:
             raise error.ConfigError(
                 _(b'default repository not configured!'),
@@ -493,32 +497,27 @@ def get_push_paths(repo, ui, dests):
         for dest in dests:
             if dest in ui.paths:
                 for p in ui.paths[dest]:
-                    yield p
+                    yield p.get_push_variant()
             else:
                 path = try_path(ui, dest)
                 if path is None:
                     msg = _(b'repository %s does not exist')
                     msg %= dest
                     raise error.RepoError(msg)
-                yield path
+                yield path.get_push_variant()
 
 
-def get_pull_paths(repo, ui, sources, default_branches=()):
+def get_pull_paths(repo, ui, sources):
     """yields all the `(path, branch)` selected as pull source by `sources`"""
     if not sources:
         sources = [b'default']
     for source in sources:
         if source in ui.paths:
             for p in ui.paths[source]:
-                yield parseurl(p.rawloc, default_branches)
+                yield p
         else:
-            # Try to resolve as a local path or URI.
-            path = try_path(ui, source)
-            if path is not None:
-                url = path.rawloc
-            else:
-                url = source
-            yield parseurl(url, default_branches)
+            p = path(ui, None, source, validate_path=False)
+            yield p
 
 
 def get_unique_push_path(action, repo, ui, dest=None):
@@ -526,8 +525,6 @@ def get_unique_push_path(action, repo, ui, dest=None):
 
     This is useful for command and action that does not support multiple
     destination (yet).
-
-    Note that for now, we cannot get multiple destination so this function is "trivial".
 
     The `action` parameter will be used for the error message.
     """
@@ -549,80 +546,61 @@ def get_unique_push_path(action, repo, ui, dest=None):
     return dests[0]
 
 
-def get_unique_pull_path(action, repo, ui, source=None, default_branches=()):
+def get_unique_pull_path_obj(action, ui, source=None):
     """return a unique `(path, branch)` or abort if multiple are found
 
     This is useful for command and action that does not support multiple
     destination (yet).
 
-    Note that for now, we cannot get multiple destination so this function is "trivial".
-
     The `action` parameter will be used for the error message.
+
+    note: Ideally, this function would be called `get_unique_pull_path` to
+    mirror the `get_unique_push_path`, but the name was already taken.
     """
-    urls = []
-    if source is None:
-        if b'default' in ui.paths:
-            urls.extend(p.rawloc for p in ui.paths[b'default'])
-        else:
-            # XXX this is the historical default behavior, but that is not
-            # great, consider breaking BC on this.
-            urls.append(b'default')
-    else:
-        if source in ui.paths:
-            urls.extend(p.rawloc for p in ui.paths[source])
-        else:
-            # Try to resolve as a local path or URI.
-            path = try_path(ui, source)
-            if path is not None:
-                urls.append(path.rawloc)
-            else:
-                urls.append(source)
-    if len(urls) != 1:
+    sources = []
+    if source is not None:
+        sources.append(source)
+
+    pull_paths = list(get_pull_paths(None, ui, sources=sources))
+    path_count = len(pull_paths)
+    if path_count != 1:
         if source is None:
             msg = _(
                 b"default path points to %d urls while %s only supports one"
             )
-            msg %= (len(urls), action)
+            msg %= (path_count, action)
         else:
             msg = _(b"path points to %d urls while %s only supports one: %s")
-            msg %= (len(urls), action, source)
+            msg %= (path_count, action, source)
         raise error.Abort(msg)
-    return parseurl(urls[0], default_branches)
+    return pull_paths[0]
 
 
-def get_clone_path(ui, source, default_branches=()):
-    """return the `(origsource, path, branch)` selected as clone source"""
-    urls = []
-    if source is None:
-        if b'default' in ui.paths:
-            urls.extend(p.rawloc for p in ui.paths[b'default'])
-        else:
-            # XXX this is the historical default behavior, but that is not
-            # great, consider breaking BC on this.
-            urls.append(b'default')
-    else:
-        if source in ui.paths:
-            urls.extend(p.rawloc for p in ui.paths[source])
-        else:
-            # Try to resolve as a local path or URI.
-            path = try_path(ui, source)
-            if path is not None:
-                urls.append(path.rawloc)
-            else:
-                urls.append(source)
-    if len(urls) != 1:
-        if source is None:
-            msg = _(
-                b"default path points to %d urls while only one is supported"
-            )
-            msg %= len(urls)
-        else:
-            msg = _(b"path points to %d urls while only one is supported: %s")
-            msg %= (len(urls), source)
-        raise error.Abort(msg)
-    url = urls[0]
-    clone_path, branch = parseurl(url, default_branches)
-    return url, clone_path, branch
+def get_unique_pull_path(action, repo, ui, source=None, default_branches=()):
+    """return a unique `(url, branch)` or abort if multiple are found
+
+    See `get_unique_pull_path_obj` for details.
+    """
+    path = get_unique_pull_path_obj(action, ui, source=source)
+    return parseurl(path.rawloc, default_branches)
+
+
+def get_clone_path_obj(ui, source):
+    """return the `(origsource, url, branch)` selected as clone source"""
+    if source == b'':
+        return None
+    return get_unique_pull_path_obj(b'clone', ui, source=source)
+
+
+def get_clone_path(ui, source, default_branches=None):
+    """return the `(origsource, url, branch)` selected as clone source"""
+    path = get_clone_path_obj(ui, source)
+    if path is None:
+        return (b'', b'', (None, default_branches))
+    if default_branches is None:
+        default_branches = []
+    branches = (path.branch, default_branches)
+    return path.rawloc, path.loc, branches
 
 
 def parseurl(path, branches=None):
@@ -678,48 +656,13 @@ class paths(dict):
                 new_paths.extend(_chain_path(p, ui, self))
             self[name] = new_paths
 
-    def getpath(self, ui, name, default=None):
-        """Return a ``path`` from a string, falling back to default.
-
-        ``name`` can be a named path or locations. Locations are filesystem
-        paths or URIs.
-
-        Returns None if ``name`` is not a registered path, a URI, or a local
-        path to a repo.
-        """
-        msg = b'getpath is deprecated, use `get_*` functions from urlutil'
-        ui.deprecwarn(msg, b'6.0')
-        # Only fall back to default if no path was requested.
-        if name is None:
-            if not default:
-                default = ()
-            elif not isinstance(default, (tuple, list)):
-                default = (default,)
-            for k in default:
-                try:
-                    return self[k][0]
-                except KeyError:
-                    continue
-            return None
-
-        # Most likely empty string.
-        # This may need to raise in the future.
-        if not name:
-            return None
-        if name in self:
-            return self[name][0]
-        else:
-            # Try to resolve as a local path or URI.
-            path = try_path(ui, name)
-            if path is None:
-                raise error.RepoError(_(b'repository %s does not exist') % name)
-            return path.rawloc
-
 
 _pathsuboptions = {}
+# a dictionnary of methods that can be used to format a sub-option value
+path_suboptions_display = {}
 
 
-def pathsuboption(option, attr):
+def pathsuboption(option, attr, display=pycompat.bytestr):
     """Decorator used to declare a path sub-option.
 
     Arguments are the sub-option name and the attribute it should set on
@@ -730,18 +673,27 @@ def pathsuboption(option, attr):
     The function should return the value that will be set on the ``path``
     instance.
 
+    The optional `display` argument is a function that can be used to format
+    the value when displayed to the user (like in `hg paths` for example).
+
     This decorator can be used to perform additional verification of
     sub-options and to change the type of sub-options.
     """
 
     def register(func):
         _pathsuboptions[option] = (attr, func)
+        path_suboptions_display[option] = display
         return func
 
     return register
 
 
-@pathsuboption(b'pushurl', b'pushloc')
+def display_bool(value):
+    """display a boolean suboption back to the user"""
+    return b'yes' if value else b'no'
+
+
+@pathsuboption(b'pushurl', b'_pushloc')
 def pushurlpathoption(ui, path, value):
     u = url(value)
     # Actually require a URL.
@@ -771,7 +723,57 @@ def pushrevpathoption(ui, path, value):
     return value
 
 
-@pathsuboption(b'multi-urls', b'multi_urls')
+SUPPORTED_BOOKMARKS_MODES = {
+    b'default',
+    b'mirror',
+    b'ignore',
+}
+
+
+@pathsuboption(b'bookmarks.mode', b'bookmarks_mode')
+def bookmarks_mode_option(ui, path, value):
+    if value not in SUPPORTED_BOOKMARKS_MODES:
+        path_name = path.name
+        if path_name is None:
+            # this is an "anonymous" path, config comes from the global one
+            path_name = b'*'
+        msg = _(b'(paths.%s:bookmarks.mode has unknown value: "%s")\n')
+        msg %= (path_name, value)
+        ui.warn(msg)
+    if value == b'default':
+        value = None
+    return value
+
+
+DELTA_REUSE_POLICIES = {
+    b'default': None,
+    b'try-base': revlog_constants.DELTA_BASE_REUSE_TRY,
+    b'no-reuse': revlog_constants.DELTA_BASE_REUSE_NO,
+    b'forced': revlog_constants.DELTA_BASE_REUSE_FORCE,
+}
+DELTA_REUSE_POLICIES_NAME = dict(i[::-1] for i in DELTA_REUSE_POLICIES.items())
+
+
+@pathsuboption(
+    b'pulled-delta-reuse-policy',
+    b'delta_reuse_policy',
+    display=DELTA_REUSE_POLICIES_NAME.get,
+)
+def delta_reuse_policy(ui, path, value):
+    if value not in DELTA_REUSE_POLICIES:
+        path_name = path.name
+        if path_name is None:
+            # this is an "anonymous" path, config comes from the global one
+            path_name = b'*'
+        msg = _(
+            b'(paths.%s:pulled-delta-reuse-policy has unknown value: "%s")\n'
+        )
+        msg %= (path_name, value)
+        ui.warn(msg)
+    return DELTA_REUSE_POLICIES.get(value)
+
+
+@pathsuboption(b'multi-urls', b'multi_urls', display=display_bool)
 def multiurls_pathoption(ui, path, value):
     res = stringutil.parsebool(value)
     if res is None:
@@ -815,16 +817,24 @@ def _chain_path(base_path, ui, paths):
     return new_paths
 
 
-class path(object):
+class path:
     """Represents an individual path and its configuration."""
 
-    def __init__(self, ui=None, name=None, rawloc=None, suboptions=None):
+    def __init__(
+        self,
+        ui=None,
+        name=None,
+        rawloc=None,
+        suboptions=None,
+        validate_path=True,
+    ):
         """Construct a path from its config options.
 
         ``ui`` is the ``ui`` instance the path is coming from.
         ``name`` is the symbolic name of the path.
         ``rawloc`` is the raw location, as defined in the config.
-        ``pushloc`` is the raw locations pushes should be made to.
+        ``_pushloc`` is the raw locations pushes should be made to.
+                     (see the `get_push_variant` method)
 
         If ``name`` is not defined, we require that the location be a) a local
         filesystem path with a .hg directory or b) a URL. If not,
@@ -840,6 +850,25 @@ class path(object):
         if not rawloc:
             raise ValueError(b'rawloc must be defined')
 
+        self.name = name
+
+        # set by path variant to point to their "non-push" version
+        self.main_path = None
+        self._setup_url(rawloc)
+
+        if validate_path:
+            self._validate_path()
+
+        _path, sub_opts = ui.configsuboptions(b'paths', b'*')
+        self._own_sub_opts = {}
+        if suboptions is not None:
+            self._own_sub_opts = suboptions.copy()
+            sub_opts.update(suboptions)
+        self._all_sub_opts = sub_opts.copy()
+
+        self._apply_suboptions(ui, sub_opts)
+
+    def _setup_url(self, rawloc):
         # Locations may define branches via syntax <base>#<branch>.
         u = url(rawloc)
         branch = None
@@ -852,30 +881,52 @@ class path(object):
         self.raw_url = u.copy()
         self.branch = branch
 
-        self.name = name
         self.rawloc = rawloc
         self.loc = b'%s' % u
 
-        self._validate_path()
+    def copy(self, new_raw_location=None):
+        """make a copy of this path object
 
-        _path, sub_opts = ui.configsuboptions(b'paths', b'*')
-        self._own_sub_opts = {}
-        if suboptions is not None:
-            self._own_sub_opts = suboptions.copy()
-            sub_opts.update(suboptions)
-        self._all_sub_opts = sub_opts.copy()
-
-        self._apply_suboptions(ui, sub_opts)
-
-    def copy(self):
-        """make a copy of this path object"""
+        When `new_raw_location` is set, the new path will point to it.
+        This is used by the scheme extension so expand the scheme.
+        """
         new = self.__class__()
         for k, v in self.__dict__.items():
             new_copy = getattr(v, 'copy', None)
             if new_copy is not None:
                 v = new_copy()
             new.__dict__[k] = v
+        if new_raw_location is not None:
+            new._setup_url(new_raw_location)
         return new
+
+    @property
+    def is_push_variant(self):
+        """is this a path variant to be used for pushing"""
+        return self.main_path is not None
+
+    def get_push_variant(self):
+        """get a "copy" of the path, but suitable for pushing
+
+        This means using the value of the `pushurl` option (if any) as the url.
+
+        The original path is available in the `main_path` attribute.
+        """
+        if self.main_path:
+            return self
+        new = self.copy()
+        new.main_path = self
+        if self._pushloc:
+            new._setup_url(self._pushloc)
+        return new
+
+    def pushloc(self):
+        """compatibility layer for the deprecated attributes"""
+        from .. import util  # avoid a cycle
+
+        msg = "don't use path.pushloc, use path.get_push_variant()"
+        util.nouideprecwarn(msg, b"6.5")
+        return self._pushloc
 
     def _validate_path(self):
         # When given a raw location but not a symbolic name, validate the
@@ -894,7 +945,7 @@ class path(object):
         # Now process the sub-options. If a sub-option is registered, its
         # attribute will always be present. The value will be None if there
         # was no valid sub-option.
-        for suboption, (attr, func) in pycompat.iteritems(_pathsuboptions):
+        for suboption, (attr, func) in _pathsuboptions.items():
             if suboption not in sub_options:
                 setattr(self, attr, None)
                 continue
@@ -920,7 +971,7 @@ class path(object):
         This is intended to be used for presentation purposes.
         """
         d = {}
-        for subopt, (attr, _func) in pycompat.iteritems(_pathsuboptions):
+        for subopt, (attr, _func) in _pathsuboptions.items():
             value = getattr(self, attr)
             if value is not None:
                 d[subopt] = value

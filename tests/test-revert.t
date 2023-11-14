@@ -320,7 +320,7 @@ Also true for move overwriting an existing file
 
   $ hg mv --force a b/b
   $ hg revert b/b
-  $ hg status a b/b
+  $ hg status a b/b --copies
 
   $ cd ..
 
@@ -550,7 +550,6 @@ Script to make a simple text version of the content
 
   $ cat << EOF >> dircontent.py
   > # generate a simple text view of the directory for easy comparison
-  > from __future__ import print_function
   > import os
   > files = os.listdir('.')
   > files.sort()

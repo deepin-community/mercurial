@@ -33,6 +33,7 @@ pub enum HgError {
     Abort {
         message: String,
         detailed_exit_code: exit_codes::ExitCode,
+        hint: Option<String>,
     },
 
     /// A configuration value is not in the expected syntax.
@@ -42,6 +43,12 @@ pub enum HgError {
     /// and syntax of each value.
     #[from]
     ConfigValueParseError(ConfigValueParseError),
+
+    /// Censored revision data.
+    CensoredNodeError,
+    /// A race condition has been detected. This *must* be handled locally
+    /// and not directly surface to the user.
+    RaceDetected(String),
 }
 
 /// Details about where an I/O error happened
@@ -79,10 +86,12 @@ impl HgError {
     pub fn abort(
         explanation: impl Into<String>,
         exit_code: exit_codes::ExitCode,
+        hint: Option<String>,
     ) -> Self {
         HgError::Abort {
             message: explanation.into(),
             detailed_exit_code: exit_code,
+            hint,
         }
     }
 }
@@ -101,7 +110,13 @@ impl fmt::Display for HgError {
             HgError::UnsupportedFeature(explanation) => {
                 write!(f, "unsupported feature: {}", explanation)
             }
+            HgError::CensoredNodeError => {
+                write!(f, "encountered a censored node")
+            }
             HgError::ConfigValueParseError(error) => error.fmt(f),
+            HgError::RaceDetected(context) => {
+                write!(f, "encountered a race condition {context}")
+            }
         }
     }
 }
@@ -151,6 +166,8 @@ pub trait IoResultExt<T> {
     /// Converts a `Result` with `std::io::Error` into one with `HgError`.
     fn when_reading_file(self, path: &std::path::Path) -> Result<T, HgError>;
 
+    fn when_writing_file(self, path: &std::path::Path) -> Result<T, HgError>;
+
     fn with_context(
         self,
         context: impl FnOnce() -> IoErrorContext,
@@ -160,6 +177,10 @@ pub trait IoResultExt<T> {
 impl<T> IoResultExt<T> for std::io::Result<T> {
     fn when_reading_file(self, path: &std::path::Path) -> Result<T, HgError> {
         self.with_context(|| IoErrorContext::ReadingFile(path.to_owned()))
+    }
+
+    fn when_writing_file(self, path: &std::path::Path) -> Result<T, HgError> {
+        self.with_context(|| IoErrorContext::WritingFile(path.to_owned()))
     }
 
     fn with_context(

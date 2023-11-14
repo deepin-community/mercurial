@@ -1,4 +1,5 @@
-  $ hg init
+  $ hg init repo
+  $ cd repo
   $ echo a > a
   $ hg ci -Am0
   adding a
@@ -24,13 +25,7 @@ recover, explicit verify
   abort: abandoned transaction found
   (run 'hg recover' to clean up transaction)
   [255]
-  $ hg recover --verify
-  rolling back interrupted transaction
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 1 changes to 1 files
+  $ hg recover --verify  -q
 
 recover, no verify
 
@@ -52,7 +47,7 @@ Check that zero-size journals are correctly aborted:
 
   $ hg -R foo unbundle repo.hg
   adding changesets
-  abort: Permission denied: '$TESTTMP/foo/.hg/store/.00changelog.i-*' (glob)
+  abort: $EACCES$: '$TESTTMP/repo/foo/.hg/store/.00changelog.i-*' (glob)
   [255]
 
   $ if test -f foo/.hg/store/journal; then echo 'journal exists :-('; fi

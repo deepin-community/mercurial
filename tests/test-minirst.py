@@ -1,4 +1,3 @@
-from __future__ import absolute_import, print_function
 from mercurial import minirst
 from mercurial.utils import stringutil
 
@@ -155,7 +154,7 @@ marker after the option. It is treated as a normal paragraph:
 
 debugformats('options', options)
 
-fields = b"""
+fields = br"""
 :a: First item.
 :ab: Second item. Indentation and wrapping
      is handled automatically.

@@ -1,4 +1,5 @@
-  $ hg init
+  $ hg init repo
+  $ cd repo
   $ mkdir d1 d1/d11 d2
   $ echo d1/a > d1/a
   $ echo d1/ba > d1/ba
@@ -610,17 +611,17 @@ check illegal path components
 
   $ hg rename d1/d11/a1 .hg/foo
   abort: path contains illegal component: .hg/foo
-  [255]
+  [10]
   $ hg status -C
   $ hg rename d1/d11/a1 ../foo
-  abort: ../foo not under root '$TESTTMP'
+  abort: ../foo not under root '$TESTTMP/repo'
   [255]
   $ hg status -C
 
   $ mv d1/d11/a1 .hg/foo
   $ hg rename --after d1/d11/a1 .hg/foo
   abort: path contains illegal component: .hg/foo
-  [255]
+  [10]
   $ hg status -C
   ! d1/d11/a1
   $ hg update -C
@@ -629,25 +630,25 @@ check illegal path components
 
   $ hg rename d1/d11/a1 .hg
   abort: path contains illegal component: .hg/a1
-  [255]
+  [10]
   $ hg --config extensions.largefiles= rename d1/d11/a1 .hg
   The fsmonitor extension is incompatible with the largefiles extension and has been disabled. (fsmonitor !)
   abort: path contains illegal component: .hg/a1
-  [255]
+  [10]
   $ hg status -C
   $ hg rename d1/d11/a1 ..
-  abort: ../a1 not under root '$TESTTMP'
+  abort: ../a1 not under root '$TESTTMP/repo'
   [255]
   $ hg --config extensions.largefiles= rename d1/d11/a1 ..
   The fsmonitor extension is incompatible with the largefiles extension and has been disabled. (fsmonitor !)
-  abort: ../a1 not under root '$TESTTMP'
+  abort: ../a1 not under root '$TESTTMP/repo'
   [255]
   $ hg status -C
 
   $ mv d1/d11/a1 .hg
   $ hg rename --after d1/d11/a1 .hg
   abort: path contains illegal component: .hg/a1
-  [255]
+  [10]
   $ hg status -C
   ! d1/d11/a1
   $ hg update -C
@@ -656,10 +657,10 @@ check illegal path components
 
   $ (cd d1/d11; hg rename ../../d2/b ../../.hg/foo)
   abort: path contains illegal component: .hg/foo
-  [255]
+  [10]
   $ hg status -C
   $ (cd d1/d11; hg rename ../../d2/b ../../../foo)
-  abort: ../../../foo not under root '$TESTTMP'
+  abort: ../../../foo not under root '$TESTTMP/repo'
   [255]
   $ hg status -C
 
@@ -682,7 +683,6 @@ Create the file (as empty), then update its mtime and atime to be 1234567890.
 "hg cp" does not preserve the mtime, so it should be newer than the 2009
 timestamp.
   $ hg cp -q mtime mtime_cp
-  >>> from __future__ import print_function
   >>> import os
   >>> filename = "mtime_cp/f"
   >>> print(os.stat(filename).st_mtime < 1234567999)
@@ -691,7 +691,6 @@ timestamp.
 (modulo some fudge factor due to not every system supporting 1s-level
 precision).
   $ hg mv -q mtime mtime_mv
-  >>> from __future__ import print_function
   >>> import os
   >>> filename = "mtime_mv/f"
   >>> print(os.stat(filename).st_mtime < 1234567999)

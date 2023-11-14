@@ -104,10 +104,10 @@ largefile. To add the first largefile to a repository, you must
 explicitly do so with the --large flag passed to the :hg:`add`
 command.
 '''
-from __future__ import absolute_import
 
 from mercurial import (
     cmdutil,
+    configitems,
     extensions,
     exthelper,
     hg,
@@ -136,7 +136,7 @@ eh.merge(proto.eh)
 eh.configitem(
     b'largefiles',
     b'minsize',
-    default=eh.configitem.dynamicdefault,
+    default=configitems.dynamicdefault,
 )
 eh.configitem(
     b'largefiles',

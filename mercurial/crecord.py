@@ -8,7 +8,6 @@
 # This code is based on the Mark Edgington's crecord extension.
 # (Itself based on Bryan O'Sullivan's record extension.)
 
-from __future__ import absolute_import
 
 import os
 import re
@@ -83,7 +82,7 @@ def checkcurses(ui):
     return curses and ui.interface(b"chunkselector") == b"curses"
 
 
-class patchnode(object):
+class patchnode:
     """abstract class for patch graph nodes
     (i.e. patchroot, header, hunk, hunkline)
     """
@@ -506,7 +505,7 @@ class uihunk(patchnode):
             text = line.linetext
             if line.linetext == diffhelper.MISSING_NEWLINE_MARKER:
                 noeol = True
-                break
+                continue
             if line.applied:
                 if text.startswith(b'+'):
                     dels.append(text[1:])
@@ -574,7 +573,7 @@ def chunkselector(ui, headerlist, operation=None):
     ui.write(_(b'starting interactive selection\n'))
     chunkselector = curseschunkselector(headerlist, ui, operation)
     origsigtstp = sentinel = object()
-    if util.safehasattr(signal, b'SIGTSTP'):
+    if util.safehasattr(signal, 'SIGTSTP'):
         origsigtstp = signal.getsignal(signal.SIGTSTP)
     try:
         with util.with_lc_ctype():
@@ -602,7 +601,7 @@ def testchunkselector(testfn, ui, headerlist, operation=None):
     """
     chunkselector = curseschunkselector(headerlist, ui, operation)
 
-    class dummystdscr(object):
+    class dummystdscr:
         def clear(self):
             pass
 
@@ -629,7 +628,7 @@ _headermessages = {  # {operation: text}
 }
 
 
-class curseschunkselector(object):
+class curseschunkselector:
     def __init__(self, headerlist, ui, operation=None):
         # put the headers into a patch object
         self.headerlist = patch(headerlist)
@@ -1945,7 +1944,7 @@ are you sure you want to review/edit and confirm the selected changes [yn]?
         """
 
         origsigwinch = sentinel = object()
-        if util.safehasattr(signal, b'SIGWINCH'):
+        if util.safehasattr(signal, 'SIGWINCH'):
             origsigwinch = signal.signal(signal.SIGWINCH, self.sigwinchhandler)
         try:
             return self._main(stdscr)
@@ -1991,7 +1990,7 @@ are you sure you want to review/edit and confirm the selected changes [yn]?
         )
         # newwin([height, width,] begin_y, begin_x)
         self.statuswin = curses.newwin(self.numstatuslines, 0, 0, 0)
-        self.statuswin.keypad(1)  # interpret arrow-key, etc. esc sequences
+        self.statuswin.keypad(True)  # interpret arrow-key, etc. esc sequences
 
         # figure out how much space to allocate for the chunk-pad which is
         # used for displaying the patch

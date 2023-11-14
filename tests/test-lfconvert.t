@@ -94,15 +94,16 @@ Test link+rename largefile codepath
   1276481102f218c981e0324180bafd9f  sub/maybelarge.dat
 
 "lfconvert" adds 'largefiles' to .hg/requires.
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   largefiles
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
   testonly-simplestore (reposimplestore !)
@@ -344,6 +345,7 @@ process.
   checking manifests
   crosschecking files in changesets and manifests
   checking files
+  checking dirstate
   checked 8 changesets with 13 changes to 9 files
   searching 7 changesets for largefiles
   changeset 0:d4892ec57ce2: large references missing $TESTTMP/largefiles-repo-hg/.hg/largefiles/2e000fa7e85759c7f4c254d4d9c33ef481e459a7

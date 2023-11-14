@@ -7,7 +7,9 @@
 mod ancestors;
 pub mod dagops;
 pub mod errors;
-pub use ancestors::{AncestorsIterator, LazyAncestors, MissingAncestors};
+pub mod narrow;
+pub mod sparse;
+pub use ancestors::{AncestorsIterator, MissingAncestors};
 pub mod dirstate;
 pub mod dirstate_tree;
 pub mod discovery;
@@ -16,14 +18,11 @@ pub mod requirements;
 pub mod testing; // unconditionally built, for use from integration tests
 pub use dirstate::{
     dirs_multiset::{DirsMultiset, DirsMultisetIter},
-    dirstate_map::DirstateMap,
-    parsers::{pack_dirstate, parse_dirstate, PARENT_SIZE},
     status::{
-        status, BadMatch, BadType, DirstateStatus, HgPathCow, StatusError,
+        BadMatch, BadType, DirstateStatus, HgPathCow, StatusError,
         StatusOptions,
     },
-    CopyMap, CopyMapIter, DirstateEntry, DirstateParents, EntryState,
-    StateMap, StateMapIter,
+    DirstateEntry, DirstateParents, EntryState,
 };
 pub mod copy_tracing;
 mod filepatterns;
@@ -31,11 +30,14 @@ pub mod matchers;
 pub mod repo;
 pub mod revlog;
 pub use revlog::*;
+pub mod checkexec;
 pub mod config;
+pub mod lock;
 pub mod logging;
 pub mod operations;
 pub mod revset;
 pub mod utils;
+pub mod vfs;
 
 use crate::utils::hg_path::{HgPathBuf, HgPathError};
 pub use filepatterns::{
@@ -46,10 +48,6 @@ use std::collections::HashMap;
 use std::fmt;
 use twox_hash::RandomXxHashBuilder64;
 
-/// This is a contract between the `micro-timer` crate and us, to expose
-/// the `log` crate as `crate::log`.
-use log;
-
 pub type LineNumber = usize;
 
 /// Rust's default hasher is too slow because it tries to prevent collision
@@ -57,10 +55,14 @@ pub type LineNumber = usize;
 /// write access to your repository, you have other issues.
 pub type FastHashMap<K, V> = HashMap<K, V, RandomXxHashBuilder64>;
 
+// TODO: should this be the default `FastHashMap` for all of hg-core, not just
+// dirstate_tree? How does XxHash compare with AHash, hashbrown’s default?
+pub type FastHashbrownMap<K, V> =
+    hashbrown::HashMap<K, V, RandomXxHashBuilder64>;
+
 #[derive(Debug, PartialEq)]
 pub enum DirstateMapError {
     PathNotFound(HgPathBuf),
-    EmptyPath,
     InvalidPath(HgPathError),
 }
 
@@ -69,9 +71,6 @@ impl fmt::Display for DirstateMapError {
         match self {
             DirstateMapError::PathNotFound(_) => {
                 f.write_str("expected a value, found none")
-            }
-            DirstateMapError::EmptyPath => {
-                f.write_str("Overflow in dirstate.")
             }
             DirstateMapError::InvalidPath(path_error) => path_error.fmt(f),
         }

@@ -39,8 +39,23 @@ Repo Setup
 Trying to unamend when there was no amend done
 
   $ hg unamend
+  abort: working copy parent was not created by 'hg amend' or 'hg unamend'
+  [10]
+  $ echo "bar" >> h
+
+Trying to unamend when the obsmarker is missing
+
+  $ hg amend
+  $ hg debugobsolete --delete 0
+  deleted 1 obsolescence markers
+  $ hg unamend
   abort: changeset must have one predecessor, found 0 predecessors
   [10]
+  $ hg strip tip --config extensions.strip=
+  0 files updated, 0 files merged, 1 files removed, 0 files unresolved
+  saved backup bundle to $TESTTMP/repo/.hg/strip-backup/c9fa1a715c1b-06e5c233-backup.hg
+  $ hg up tip
+  1 files updated, 0 files merged, 0 files removed, 0 files unresolved
 
 Unamend on clean wdir and tip
 
@@ -348,13 +363,7 @@ Testing whether unamend retains copies or not
   $ hg mv c wat
   $ hg unamend
 
-  $ hg verify -v
-  repository uses revlog format 1
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 28 changesets with 16 changes to 11 files
+  $ hg verify -q
 
 Retained copies in new prdecessor commit
 
@@ -421,3 +430,27 @@ Rename a->b, then amend b->c, and working copy change c->d. After unamend, shoul
   A d
     b
   R b
+
+Try to unamend a merge
+
+  $ cd ..
+  $ hg init merge
+  $ cd merge
+  $ echo initial > initial
+  $ hg ci -Aqm initial
+  $ echo left > left
+  $ hg ci -Aqm left
+  $ hg co -q 0
+  $ echo right > right
+  $ hg ci -Aqm right
+  $ hg merge -q 1
+  $ hg ci -m merge
+  $ echo accidental > initial
+  $ hg st --rev 1 --rev .
+  A right
+  $ hg st --rev 2 --rev .
+  A left
+  $ hg amend
+  $ hg unamend
+  abort: cannot unamend merge changeset
+  [10]

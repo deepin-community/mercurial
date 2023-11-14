@@ -7,7 +7,6 @@
 # GNU General Public License version 2 or any later version.
 """command to split a changeset into smaller ones (EXPERIMENTAL)"""
 
-from __future__ import absolute_import
 
 from mercurial.i18n import _
 
@@ -22,6 +21,7 @@ from mercurial import (
     commands,
     error,
     hg,
+    logcmdutil,
     pycompat,
     registrar,
     revsetlang,
@@ -75,7 +75,7 @@ def split(ui, repo, *revs, **opts):
         # If the rebase somehow runs into conflicts, make sure
         # we close the transaction so the user can continue it.
         with util.acceptintervention(tr):
-            revs = scmutil.revrange(repo, revlist or [b'.'])
+            revs = logcmdutil.revrange(repo, revlist or [b'.'])
             if len(revs) > 1:
                 raise error.InputError(_(b'cannot split multiple revisions'))
 
@@ -134,7 +134,7 @@ def dosplit(ui, repo, tr, ctx, opts):
     # Set working parent to ctx.p1(), and keep working copy as ctx's content
     if ctx.node() != repo.dirstate.p1():
         hg.clean(repo, ctx.node(), show_stats=False)
-    with repo.dirstate.parentchange():
+    with repo.dirstate.changing_parents(repo):
         scmutil.movedirstate(repo, ctx.p1())
 
     # Any modified, added, removed, deleted result means split is incomplete

@@ -3,7 +3,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<meta name="generator" content="Docutils 0.16: http://docutils.sourceforge.net/" />
+<meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
 <title>hgrc</title>
 <meta name="author" content="Bryan O'Sullivan &lt;bos&#64;serpentine.com&gt;" />
 <meta name="organization" content="Mercurial" />
@@ -31,62 +31,63 @@
 <div class="contents htmlonly topic" id="contents">
 <p class="topic-title">Contents</p>
 <ul class="simple">
-<li><a class="reference internal" href="#description" id="id2">Description</a></li>
-<li><a class="reference internal" href="#troubleshooting" id="id3">Troubleshooting</a></li>
-<li><a class="reference internal" href="#structure" id="id4">Structure</a></li>
-<li><a class="reference internal" href="#files" id="id5">Files</a></li>
-<li><a class="reference internal" href="#syntax" id="id6">Syntax</a></li>
-<li><a class="reference internal" href="#sections" id="id7">Sections</a><ul>
-<li><a class="reference internal" href="#alias" id="id8"><tt class="docutils literal">alias</tt></a></li>
-<li><a class="reference internal" href="#annotate" id="id9"><tt class="docutils literal">annotate</tt></a></li>
-<li><a class="reference internal" href="#auth" id="id10"><tt class="docutils literal">auth</tt></a></li>
-<li><a class="reference internal" href="#cmdserver" id="id11"><tt class="docutils literal">cmdserver</tt></a></li>
-<li><a class="reference internal" href="#color" id="id12"><tt class="docutils literal">color</tt></a></li>
-<li><a class="reference internal" href="#commands" id="id13"><tt class="docutils literal">commands</tt></a></li>
-<li><a class="reference internal" href="#committemplate" id="id14"><tt class="docutils literal">committemplate</tt></a></li>
-<li><a class="reference internal" href="#decode-encode" id="id15"><tt class="docutils literal">decode/encode</tt></a></li>
-<li><a class="reference internal" href="#defaults" id="id16"><tt class="docutils literal">defaults</tt></a></li>
-<li><a class="reference internal" href="#diff" id="id17"><tt class="docutils literal">diff</tt></a></li>
-<li><a class="reference internal" href="#email" id="id18"><tt class="docutils literal">email</tt></a></li>
-<li><a class="reference internal" href="#extensions" id="id19"><tt class="docutils literal">extensions</tt></a></li>
-<li><a class="reference internal" href="#format" id="id20"><tt class="docutils literal">format</tt></a></li>
-<li><a class="reference internal" href="#graph" id="id21"><tt class="docutils literal">graph</tt></a></li>
-<li><a class="reference internal" href="#hooks" id="id22"><tt class="docutils literal">hooks</tt></a></li>
-<li><a class="reference internal" href="#hostfingerprints" id="id23"><tt class="docutils literal">hostfingerprints</tt></a></li>
-<li><a class="reference internal" href="#hostsecurity" id="id24"><tt class="docutils literal">hostsecurity</tt></a></li>
-<li><a class="reference internal" href="#http-proxy" id="id25"><tt class="docutils literal">http_proxy</tt></a></li>
-<li><a class="reference internal" href="#http" id="id26"><tt class="docutils literal">http</tt></a></li>
-<li><a class="reference internal" href="#merge" id="id27"><tt class="docutils literal">merge</tt></a></li>
-<li><a class="reference internal" href="#merge-patterns" id="id28"><tt class="docutils literal"><span class="pre">merge-patterns</span></tt></a></li>
-<li><a class="reference internal" href="#merge-tools" id="id29"><tt class="docutils literal"><span class="pre">merge-tools</span></tt></a></li>
-<li><a class="reference internal" href="#pager" id="id30"><tt class="docutils literal">pager</tt></a></li>
-<li><a class="reference internal" href="#patch" id="id31"><tt class="docutils literal">patch</tt></a></li>
-<li><a class="reference internal" href="#paths" id="id32"><tt class="docutils literal">paths</tt></a></li>
-<li><a class="reference internal" href="#phases" id="id33"><tt class="docutils literal">phases</tt></a></li>
-<li><a class="reference internal" href="#profiling" id="id34"><tt class="docutils literal">profiling</tt></a></li>
-<li><a class="reference internal" href="#progress" id="id35"><tt class="docutils literal">progress</tt></a></li>
-<li><a class="reference internal" href="#rebase" id="id36"><tt class="docutils literal">rebase</tt></a></li>
-<li><a class="reference internal" href="#revsetalias" id="id37"><tt class="docutils literal">revsetalias</tt></a></li>
-<li><a class="reference internal" href="#rewrite" id="id38"><tt class="docutils literal">rewrite</tt></a></li>
-<li><a class="reference internal" href="#share" id="id39"><tt class="docutils literal">share</tt></a></li>
-<li><a class="reference internal" href="#storage" id="id40"><tt class="docutils literal">storage</tt></a></li>
-<li><a class="reference internal" href="#server" id="id41"><tt class="docutils literal">server</tt></a></li>
-<li><a class="reference internal" href="#smtp" id="id42"><tt class="docutils literal">smtp</tt></a></li>
-<li><a class="reference internal" href="#subpaths" id="id43"><tt class="docutils literal">subpaths</tt></a></li>
-<li><a class="reference internal" href="#subrepos" id="id44"><tt class="docutils literal">subrepos</tt></a></li>
-<li><a class="reference internal" href="#templatealias" id="id45"><tt class="docutils literal">templatealias</tt></a></li>
-<li><a class="reference internal" href="#templates" id="id46"><tt class="docutils literal">templates</tt></a></li>
-<li><a class="reference internal" href="#trusted" id="id47"><tt class="docutils literal">trusted</tt></a></li>
-<li><a class="reference internal" href="#ui" id="id48"><tt class="docutils literal">ui</tt></a></li>
-<li><a class="reference internal" href="#command-templates" id="id49"><tt class="docutils literal"><span class="pre">command-templates</span></tt></a></li>
-<li><a class="reference internal" href="#web" id="id50"><tt class="docutils literal">web</tt></a></li>
-<li><a class="reference internal" href="#websub" id="id51"><tt class="docutils literal">websub</tt></a></li>
-<li><a class="reference internal" href="#worker" id="id52"><tt class="docutils literal">worker</tt></a></li>
+<li><a class="reference internal" href="#description" id="toc-entry-1">Description</a></li>
+<li><a class="reference internal" href="#troubleshooting" id="toc-entry-2">Troubleshooting</a></li>
+<li><a class="reference internal" href="#structure" id="toc-entry-3">Structure</a></li>
+<li><a class="reference internal" href="#files" id="toc-entry-4">Files</a></li>
+<li><a class="reference internal" href="#syntax" id="toc-entry-5">Syntax</a></li>
+<li><a class="reference internal" href="#sections" id="toc-entry-6">Sections</a><ul>
+<li><a class="reference internal" href="#alias" id="toc-entry-7"><tt class="docutils literal">alias</tt></a></li>
+<li><a class="reference internal" href="#annotate" id="toc-entry-8"><tt class="docutils literal">annotate</tt></a></li>
+<li><a class="reference internal" href="#auth" id="toc-entry-9"><tt class="docutils literal">auth</tt></a></li>
+<li><a class="reference internal" href="#cmdserver" id="toc-entry-10"><tt class="docutils literal">cmdserver</tt></a></li>
+<li><a class="reference internal" href="#color" id="toc-entry-11"><tt class="docutils literal">color</tt></a></li>
+<li><a class="reference internal" href="#commands" id="toc-entry-12"><tt class="docutils literal">commands</tt></a></li>
+<li><a class="reference internal" href="#committemplate" id="toc-entry-13"><tt class="docutils literal">committemplate</tt></a></li>
+<li><a class="reference internal" href="#decode-encode" id="toc-entry-14"><tt class="docutils literal">decode/encode</tt></a></li>
+<li><a class="reference internal" href="#defaults" id="toc-entry-15"><tt class="docutils literal">defaults</tt></a></li>
+<li><a class="reference internal" href="#diff" id="toc-entry-16"><tt class="docutils literal">diff</tt></a></li>
+<li><a class="reference internal" href="#email" id="toc-entry-17"><tt class="docutils literal">email</tt></a></li>
+<li><a class="reference internal" href="#extensions" id="toc-entry-18"><tt class="docutils literal">extensions</tt></a></li>
+<li><a class="reference internal" href="#format" id="toc-entry-19"><tt class="docutils literal">format</tt></a></li>
+<li><a class="reference internal" href="#graph" id="toc-entry-20"><tt class="docutils literal">graph</tt></a></li>
+<li><a class="reference internal" href="#hooks" id="toc-entry-21"><tt class="docutils literal">hooks</tt></a></li>
+<li><a class="reference internal" href="#hostfingerprints" id="toc-entry-22"><tt class="docutils literal">hostfingerprints</tt></a></li>
+<li><a class="reference internal" href="#hostsecurity" id="toc-entry-23"><tt class="docutils literal">hostsecurity</tt></a></li>
+<li><a class="reference internal" href="#http-proxy" id="toc-entry-24"><tt class="docutils literal">http_proxy</tt></a></li>
+<li><a class="reference internal" href="#http" id="toc-entry-25"><tt class="docutils literal">http</tt></a></li>
+<li><a class="reference internal" href="#merge" id="toc-entry-26"><tt class="docutils literal">merge</tt></a></li>
+<li><a class="reference internal" href="#merge-patterns" id="toc-entry-27"><tt class="docutils literal"><span class="pre">merge-patterns</span></tt></a></li>
+<li><a class="reference internal" href="#merge-tools" id="toc-entry-28"><tt class="docutils literal"><span class="pre">merge-tools</span></tt></a></li>
+<li><a class="reference internal" href="#pager" id="toc-entry-29"><tt class="docutils literal">pager</tt></a></li>
+<li><a class="reference internal" href="#patch" id="toc-entry-30"><tt class="docutils literal">patch</tt></a></li>
+<li><a class="reference internal" href="#paths" id="toc-entry-31"><tt class="docutils literal">paths</tt></a></li>
+<li><a class="reference internal" href="#phases" id="toc-entry-32"><tt class="docutils literal">phases</tt></a></li>
+<li><a class="reference internal" href="#profiling" id="toc-entry-33"><tt class="docutils literal">profiling</tt></a></li>
+<li><a class="reference internal" href="#progress" id="toc-entry-34"><tt class="docutils literal">progress</tt></a></li>
+<li><a class="reference internal" href="#rebase" id="toc-entry-35"><tt class="docutils literal">rebase</tt></a></li>
+<li><a class="reference internal" href="#revsetalias" id="toc-entry-36"><tt class="docutils literal">revsetalias</tt></a></li>
+<li><a class="reference internal" href="#rewrite" id="toc-entry-37"><tt class="docutils literal">rewrite</tt></a></li>
+<li><a class="reference internal" href="#rhg" id="toc-entry-38"><tt class="docutils literal">rhg</tt></a></li>
+<li><a class="reference internal" href="#share" id="toc-entry-39"><tt class="docutils literal">share</tt></a></li>
+<li><a class="reference internal" href="#storage" id="toc-entry-40"><tt class="docutils literal">storage</tt></a></li>
+<li><a class="reference internal" href="#server" id="toc-entry-41"><tt class="docutils literal">server</tt></a></li>
+<li><a class="reference internal" href="#smtp" id="toc-entry-42"><tt class="docutils literal">smtp</tt></a></li>
+<li><a class="reference internal" href="#subpaths" id="toc-entry-43"><tt class="docutils literal">subpaths</tt></a></li>
+<li><a class="reference internal" href="#subrepos" id="toc-entry-44"><tt class="docutils literal">subrepos</tt></a></li>
+<li><a class="reference internal" href="#templatealias" id="toc-entry-45"><tt class="docutils literal">templatealias</tt></a></li>
+<li><a class="reference internal" href="#templates" id="toc-entry-46"><tt class="docutils literal">templates</tt></a></li>
+<li><a class="reference internal" href="#trusted" id="toc-entry-47"><tt class="docutils literal">trusted</tt></a></li>
+<li><a class="reference internal" href="#ui" id="toc-entry-48"><tt class="docutils literal">ui</tt></a></li>
+<li><a class="reference internal" href="#command-templates" id="toc-entry-49"><tt class="docutils literal"><span class="pre">command-templates</span></tt></a></li>
+<li><a class="reference internal" href="#web" id="toc-entry-50"><tt class="docutils literal">web</tt></a></li>
+<li><a class="reference internal" href="#websub" id="toc-entry-51"><tt class="docutils literal">websub</tt></a></li>
+<li><a class="reference internal" href="#worker" id="toc-entry-52"><tt class="docutils literal">worker</tt></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#author" id="id53">Author</a></li>
-<li><a class="reference internal" href="#see-also" id="id54">See Also</a></li>
-<li><a class="reference internal" href="#copying" id="id55">Copying</a></li>
+<li><a class="reference internal" href="#author" id="toc-entry-53">Author</a></li>
+<li><a class="reference internal" href="#see-also" id="toc-entry-54">See Also</a></li>
+<li><a class="reference internal" href="#copying" id="toc-entry-55">Copying</a></li>
 </ul>
 </div>
 <div class="section" id="description">
@@ -547,16 +548,19 @@ shown (an error will not be raised).
 <dd>Default value for the --terse flag, which condenses status output.
 (default: empty)</dd>
 <dt><tt class="docutils literal">update.check</tt></dt>
-<dd>Determines what level of checking <a class="reference external" href="hg.1.html#update"><tt class="docutils literal">hg update</tt></a> will perform before moving
+<dd><p class="first">Determines what level of checking <a class="reference external" href="hg.1.html#update"><tt class="docutils literal">hg update</tt></a> will perform before moving
 to a destination revision. Valid values are <tt class="docutils literal">abort</tt>, <tt class="docutils literal">none</tt>,
-<tt class="docutils literal">linear</tt>, and <tt class="docutils literal">noconflict</tt>. <tt class="docutils literal">abort</tt> always fails if the working
-directory has uncommitted changes. <tt class="docutils literal">none</tt> performs no checking, and may
-result in a merge with uncommitted changes. <tt class="docutils literal">linear</tt> allows any update
-as long as it follows a straight line in the revision history, and may
-trigger a merge with uncommitted changes. <tt class="docutils literal">noconflict</tt> will allow any
-update which would not trigger a merge with uncommitted changes, if any
-are present.
-(default: <tt class="docutils literal">linear</tt>)</dd>
+<tt class="docutils literal">linear</tt>, and <tt class="docutils literal">noconflict</tt>.</p>
+<ul class="simple">
+<li><tt class="docutils literal">abort</tt> always fails if the working directory has uncommitted changes.</li>
+<li><tt class="docutils literal">none</tt> performs no checking, and may result in a merge with uncommitted changes.</li>
+<li><tt class="docutils literal">linear</tt> allows any update as long as it follows a straight line in the
+revision history, and may trigger a merge with uncommitted changes.</li>
+<li><tt class="docutils literal">noconflict</tt> will allow any update which would not trigger a merge with
+uncommitted changes, if any are present.</li>
+</ul>
+<p class="last">(default: <tt class="docutils literal">linear</tt>)</p>
+</dd>
 <dt><tt class="docutils literal">update.requiredest</tt></dt>
 <dd>Require that the user pass a destination when running <a class="reference external" href="hg.1.html#update"><tt class="docutils literal">hg update</tt></a>.
 For example, <a class="reference external" href="hg.1.html#update"><tt class="docutils literal">hg update .::</tt></a> will be allowed, but a plain <a class="reference external" href="hg.1.html#update"><tt class="docutils literal">hg update</tt></a>
@@ -855,6 +859,23 @@ churn =
 # (this extension will get loaded from the file specified)
 myfeature = ~/.hgext/myfeature.py
 </pre>
+<p>If an extension fails to load, a warning will be issued, and Mercurial will
+proceed. To enforce that an extension must be loaded, one can set the <cite>required</cite>
+suboption in the config:</p>
+<pre class="literal-block">
+[extensions]
+myfeature = ~/.hgext/myfeature.py
+myfeature:required = yes
+</pre>
+<p>To debug extension loading issue, one can add <cite>--traceback</cite> to their mercurial
+invocation.</p>
+<p>A default setting can we set using the special <cite>*</cite> extension key:</p>
+<pre class="literal-block">
+[extensions]
+*:required = yes
+myfeature = ~/.hgext/myfeature.py
+rebase=
+</pre>
 </div>
 <div class="section" id="format">
 <h2><a class="toc-backref" href="#contents"><tt class="docutils literal">format</tt></a></h2>
@@ -889,24 +910,113 @@ reserved names, e.g. &quot;nul&quot;.</p>
 <p>Repositories with this on-disk format require Mercurial version 1.1.</p>
 <p class="last">Enabled by default.</p>
 </dd>
+<dt><tt class="docutils literal"><span class="pre">use-dirstate-v2</span></tt></dt>
+<dd><p class="first">Enable or disable the experimental &quot;dirstate-v2&quot; feature. The dirstate
+functionality is shared by all commands interacting with the working copy.
+The new version is more robust, faster and stores more information.</p>
+<p>The performance-improving version of this feature is currently only
+implemented in Rust (see <a class="reference external" href="hg.1.html#rust"><tt class="docutils literal">hg help rust</tt></a>), so people not using a version of
+Mercurial compiled with the Rust parts might actually suffer some slowdown.
+For this reason, such versions will by default refuse to access repositories
+with &quot;dirstate-v2&quot; enabled.</p>
+<p>This behavior can be adjusted via configuration: check
+<a class="reference external" href="hgrc.5.html#storage"><tt class="docutils literal">hg help <span class="pre">config.storage.dirstate-v2.slow-path</span></tt></a> for details.</p>
+<p>Repositories with this on-disk format require Mercurial 6.0 or above.</p>
+<p>By default this format variant is disabled if the fast implementation is not
+available, and enabled by default if the fast implementation is available.</p>
+<p>To accomodate installations of Mercurial without the fast implementation,
+you can downgrade your repository. To do so run the following command:</p>
+<dl class="docutils">
+<dt>$ hg debugupgraderepo </dt>
+<dd>--run --config format.use-dirstate-v2=False --config storage.dirstate-v2.slow-path=allow</dd>
+</dl>
+<p class="last">For a more comprehensive guide, see <a class="reference external" href="hg.1.html#internals.dirstate-v2"><tt class="docutils literal">hg help <span class="pre">internals.dirstate-v2</span></tt></a>.</p>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">use-dirstate-v2.automatic-upgrade-of-mismatching-repositories</span></tt></dt>
+<dd><p class="first">When enabled, an automatic upgrade will be triggered when a repository format
+does not match its <cite>use-dirstate-v2</cite> config.</p>
+<p>This is an advanced behavior that most users will not need. We recommend you
+don't use this unless you are a seasoned administrator of a Mercurial install
+base.</p>
+<p>Automatic upgrade means that any process accessing the repository will
+upgrade the repository format to use <cite>dirstate-v2</cite>. This only triggers if a
+change is needed. This also applies to operations that would have been
+read-only (like hg status).</p>
+<p>If the repository cannot be locked, the automatic-upgrade operation will be
+skipped. The next operation will attempt it again.</p>
+<p class="last">This configuration will apply for moves in any direction, either adding the
+<cite>dirstate-v2</cite> format if <cite>format.use-dirstate-v2=yes</cite> or removing the
+<cite>dirstate-v2</cite> requirement if <cite>format.use-dirstate-v2=no</cite>. So we recommend
+setting both this value and <cite>format.use-dirstate-v2</cite> at the same time.</p>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">use-dirstate-v2.automatic-upgrade-of-mismatching-repositories:quiet</span></tt></dt>
+<dd>Hide message when performing such automatic upgrade.</dd>
+<dt><tt class="docutils literal"><span class="pre">use-dirstate-tracked-hint</span></tt></dt>
+<dd><p class="first">Enable or disable the writing of &quot;tracked key&quot; file alongside the dirstate.
+(default to disabled)</p>
+<p>That &quot;tracked-hint&quot; can help external automations to detect changes to the
+set of tracked files. (i.e the result of <cite>hg files</cite> or <cite>hg status -macd</cite>)</p>
+<p>The tracked-hint is written in a new <cite>.hg/dirstate-tracked-hint</cite>. That file
+contains two lines:
+- the first line is the file version (currently: 1),
+- the second line contains the &quot;tracked-hint&quot;.
+That file is written right after the dirstate is written.</p>
+<p>The tracked-hint changes whenever the set of file tracked in the dirstate
+changes. The general idea is:
+- if the hint is identical, the set of tracked file SHOULD be identical,
+- if the hint is different, the set of tracked file MIGHT be different.</p>
+<p>The &quot;hint is identical&quot; case uses <cite>SHOULD</cite> as the dirstate and the hint file
+are two distinct files and therefore that cannot be read or written to in an
+atomic way. If the key is identical, nothing garantees that the dirstate is
+not updated right after the hint file. This is considered a negligible
+limitation for the intended usecase. It is actually possible to prevent this
+race by taking the repository lock during read operations.</p>
+<p>They are two &quot;ways&quot; to use this feature:</p>
+<p>1) monitoring changes to the <cite>.hg/dirstate-tracked-hint</cite>, if the file
+changes, the tracked set might have changed.</p>
+<ol class="last arabic simple" start="2">
+<li>storing the value and comparing it to a later value.</li>
+</ol>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories</span></tt></dt>
+<dd><p class="first">When enabled, an automatic upgrade will be triggered when a repository format
+does not match its <cite>use-dirstate-tracked-hint</cite> config.</p>
+<p>This is an advanced behavior that most users will not need. We recommend you
+don't use this unless you are a seasoned administrator of a Mercurial install
+base.</p>
+<p>Automatic upgrade means that any process accessing the repository will
+upgrade the repository format to use <cite>dirstate-tracked-hint</cite>. This only
+triggers if a change is needed. This also applies to operations that would
+have been read-only (like hg status).</p>
+<p>If the repository cannot be locked, the automatic-upgrade operation will be
+skipped. The next operation will attempt it again.</p>
+<p class="last">This configuration will apply for moves in any direction, either adding the
+<cite>dirstate-tracked-hint</cite> format if <cite>format.use-dirstate-tracked-hint=yes</cite> or
+removing the <cite>dirstate-tracked-hint</cite> requirement if
+<cite>format.use-dirstate-tracked-hint=no</cite>. So we recommend setting both this
+value and <cite>format.use-dirstate-tracked-hint</cite> at the same time.</p>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories:quiet</span></tt></dt>
+<dd>Hide message when performing such automatic upgrade.</dd>
 <dt><tt class="docutils literal"><span class="pre">use-persistent-nodemap</span></tt></dt>
 <dd><p class="first">Enable or disable the &quot;persistent-nodemap&quot; feature which improves
-performance if the rust extensions are available.</p>
-<p>The &quot;persistence-nodemap&quot; persist the &quot;node -&gt; rev&quot; on disk removing the
+performance if the Rust extensions are available.</p>
+<p>The &quot;persistent-nodemap&quot; persist the &quot;node -&gt; rev&quot; on disk removing the
 need to dynamically build that mapping for each Mercurial invocation. This
-significantly reduce the startup cost of various local and server-side
-operation for larger repository.</p>
-<p>The performance improving version of this feature is currently only
-implemented in Rust, so people not using a version of Mercurial compiled
-with the Rust part  might actually suffer some slowdown. For this reason,
-Such version will by default refuse to access such repositories. That
-behavior can be controlled by configuration. Check
+significantly reduces the startup cost of various local and server-side
+operation for larger repositories.</p>
+<p>The performance-improving version of this feature is currently only
+implemented in Rust (see <a class="reference external" href="hg.1.html#rust"><tt class="docutils literal">hg help rust</tt></a>), so people not using a version of
+Mercurial compiled with the Rust parts might actually suffer some slowdown.
+For this reason, such versions will by default refuse to access repositories
+with &quot;persistent-nodemap&quot;.</p>
+<p>This behavior can be adjusted via configuration: check
 <a class="reference external" href="hgrc.5.html#storage"><tt class="docutils literal">hg help <span class="pre">config.storage.revlog.persistent-nodemap.slow-path</span></tt></a> for details.</p>
-<p>Repository with this on-disk format require Mercurial version 5.4 or above.</p>
-<p>By default this format variant is disabled if fast implementation is not
-available and enabled by default if the fast implementation is available.</p>
-<p>To accomodate install of Mercurial without the fast implementation you can
-downgrade your repository. To do so run the following command:</p>
+<p>Repositories with this on-disk format require Mercurial 5.4 or above.</p>
+<p>By default this format variant is disabled if the fast implementation is not
+available, and enabled by default if the fast implementation is available.</p>
+<p>To accomodate installations of Mercurial without the fast implementation,
+you can downgrade your repository. To do so run the following command:</p>
 <dl class="last docutils">
 <dt>$ hg debugupgraderepo </dt>
 <dd>--run --config format.use-persistent-nodemap=False --config storage.revlog.persistent-nodemap.slow-path=allow</dd>
@@ -929,11 +1039,30 @@ ignoring important hooks.</li>
 </ul>
 <p>Beware that existing shares will not be upgraded/downgraded, and by
 default, Mercurial will refuse to interact with them until the mismatch
-is resolved. See <a class="reference external" href="hgrc.5.html"><tt class="docutils literal">hg help config <span class="pre">share.safe-mismatch.source-safe</span></tt></a> and
-<a class="reference external" href="hgrc.5.html"><tt class="docutils literal">hg help config <span class="pre">share.safe-mismatch.source-not-safe</span></tt></a> for details.</p>
+is resolved. See <a class="reference external" href="hgrc.5.html#share"><tt class="docutils literal">hg help <span class="pre">config.share.safe-mismatch.source-safe</span></tt></a> and
+<a class="reference external" href="hgrc.5.html#share"><tt class="docutils literal">hg help <span class="pre">config.share.safe-mismatch.source-not-safe</span></tt></a> for details.</p>
 <p>Introduced in Mercurial 5.7.</p>
-<p class="last">Disabled by default.</p>
+<p class="last">Enabled by default in Mercurial 6.1.</p>
 </dd>
+<dt><tt class="docutils literal"><span class="pre">use-share-safe.automatic-upgrade-of-mismatching-repositories</span></tt></dt>
+<dd><p class="first">When enabled, an automatic upgrade will be triggered when a repository format
+does not match its <cite>use-share-safe</cite> config.</p>
+<p>This is an advanced behavior that most users will not need. We recommend you
+don't use this unless you are a seasoned administrator of a Mercurial install
+base.</p>
+<p>Automatic upgrade means that any process accessing the repository will
+upgrade the repository format to use <cite>share-safe</cite>. This only triggers if a
+change is needed. This also applies to operation that would have been
+read-only (like hg status).</p>
+<p>If the repository cannot be locked, the automatic-upgrade operation will be
+skipped. The next operation will attempt it again.</p>
+<p class="last">This configuration will apply for moves in any direction, either adding the
+<cite>share-safe</cite> format if <cite>format.use-share-safe=yes</cite> or removing the
+<cite>share-safe</cite> requirement if <cite>format.use-share-safe=no</cite>. So we recommend
+setting both this value and <cite>format.use-share-safe</cite> at the same time.</p>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">use-share-safe.automatic-upgrade-of-mismatching-repositories:quiet</span></tt></dt>
+<dd>Hide message when performing such automatic upgrade.</dd>
 <dt><tt class="docutils literal">usestore</tt></dt>
 <dd><p class="first">Enable or disable the &quot;store&quot; repository format which improves
 compatibility with systems that fold case or otherwise mangle
@@ -1119,6 +1248,11 @@ the old value (if any) is in <tt class="docutils literal">$HG_OLD</tt>, and the 
 created. A non-zero status will cause the tag to fail. The ID of the
 changeset to tag is in <tt class="docutils literal">$HG_NODE</tt>. The name of tag is in <tt class="docutils literal">$HG_TAG</tt>. The
 tag is local if <tt class="docutils literal">$HG_LOCAL=1</tt>, or in the repository if <tt class="docutils literal">$HG_LOCAL=0</tt>.</dd>
+<dt><tt class="docutils literal"><span class="pre">pretransmit-inline-clone-bundle</span></tt></dt>
+<dd>Run before transferring an inline clonebundle to the peer.
+If the exit status is 0, the inline clonebundle will be allowed to be
+transferred. A non-zero status will cause the transfer to fail.
+The path of the inline clonebundle is in <tt class="docutils literal">$HG_CLONEBUNDLEPATH</tt>.</dd>
 <dt><tt class="docutils literal">pretxnopen</tt></dt>
 <dd>Run before any new repository transaction is open. The reason for the
 transaction will be in <tt class="docutils literal">$HG_TXNNAME</tt>, and a unique identifier for the
@@ -1644,7 +1778,48 @@ revision by default.</p>
 <p class="last">Revsets specifying bookmarks will not result in the bookmark being
 pushed.</p>
 </dd>
+<dt><tt class="docutils literal">bookmarks.mode</tt></dt>
+<dd><p class="first">How bookmark will be dealt during the exchange. It support the following value</p>
+<ul class="last simple">
+<li><tt class="docutils literal">default</tt>: the default behavior, local and remote bookmarks are &quot;merged&quot;
+on push/pull.</li>
+<li><tt class="docutils literal">mirror</tt>: when pulling, replace local bookmarks by remote bookmarks. This
+is useful to replicate a repository, or as an optimization.</li>
+<li><tt class="docutils literal">ignore</tt>: ignore bookmarks during exchange.
+(This currently only affect pulling)</li>
+</ul>
+</dd>
 </dl>
+<div class="verbose docutils container">
+<p><tt class="docutils literal"><span class="pre">pulled-delta-reuse-policy</span></tt>
+Control the policy regarding deltas sent by the remote during pulls.</p>
+<p>This is an advanced option that non-admin users should not need to understand
+or set. This option can be used to speed up pulls from trusted central
+servers, or to fix-up deltas from older servers.</p>
+<p>It supports the following values:</p>
+<ul class="simple">
+<li><tt class="docutils literal">default</tt>: use the policy defined by
+<cite>storage.revlog.reuse-external-delta-parent</cite>,</li>
+<li><tt class="docutils literal"><span class="pre">no-reuse</span></tt>: start a new optimal delta search for each new revision we add
+to the repository. The deltas from the server will be reused when the base
+it applies to is tested (this can be frequent if that base is the one and
+unique parent of that revision). This can significantly slowdown pulls but
+will result in an optimized storage space if the remote peer is sending poor
+quality deltas.</li>
+<li><tt class="docutils literal"><span class="pre">try-base</span></tt>: try to reuse the deltas from the remote peer as long as they
+create a valid delta-chain in the local repository. This speeds up the
+unbundling process, but can result in sub-optimal storage space if the
+remote peer is sending poor quality deltas.</li>
+<li><tt class="docutils literal">forced</tt>: the deltas from the peer will be reused in all cases, even if
+the resulting delta-chain is &quot;invalid&quot;. This setting will ensure the bundle
+is applied at minimal CPU cost, but it can result in longer delta chains
+being created on the client, making revisions potentially slower to access
+in the future. If you think you need this option, you should make sure you
+are also talking to the Mercurial developer community to get confirmation.</li>
+</ul>
+<p>See <cite>hg help config.storage.revlog.reuse-external-delta-parent</cite> for a similar
+global option. That option defines the behavior of <cite>default</cite>.</p>
+</div>
 <p>The following special named paths exist:</p>
 <dl class="docutils">
 <dt><tt class="docutils literal">default</tt></dt>
@@ -1854,51 +2029,95 @@ operations. If set to <tt class="docutils literal">skip</tt>, the successor is n
 (EXPERIMENTAL)</p>
 </blockquote>
 </div>
+<div class="section" id="rhg">
+<h2><a class="toc-backref" href="#contents"><tt class="docutils literal">rhg</tt></a></h2>
+<p>The pure Rust fast-path for Mercurial. See <cite>rust/README.rst</cite> in the Mercurial repository.</p>
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">fallback-executable</span></tt></dt>
+<dd>Path to the executable to run in a sub-process when falling back to
+another implementation of Mercurial.</dd>
+<dt><tt class="docutils literal"><span class="pre">fallback-immediately</span></tt></dt>
+<dd><p class="first">Fall back to <tt class="docutils literal"><span class="pre">fallback-executable</span></tt> as soon as possible, regardless of
+the <cite>rhg.on-unsupported</cite> configuration. Useful for debugging, for example to
+bypass <cite>rhg</cite> if the deault <cite>hg</cite> points to <cite>rhg</cite>.</p>
+<p class="last">Note that because this requires loading the configuration, it is possible
+that <cite>rhg</cite> error out before being able to fall back.</p>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">ignored-extensions</span></tt></dt>
+<dd><p class="first">Controls which extensions should be ignored by <cite>rhg</cite>. By default, <cite>rhg</cite>
+triggers the <cite>rhg.on-unsupported</cite> behavior any unsupported extensions.
+Users can disable that behavior when they know that a given extension
+does not need support from <cite>rhg</cite>.</p>
+<p>Expects a list of extension names, or <tt class="docutils literal">*</tt> to ignore all extensions.</p>
+<p class="last">Note: <tt class="docutils literal"><span class="pre">*:&lt;suboption&gt;</span></tt> is also a valid extension name for this
+configuration option.
+As of this writing, the only valid &quot;global&quot; suboption is <tt class="docutils literal">required</tt>.</p>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">on-unsupported</span></tt></dt>
+<dd><p class="first">Controls the behavior of <cite>rhg</cite> when detecting unsupported features.</p>
+<p>Possible values are <cite>abort</cite> (default), <cite>abort-silent</cite> and <cite>fallback</cite>.</p>
+<dl class="last docutils">
+<dt><tt class="docutils literal">abort</tt></dt>
+<dd>Print an error message describing what feature is not supported,
+and exit with code 252</dd>
+<dt><tt class="docutils literal"><span class="pre">abort-silent</span></tt></dt>
+<dd>Silently exit with code 252</dd>
+<dt><tt class="docutils literal">fallback</tt></dt>
+<dd>Try running the fallback executable with the same parameters
+(and trace the fallback reason, use <cite>RUST_LOG=trace</cite> to see).</dd>
+</dl>
+</dd>
+</dl>
+</div>
 <div class="section" id="share">
 <h2><a class="toc-backref" href="#contents"><tt class="docutils literal">share</tt></a></h2>
-<p><tt class="docutils literal"><span class="pre">safe-mismatch.source-safe</span></tt></p>
-<blockquote>
-<p>Controls what happens when the shared repository does not use the
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">safe-mismatch.source-safe</span></tt></dt>
+<dd><p class="first">Controls what happens when the shared repository does not use the
 share-safe mechanism but its source repository does.</p>
 <p>Possible values are <cite>abort</cite> (default), <cite>allow</cite>, <cite>upgrade-abort</cite> and
-<cite>upgrade-abort</cite>.</p>
-<p><tt class="docutils literal">abort</tt>
-Disallows running any command and aborts
-<tt class="docutils literal">allow</tt>
-Respects the feature presence in the share source
-<tt class="docutils literal"><span class="pre">upgrade-abort</span></tt>
-tries to upgrade the share to use share-safe; if it fails, aborts
-<tt class="docutils literal"><span class="pre">upgrade-allow</span></tt>
-tries to upgrade the share; if it fails, continue by
-respecting the share source setting</p>
-<p>Check <a class="reference external" href="hgrc.5.html"><tt class="docutils literal">hg help config <span class="pre">format.use-share-safe</span></tt></a> for details about the
-share-safe feature.</p>
-</blockquote>
+<cite>upgrade-allow</cite>.</p>
 <dl class="docutils">
+<dt><tt class="docutils literal">abort</tt></dt>
+<dd>Disallows running any command and aborts</dd>
+<dt><tt class="docutils literal">allow</tt></dt>
+<dd>Respects the feature presence in the share source</dd>
+<dt><tt class="docutils literal"><span class="pre">upgrade-abort</span></tt></dt>
+<dd>Tries to upgrade the share to use share-safe; if it fails, aborts</dd>
+<dt><tt class="docutils literal"><span class="pre">upgrade-allow</span></tt></dt>
+<dd>Tries to upgrade the share; if it fails, continue by
+respecting the share source setting</dd>
+</dl>
+<p class="last">Check <a class="reference external" href="hgrc.5.html#format"><tt class="docutils literal">hg help <span class="pre">config.format.use-share-safe</span></tt></a> for details about the
+share-safe feature.</p>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">safe-mismatch.source-safe:verbose-upgrade</span></tt></dt>
+<dd>Display a message when upgrading, (default: True)</dd>
 <dt><tt class="docutils literal"><span class="pre">safe-mismatch.source-safe.warn</span></tt></dt>
 <dd>Shows a warning on operations if the shared repository does not use
 share-safe, but the source repository does.
 (default: True)</dd>
-</dl>
-<p><tt class="docutils literal"><span class="pre">safe-mismatch.source-not-safe</span></tt></p>
-<blockquote>
-<p>Controls what happens when the shared repository uses the share-safe
+<dt><tt class="docutils literal"><span class="pre">safe-mismatch.source-not-safe</span></tt></dt>
+<dd><p class="first">Controls what happens when the shared repository uses the share-safe
 mechanism but its source does not.</p>
 <p>Possible values are <cite>abort</cite> (default), <cite>allow</cite>, <cite>downgrade-abort</cite> and
-<cite>downgrade-abort</cite>.</p>
-<p><tt class="docutils literal">abort</tt>
-Disallows running any command and aborts
-<tt class="docutils literal">allow</tt>
-Respects the feature presence in the share source
-<tt class="docutils literal"><span class="pre">downgrade-abort</span></tt>
-tries to downgrade the share to not use share-safe; if it fails, aborts
-<tt class="docutils literal"><span class="pre">downgrade-allow</span></tt>
-tries to downgrade the share to not use share-safe;
-if it fails, continue by respecting the shared source setting</p>
-<p>Check <a class="reference external" href="hgrc.5.html"><tt class="docutils literal">hg help config <span class="pre">format.use-share-safe</span></tt></a> for details about the
-share-safe feature.</p>
-</blockquote>
+<cite>downgrade-allow</cite>.</p>
 <dl class="docutils">
+<dt><tt class="docutils literal">abort</tt></dt>
+<dd>Disallows running any command and aborts</dd>
+<dt><tt class="docutils literal">allow</tt></dt>
+<dd>Respects the feature presence in the share source</dd>
+<dt><tt class="docutils literal"><span class="pre">downgrade-abort</span></tt></dt>
+<dd>Tries to downgrade the share to not use share-safe; if it fails, aborts</dd>
+<dt><tt class="docutils literal"><span class="pre">downgrade-allow</span></tt></dt>
+<dd>Tries to downgrade the share to not use share-safe;
+if it fails, continue by respecting the shared source setting</dd>
+</dl>
+<p class="last">Check <a class="reference external" href="hgrc.5.html#format"><tt class="docutils literal">hg help <span class="pre">config.format.use-share-safe</span></tt></a> for details about the
+share-safe feature.</p>
+</dd>
+<dt><tt class="docutils literal"><span class="pre">safe-mismatch.source-not-safe:verbose-upgrade</span></tt></dt>
+<dd>Display a message when upgrading, (default: True)</dd>
 <dt><tt class="docutils literal"><span class="pre">safe-mismatch.source-not-safe.warn</span></tt></dt>
 <dd>Shows a warning on operations if the shared repository uses share-safe,
 but the source repository does not.
@@ -1923,6 +2142,23 @@ through push, pull, clone and unbundle.</p>
 <p class="last">To fix affected revisions that already exist within the repository, one can
 use <a class="reference external" href="hg.1.html#debug-repair-issue-6528"><tt class="docutils literal">hg <span class="pre">debug-repair-issue-6528</span></tt></a>.</p>
 </dd>
+</dl>
+<div class="verbose docutils container">
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">revlog.delta-parent-search.candidate-group-chunk-size</span></tt></dt>
+<dd><p class="first">Tune the number of delta bases the storage will consider in the
+same &quot;round&quot; of search. In some very rare cases, using a smaller value
+might result in faster processing at the possible expense of storage
+space, while using larger values might result in slower processing at the
+possible benefit of storage space. A value of &quot;0&quot; means no limitation.</p>
+<p>default: no limitation</p>
+<p class="last">This is unlikely that you'll have to tune this configuration. If you think
+you do, consider talking with the mercurial developer community about your
+repositories.</p>
+</dd>
+</dl>
+</div>
+<dl class="docutils">
 <dt><tt class="docutils literal"><span class="pre">revlog.optimize-delta-parent-choice</span></tt></dt>
 <dd><p class="first">When storing a merge revision, both parents will be equally considered as
 a possible delta base. This results in better delta selection and improved
@@ -1936,7 +2172,7 @@ possible) to access the persistent nodemap data. This improve performance
 and reduce memory pressure.</p>
 <p>Default to True.</p>
 <p class="last">For details on the &quot;persistent-nodemap&quot; feature, see:
-<a class="reference external" href="hgrc.5.html"><tt class="docutils literal">hg help config <span class="pre">format.use-persistent-nodemap</span></tt></a>.</p>
+<a class="reference external" href="hgrc.5.html#format"><tt class="docutils literal">hg help <span class="pre">config.format.use-persistent-nodemap</span></tt></a>.</p>
 </dd>
 <dt><tt class="docutils literal"><span class="pre">revlog.persistent-nodemap.slow-path</span></tt></dt>
 <dd><p class="first">Control the behavior of Merucrial when using a repository with &quot;persistent&quot;
@@ -1946,7 +2182,7 @@ the feature:</p>
 <tt class="docutils literal">warn</tt>: Warn, but use the slower implementation to access the repository.
 <tt class="docutils literal">abort</tt>: Prevent access to such repositories. (This is the default)</p>
 <p class="last">For details on the &quot;persistent-nodemap&quot; feature, see:
-<a class="reference external" href="hgrc.5.html"><tt class="docutils literal">hg help config <span class="pre">format.use-persistent-nodemap</span></tt></a>.</p>
+<a class="reference external" href="hgrc.5.html#format"><tt class="docutils literal">hg help <span class="pre">config.format.use-persistent-nodemap</span></tt></a>.</p>
 </dd>
 <dt><tt class="docutils literal"><span class="pre">revlog.reuse-external-delta-parent</span></tt></dt>
 <dd><p class="first">Control the order in which delta parents are considered when adding new
@@ -2041,7 +2277,7 @@ are highly recommended. Partial clones will still be allowed.
 otherwise it will be written to a temporary file first. This option
 effectively prevents concurrent pushes.</dd>
 <dt><tt class="docutils literal">pullbundle</tt></dt>
-<dd><p class="first">When set, the server will check pullbundle.manifest for bundles
+<dd><p class="first">When set, the server will check pullbundles.manifest for bundles
 covering the requested heads and common nodes. The first matching
 entry will be streamed to the client.</p>
 <p class="last">For HTTP transport, the stream will still use zlib compression
@@ -2323,7 +2559,8 @@ This config overrides the interface specified by ui.interface.</dd>
 <dt><tt class="docutils literal"><span class="pre">large-file-limit</span></tt></dt>
 <dd>Largest file size that gives no memory use warning.
 Possible values are integers or 0 to disable the check.
-(default: 10000000)</dd>
+Value is expressed in bytes by default, one can use standard units for
+convenience (e.g. 10MB, 0.1GB, etc) (default: 10MB)</dd>
 <dt><tt class="docutils literal">logtemplate</tt></dt>
 <dd>(DEPRECATED) Use <tt class="docutils literal"><span class="pre">command-templates.log</span></tt> instead.</dd>
 <dt><tt class="docutils literal">merge</tt></dt>
@@ -2842,7 +3079,7 @@ enabled.
 <div class="section" id="copying">
 <h1><a class="toc-backref" href="#contents">Copying</a></h1>
 <p>This manual page is copyright 2005 Bryan O'Sullivan.
-Mercurial is copyright 2005-2021 Olivia Mackall.
+Mercurial is copyright 2005-2023 Olivia Mackall.
 Free use of this software is granted under the terms of the GNU General
 Public License version 2 or any later version.</p>
 <span class="target" id="common"></span><!-- Common link and substitution definitions. -->

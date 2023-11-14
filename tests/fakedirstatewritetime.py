@@ -5,16 +5,15 @@
 #   - 'workingctx._poststatusfixup()' (= 'repo.status()')
 #   - 'committablectx.markcommitted()'
 
-from __future__ import absolute_import
 
 from mercurial import (
     context,
-    dirstate,
     dirstatemap as dirstatemapmod,
     extensions,
     policy,
     registrar,
 )
+from mercurial.dirstateutils import timestamp
 from mercurial.utils import dateutil
 
 try:
@@ -34,18 +33,11 @@ configitem(
 )
 
 parsers = policy.importmod('parsers')
-rustmod = policy.importrust('parsers')
+has_rust_dirstate = policy.importrust('dirstate') is not None
 
 
-def pack_dirstate(fakenow, orig, dmap, copymap, pl, now):
-    # execute what original parsers.pack_dirstate should do actually
-    # for consistency
-    actualnow = int(now)
-    for f, e in dmap.items():
-        if e.need_delay(actualnow):
-            e.set_possibly_dirty()
-
-    return orig(dmap, copymap, pl, fakenow)
+def pack_dirstate(orig, dmap, copymap, pl):
+    return orig(dmap, copymap, pl)
 
 
 def fakewrite(ui, func):
@@ -62,30 +54,31 @@ def fakewrite(ui, func):
     # parsing 'fakenow' in YYYYmmddHHMM format makes comparison between
     # 'fakenow' value and 'touch -t YYYYmmddHHMM' argument easy
     fakenow = dateutil.parsedate(fakenow, [b'%Y%m%d%H%M'])[0]
+    fakenow = timestamp.timestamp((fakenow, 0, False))
 
-    if rustmod is not None:
+    if has_rust_dirstate:
         # The Rust implementation does not use public parse/pack dirstate
         # to prevent conversion round-trips
         orig_dirstatemap_write = dirstatemapmod.dirstatemap.write
-        wrapper = lambda self, tr, st, now: orig_dirstatemap_write(
-            self, tr, st, fakenow
-        )
+        wrapper = lambda self, tr, st: orig_dirstatemap_write(self, tr, st)
         dirstatemapmod.dirstatemap.write = wrapper
 
-    orig_dirstate_getfsnow = dirstate._getfsnow
-    wrapper = lambda *args: pack_dirstate(fakenow, orig_pack_dirstate, *args)
+    orig_get_fs_now = timestamp.get_fs_now
+    wrapper = lambda *args: pack_dirstate(orig_pack_dirstate, *args)
 
     orig_module = parsers
     orig_pack_dirstate = parsers.pack_dirstate
 
     orig_module.pack_dirstate = wrapper
-    dirstate._getfsnow = lambda *args: fakenow
+    timestamp.get_fs_now = (
+        lambda *args: fakenow
+    )  # XXX useless for this purpose now
     try:
         return func()
     finally:
         orig_module.pack_dirstate = orig_pack_dirstate
-        dirstate._getfsnow = orig_dirstate_getfsnow
-        if rustmod is not None:
+        timestamp.get_fs_now = orig_get_fs_now
+        if has_rust_dirstate:
             dirstatemapmod.dirstatemap.write = orig_dirstatemap_write
 
 

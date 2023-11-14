@@ -81,7 +81,6 @@ Setup rebase with multiple destinations
   $ cd $TESTTMP
 
   $ cat >> $TESTTMP/maprevset.py <<EOF
-  > from __future__ import absolute_import
   > from mercurial import registrar, revset, revsetlang, smartset
   > revsetpredicate = registrar.revsetpredicate()
   > cache = {}
@@ -162,7 +161,7 @@ Multiple destinations cannot be used with --base:
   > A D
   > EOS
   abort: unknown revision 'SRC'
-  [255]
+  [10]
 
 Rebase to null should work:
 

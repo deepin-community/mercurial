@@ -25,15 +25,16 @@ Shallow clone from full
   searching for changes
   no changes found
   $ cd shallow
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   exp-remotefilelog-repo-req-1
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
 

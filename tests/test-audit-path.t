@@ -2,13 +2,14 @@ The simple store doesn't escape paths robustly and can't store paths
 with periods, etc. So much of this test fails with it.
 #require no-reposimplestore
 
-  $ hg init
+  $ hg init repo
+  $ cd repo
 
 audit of .hg
 
   $ hg add .hg/00changelog.i
   abort: path contains illegal component: .hg/00changelog.i
-  [255]
+  [10]
 
 #if symlink
 
@@ -91,7 +92,7 @@ attack .hg/test
   .hg/test
   $ hg update -Cr0
   abort: path contains illegal component: .hg/test
-  [255]
+  [10]
 
 attack foo/.hg/test
 
@@ -99,7 +100,7 @@ attack foo/.hg/test
   foo/.hg/test
   $ hg update -Cr1
   abort: path 'foo/.hg/test' is inside nested repo 'foo'
-  [255]
+  [10]
 
 attack back/test where back symlinks to ..
 
@@ -125,7 +126,7 @@ attack ../test
   $ echo data > ../test/file
   $ hg update -Cr3
   abort: path contains illegal component: ../test
-  [255]
+  [10]
   $ cat ../test/file
   data
 
@@ -135,7 +136,7 @@ attack /tmp/test
   /tmp/test
   $ hg update -Cr4
   abort: path contains illegal component: /tmp/test
-  [255]
+  [10]
 
   $ cd ..
 

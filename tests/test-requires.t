@@ -32,7 +32,6 @@ another repository of push/pull/clone on localhost:
 
   $ echo 'featuresetup-test' >> supported/.hg/requires
   $ cat > $TESTTMP/supported-locally/supportlocally.py <<EOF
-  > from __future__ import absolute_import
   > from mercurial import extensions, localrepo
   > def featuresetup(ui, supported):
   >     for name, module in extensions.extensions(ui):
@@ -50,13 +49,14 @@ another repository of push/pull/clone on localhost:
   > EOF
   $ hg -R supported debugrequirements
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   featuresetup-test
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
   $ hg -R supported status
@@ -79,6 +79,16 @@ another repository of push/pull/clone on localhost:
   [255]
   $ hg clone --pull supported clone-dst
   abort: required features are not supported in the destination: featuresetup-test
+  [255]
+
+Bundlerepo also enforces the underlying repo requirements
+
+  $ hg --cwd supported bundle --all ../bundle.hg
+  1 changesets found
+  $ echo outdoor-pool > push-dst/.hg/requires
+  $ hg --cwd push-dst log -R ../bundle.hg -T phases
+  abort: repository requires features unknown to this Mercurial: outdoor-pool
+  (see https://mercurial-scm.org/wiki/MissingRequirement for more information)
   [255]
 
   $ cd ..

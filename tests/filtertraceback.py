@@ -2,7 +2,6 @@
 
 # Filters traceback lines from stdin.
 
-from __future__ import absolute_import, print_function
 
 import io
 import sys
@@ -31,6 +30,11 @@ for line in sys.stdin:
 
         elif not line.startswith(' '):
             state = 'none'
+
+        elif not line.replace('^', '').replace('~', '').strip():
+            # PEP 657: Fine-grained error locations in tracebacks
+            #                       ~~~~~~^^^^^^^^^
+            continue
 
     elif state == 'file':
         # Ignore lines after "  File "

@@ -7,7 +7,6 @@
 # GNU General Public License version 2 or any later version.
 """Helper class to compute deltas stored inside revlogs"""
 
-from __future__ import absolute_import
 
 import collections
 import struct
@@ -21,6 +20,11 @@ from .constants import (
     COMP_MODE_DEFAULT,
     COMP_MODE_INLINE,
     COMP_MODE_PLAIN,
+    DELTA_BASE_REUSE_FORCE,
+    DELTA_BASE_REUSE_NO,
+    KIND_CHANGELOG,
+    KIND_FILELOG,
+    KIND_MANIFESTLOG,
     REVIDX_ISCENSORED,
     REVIDX_RAWTEXT_CHANGING_FLAGS,
 )
@@ -39,7 +43,7 @@ from . import flagutil
 LIMIT_DELTA2TEXT = 2
 
 
-class _testrevlog(object):
+class _testrevlog:
     """minimalist fake revlog to use in doctests"""
 
     def __init__(self, data, density=0.5, mingap=0, snapshot=()):
@@ -526,7 +530,7 @@ def _textfromdelta(fh, revlog, baserev, delta, p1, p2, flags, expectednode):
     else:
         # deltabase is rawtext before changed by flag processors, which is
         # equivalent to non-raw text
-        basetext = revlog.revision(baserev, _df=fh, raw=False)
+        basetext = revlog.revision(baserev, _df=fh)
         fulltext = mdiff.patch(basetext, delta)
 
     try:
@@ -545,7 +549,7 @@ def _textfromdelta(fh, revlog, baserev, delta, p1, p2, flags, expectednode):
 
 
 @attr.s(slots=True, frozen=True)
-class _deltainfo(object):
+class _deltainfo:
     distance = attr.ib()
     deltalen = attr.ib()
     data = attr.ib()
@@ -574,12 +578,21 @@ def drop_u_compression(delta):
     )
 
 
-def isgooddeltainfo(revlog, deltainfo, revinfo):
+def is_good_delta_info(revlog, deltainfo, revinfo):
     """Returns True if the given delta is good. Good means that it is within
     the disk span, disk size, and chain length bounds that we know to be
     performant."""
     if deltainfo is None:
         return False
+
+    # the DELTA_BASE_REUSE_FORCE case should have been taken care of sooner so
+    # we should never end up asking such question. Adding the assert as a
+    # safe-guard to detect anything that would be fishy in this regard.
+    assert (
+        revinfo.cachedelta is None
+        or revinfo.cachedelta[2] != DELTA_BASE_REUSE_FORCE
+        or not revlog._generaldelta
+    )
 
     # - 'deltainfo.distance' is the distance from the base revision --
     #   bounding it limits the amount of I/O we need to do.
@@ -653,7 +666,16 @@ def isgooddeltainfo(revlog, deltainfo, revinfo):
 LIMIT_BASE2TEXT = 500
 
 
-def _candidategroups(revlog, textlen, p1, p2, cachedelta):
+def _candidategroups(
+    revlog,
+    textlen,
+    p1,
+    p2,
+    cachedelta,
+    excluded_bases=None,
+    target_rev=None,
+    snapshot_cache=None,
+):
     """Provides group of revision to be tested as delta base
 
     This top level function focus on emitting groups with unique and worthwhile
@@ -664,15 +686,40 @@ def _candidategroups(revlog, textlen, p1, p2, cachedelta):
         yield None
         return
 
+    if target_rev is None:
+        target_rev = len(revlog)
+
+    if not revlog._generaldelta:
+        # before general delta, there is only one possible delta base
+        yield (target_rev - 1,)
+        yield None
+        return
+
+    # the DELTA_BASE_REUSE_FORCE case should have been taken care of sooner so
+    # we should never end up asking such question. Adding the assert as a
+    # safe-guard to detect anything that would be fishy in this regard.
+    assert (
+        cachedelta is None
+        or cachedelta[2] != DELTA_BASE_REUSE_FORCE
+        or not revlog._generaldelta
+    )
+
     deltalength = revlog.length
     deltaparent = revlog.deltaparent
     sparse = revlog._sparserevlog
     good = None
 
     deltas_limit = textlen * LIMIT_DELTA2TEXT
+    group_chunk_size = revlog._candidate_group_chunk_size
 
     tested = {nullrev}
-    candidates = _refinedgroups(revlog, p1, p2, cachedelta)
+    candidates = _refinedgroups(
+        revlog,
+        p1,
+        p2,
+        cachedelta,
+        snapshot_cache=snapshot_cache,
+    )
     while True:
         temptative = candidates.send(good)
         if temptative is None:
@@ -680,9 +727,7 @@ def _candidategroups(revlog, textlen, p1, p2, cachedelta):
         group = []
         for rev in temptative:
             # skip over empty delta (no need to include them in a chain)
-            while revlog._generaldelta and not (
-                rev == nullrev or rev in tested or deltalength(rev)
-            ):
+            while not (rev == nullrev or rev in tested or deltalength(rev)):
                 tested.add(rev)
                 rev = deltaparent(rev)
             # no need to try a delta against nullrev, this will be done as a
@@ -692,15 +737,28 @@ def _candidategroups(revlog, textlen, p1, p2, cachedelta):
             # filter out revision we tested already
             if rev in tested:
                 continue
-            tested.add(rev)
+
+            # an higher authority deamed the base unworthy (e.g. censored)
+            if excluded_bases is not None and rev in excluded_bases:
+                tested.add(rev)
+                continue
+            # We are in some recomputation cases and that rev is too high in
+            # the revlog
+            if target_rev is not None and rev >= target_rev:
+                tested.add(rev)
+                continue
             # filter out delta base that will never produce good delta
             if deltas_limit < revlog.length(rev):
+                tested.add(rev)
                 continue
             if sparse and revlog.rawsize(rev) < (textlen // LIMIT_BASE2TEXT):
+                tested.add(rev)
                 continue
             # no delta for rawtext-changing revs (see "candelta" for why)
             if revlog.flags(rev) & REVIDX_RAWTEXT_CHANGING_FLAGS:
+                tested.add(rev)
                 continue
+
             # If we reach here, we are about to build and test a delta.
             # The delta building process will compute the chaininfo in all
             # case, since that computation is cached, it is fine to access it
@@ -708,9 +766,11 @@ def _candidategroups(revlog, textlen, p1, p2, cachedelta):
             chainlen, chainsize = revlog._chaininfo(rev)
             # if chain will be too long, skip base
             if revlog._maxchainlen and chainlen >= revlog._maxchainlen:
+                tested.add(rev)
                 continue
             # if chain already have too much data, skip base
             if deltas_limit < chainsize:
+                tested.add(rev)
                 continue
             if sparse and revlog.upperboundcomp is not None:
                 maxcomp = revlog.upperboundcomp
@@ -729,36 +789,46 @@ def _candidategroups(revlog, textlen, p1, p2, cachedelta):
                     snapshotlimit = textlen >> snapshotdepth
                     if snapshotlimit < lowestrealisticdeltalen:
                         # delta lower bound is larger than accepted upper bound
+                        tested.add(rev)
                         continue
 
                     # check the relative constraint on the delta size
                     revlength = revlog.length(rev)
                     if revlength < lowestrealisticdeltalen:
                         # delta probable lower bound is larger than target base
+                        tested.add(rev)
                         continue
 
             group.append(rev)
         if group:
-            # XXX: in the sparse revlog case, group can become large,
-            #      impacting performances. Some bounding or slicing mecanism
-            #      would help to reduce this impact.
-            good = yield tuple(group)
+            # When the size of the candidate group is big, it can result in a
+            # quite significant performance impact. To reduce this, we can send
+            # them in smaller batches until the new batch does not provide any
+            # improvements.
+            #
+            # This might reduce the overall efficiency of the compression in
+            # some corner cases, but that should also prevent very pathological
+            # cases from being an issue. (eg. 20 000 candidates).
+            #
+            # XXX note that the ordering of the group becomes important as it
+            # now impacts the final result. The current order is unprocessed
+            # and can be improved.
+            if group_chunk_size == 0:
+                tested.update(group)
+                good = yield tuple(group)
+            else:
+                prev_good = good
+                for start in range(0, len(group), group_chunk_size):
+                    sub_group = group[start : start + group_chunk_size]
+                    tested.update(sub_group)
+                    good = yield tuple(sub_group)
+                    if prev_good == good:
+                        break
+
     yield None
 
 
-def _findsnapshots(revlog, cache, start_rev):
-    """find snapshot from start_rev to tip"""
-    if util.safehasattr(revlog.index, b'findsnapshots'):
-        revlog.index.findsnapshots(cache, start_rev)
-    else:
-        deltaparent = revlog.deltaparent
-        issnapshot = revlog.issnapshot
-        for rev in revlog.revs(start_rev):
-            if issnapshot(rev):
-                cache[deltaparent(rev)].append(rev)
-
-
-def _refinedgroups(revlog, p1, p2, cachedelta):
+def _refinedgroups(revlog, p1, p2, cachedelta, snapshot_cache=None):
     good = None
     # First we try to reuse a the delta contained in the bundle.
     # (or from the source revlog)
@@ -766,15 +836,28 @@ def _refinedgroups(revlog, p1, p2, cachedelta):
     # This logic only applies to general delta repositories and can be disabled
     # through configuration. Disabling reuse source delta is useful when
     # we want to make sure we recomputed "optimal" deltas.
-    if cachedelta and revlog._generaldelta and revlog._lazydeltabase:
+    debug_info = None
+    if cachedelta is not None and cachedelta[2] > DELTA_BASE_REUSE_NO:
         # Assume what we received from the server is a good choice
         # build delta will reuse the cache
+        if debug_info is not None:
+            debug_info['cached-delta.tested'] += 1
         good = yield (cachedelta[0],)
         if good is not None:
+            if debug_info is not None:
+                debug_info['cached-delta.accepted'] += 1
             yield None
             return
-    snapshots = collections.defaultdict(list)
-    for candidates in _rawgroups(revlog, p1, p2, cachedelta, snapshots):
+    if snapshot_cache is None:
+        snapshot_cache = SnapshotCache()
+    groups = _rawgroups(
+        revlog,
+        p1,
+        p2,
+        cachedelta,
+        snapshot_cache,
+    )
+    for candidates in groups:
         good = yield candidates
         if good is not None:
             break
@@ -795,19 +878,22 @@ def _refinedgroups(revlog, p1, p2, cachedelta):
                 break
             good = yield (base,)
         # refine snapshot up
-        if not snapshots:
-            _findsnapshots(revlog, snapshots, good + 1)
+        if not snapshot_cache.snapshots:
+            snapshot_cache.update(revlog, good + 1)
         previous = None
         while good != previous:
             previous = good
-            children = tuple(sorted(c for c in snapshots[good]))
+            children = tuple(sorted(c for c in snapshot_cache.snapshots[good]))
             good = yield children
 
-    # we have found nothing
+    if debug_info is not None:
+        if good is None:
+            debug_info['no-solution'] += 1
+
     yield None
 
 
-def _rawgroups(revlog, p1, p2, cachedelta, snapshots=None):
+def _rawgroups(revlog, p1, p2, cachedelta, snapshot_cache=None):
     """Provides group of revision to be tested as delta base
 
     This lower level function focus on emitting delta theorically interresting
@@ -815,32 +901,32 @@ def _rawgroups(revlog, p1, p2, cachedelta, snapshots=None):
 
     The group order aims at providing fast or small candidates first.
     """
-    gdelta = revlog._generaldelta
-    # gate sparse behind general-delta because of issue6056
-    sparse = gdelta and revlog._sparserevlog
+    # Why search for delta base if we cannot use a delta base ?
+    assert revlog._generaldelta
+    # also see issue6056
+    sparse = revlog._sparserevlog
     curr = len(revlog)
     prev = curr - 1
     deltachain = lambda rev: revlog._deltachain(rev)[0]
 
-    if gdelta:
-        # exclude already lazy tested base if any
-        parents = [p for p in (p1, p2) if p != nullrev]
+    # exclude already lazy tested base if any
+    parents = [p for p in (p1, p2) if p != nullrev]
 
-        if not revlog._deltabothparents and len(parents) == 2:
-            parents.sort()
-            # To minimize the chance of having to build a fulltext,
-            # pick first whichever parent is closest to us (max rev)
-            yield (parents[1],)
-            # then the other one (min rev) if the first did not fit
-            yield (parents[0],)
-        elif len(parents) > 0:
-            # Test all parents (1 or 2), and keep the best candidate
-            yield parents
+    if not revlog._deltabothparents and len(parents) == 2:
+        parents.sort()
+        # To minimize the chance of having to build a fulltext,
+        # pick first whichever parent is closest to us (max rev)
+        yield (parents[1],)
+        # then the other one (min rev) if the first did not fit
+        yield (parents[0],)
+    elif len(parents) > 0:
+        # Test all parents (1 or 2), and keep the best candidate
+        yield parents
 
     if sparse and parents:
-        if snapshots is None:
-            # map: base-rev: snapshot-rev
-            snapshots = collections.defaultdict(list)
+        if snapshot_cache is None:
+            # map: base-rev: [snapshot-revs]
+            snapshot_cache = SnapshotCache()
         # See if we can use an existing snapshot in the parent chains to use as
         # a base for a new intermediate-snapshot
         #
@@ -854,7 +940,7 @@ def _rawgroups(revlog, p1, p2, cachedelta, snapshots=None):
                     break
                 parents_snaps[idx].add(s)
         snapfloor = min(parents_snaps[0]) + 1
-        _findsnapshots(revlog, snapshots, snapfloor)
+        snapshot_cache.update(revlog, snapfloor)
         # search for the highest "unrelated" revision
         #
         # Adding snapshots used by "unrelated" revision increase the odd we
@@ -877,14 +963,14 @@ def _rawgroups(revlog, p1, p2, cachedelta, snapshots=None):
             # chain.
             max_depth = max(parents_snaps.keys())
             chain = deltachain(other)
-            for idx, s in enumerate(chain):
+            for depth, s in enumerate(chain):
                 if s < snapfloor:
                     continue
-                if max_depth < idx:
+                if max_depth < depth:
                     break
                 if not revlog.issnapshot(s):
                     break
-                parents_snaps[idx].add(s)
+                parents_snaps[depth].add(s)
         # Test them as possible intermediate snapshot base
         # We test them from highest to lowest level. High level one are more
         # likely to result in small delta
@@ -892,7 +978,7 @@ def _rawgroups(revlog, p1, p2, cachedelta, snapshots=None):
         for idx, snaps in sorted(parents_snaps.items(), reverse=True):
             siblings = set()
             for s in snaps:
-                siblings.update(snapshots[s])
+                siblings.update(snapshot_cache.snapshots[s])
             # Before considering making a new intermediate snapshot, we check
             # if an existing snapshot, children of base we consider, would be
             # suitable.
@@ -920,7 +1006,8 @@ def _rawgroups(revlog, p1, p2, cachedelta, snapshots=None):
         # revisions instead of starting our own. Without such re-use,
         # topological branches would keep reopening new full chains. Creating
         # more and more snapshot as the repository grow.
-        yield tuple(snapshots[nullrev])
+        full = [r for r in snapshot_cache.snapshots[nullrev] if snapfloor <= r]
+        yield tuple(sorted(full))
 
     if not sparse:
         # other approach failed try against prev to hopefully save us a
@@ -928,9 +1015,81 @@ def _rawgroups(revlog, p1, p2, cachedelta, snapshots=None):
         yield (prev,)
 
 
-class deltacomputer(object):
-    def __init__(self, revlog):
+class SnapshotCache:
+    __slots__ = ('snapshots', '_start_rev', '_end_rev')
+
+    def __init__(self):
+        self.snapshots = collections.defaultdict(set)
+        self._start_rev = None
+        self._end_rev = None
+
+    def update(self, revlog, start_rev=0):
+        """find snapshots from start_rev to tip"""
+        nb_revs = len(revlog)
+        end_rev = nb_revs - 1
+        if start_rev > end_rev:
+            return  # range is empty
+
+        if self._start_rev is None:
+            assert self._end_rev is None
+            self._update(revlog, start_rev, end_rev)
+        elif not (self._start_rev <= start_rev and end_rev <= self._end_rev):
+            if start_rev < self._start_rev:
+                self._update(revlog, start_rev, self._start_rev - 1)
+            if self._end_rev < end_rev:
+                self._update(revlog, self._end_rev + 1, end_rev)
+
+        if self._start_rev is None:
+            assert self._end_rev is None
+            self._end_rev = end_rev
+            self._start_rev = start_rev
+        else:
+            self._start_rev = min(self._start_rev, start_rev)
+            self._end_rev = max(self._end_rev, end_rev)
+        assert self._start_rev <= self._end_rev, (
+            self._start_rev,
+            self._end_rev,
+        )
+
+    def _update(self, revlog, start_rev, end_rev):
+        """internal method that actually do update content"""
+        assert self._start_rev is None or (
+            start_rev < self._start_rev or start_rev > self._end_rev
+        ), (self._start_rev, self._end_rev, start_rev, end_rev)
+        assert self._start_rev is None or (
+            end_rev < self._start_rev or end_rev > self._end_rev
+        ), (self._start_rev, self._end_rev, start_rev, end_rev)
+        cache = self.snapshots
+        if util.safehasattr(revlog.index, 'findsnapshots'):
+            revlog.index.findsnapshots(cache, start_rev, end_rev)
+        else:
+            deltaparent = revlog.deltaparent
+            issnapshot = revlog.issnapshot
+            for rev in revlog.revs(start_rev, end_rev):
+                if issnapshot(rev):
+                    cache[deltaparent(rev)].add(rev)
+
+
+class deltacomputer:
+    def __init__(
+        self,
+        revlog,
+        write_debug=None,
+        debug_search=False,
+        debug_info=None,
+    ):
         self.revlog = revlog
+        self._write_debug = write_debug
+        if write_debug is None:
+            self._debug_search = False
+        else:
+            self._debug_search = debug_search
+        self._debug_info = debug_info
+        self._snapshot_cache = SnapshotCache()
+
+    @property
+    def _gather_debug(self):
+        return self._write_debug is not None or self._debug_info is not None
 
     def buildtext(self, revinfo, fh):
         """Builds a fulltext version of a revision
@@ -974,13 +1133,20 @@ class deltacomputer(object):
 
         return delta
 
-    def _builddeltainfo(self, revinfo, base, fh):
+    def _builddeltainfo(self, revinfo, base, fh, target_rev=None):
         # can we use the cached delta?
         revlog = self.revlog
         chainbase = revlog.chainbase(base)
         if revlog._generaldelta:
             deltabase = base
         else:
+            if target_rev is not None and base != target_rev - 1:
+                msg = (
+                    b'general delta cannot use delta for something else '
+                    b'than `prev`: %d<-%d'
+                )
+                msg %= (base, target_rev)
+                raise error.ProgrammingError(msg)
             deltabase = chainbase
         snapshotdepth = None
         if revlog._sparserevlog and deltabase == nullrev:
@@ -993,7 +1159,7 @@ class deltacomputer(object):
                 snapshotdepth = len(revlog._deltachain(deltabase)[0])
         delta = None
         if revinfo.cachedelta:
-            cachebase, cachediff = revinfo.cachedelta
+            cachebase = revinfo.cachedelta[0]
             # check if the diff still apply
             currentbase = cachebase
             while (
@@ -1006,13 +1172,27 @@ class deltacomputer(object):
                 delta = revinfo.cachedelta[1]
         if delta is None:
             delta = self._builddeltadiff(base, revinfo, fh)
+        if self._debug_search:
+            msg = b"DBG-DELTAS-SEARCH:     uncompressed-delta-size=%d\n"
+            msg %= len(delta)
+            self._write_debug(msg)
         # snapshotdept need to be neither None nor 0 level snapshot
         if revlog.upperboundcomp is not None and snapshotdepth:
             lowestrealisticdeltalen = len(delta) // revlog.upperboundcomp
             snapshotlimit = revinfo.textlen >> snapshotdepth
+            if self._debug_search:
+                msg = b"DBG-DELTAS-SEARCH:     projected-lower-size=%d\n"
+                msg %= lowestrealisticdeltalen
+                self._write_debug(msg)
             if snapshotlimit < lowestrealisticdeltalen:
+                if self._debug_search:
+                    msg = b"DBG-DELTAS-SEARCH:     DISCARDED (snapshot limit)\n"
+                    self._write_debug(msg)
                 return None
             if revlog.length(base) < lowestrealisticdeltalen:
+                if self._debug_search:
+                    msg = b"DBG-DELTAS-SEARCH:     DISCARDED (prev size)\n"
+                    self._write_debug(msg)
                 return None
         header, data = revlog.compress(delta)
         deltalen = len(header) + len(data)
@@ -1072,44 +1252,251 @@ class deltacomputer(object):
         if target_rev is None:
             target_rev = len(self.revlog)
 
-        if not revinfo.textlen:
-            return self._fullsnapshotinfo(fh, revinfo, target_rev)
+        gather_debug = self._gather_debug
+        cachedelta = revinfo.cachedelta
+        revlog = self.revlog
+        p1r = p2r = None
 
         if excluded_bases is None:
             excluded_bases = set()
 
-        # no delta for flag processor revision (see "candelta" for why)
+        if gather_debug:
+            start = util.timer()
+            dbg = self._one_dbg_data()
+            dbg['revision'] = target_rev
+            target_revlog = b"UNKNOWN"
+            target_type = self.revlog.target[0]
+            target_key = self.revlog.target[1]
+            if target_type == KIND_CHANGELOG:
+                target_revlog = b'CHANGELOG:'
+            elif target_type == KIND_MANIFESTLOG:
+                target_revlog = b'MANIFESTLOG:'
+                if target_key:
+                    target_revlog += b'%s:' % target_key
+            elif target_type == KIND_FILELOG:
+                target_revlog = b'FILELOG:'
+                if target_key:
+                    target_revlog += b'%s:' % target_key
+            dbg['target-revlog'] = target_revlog
+            p1r = revlog.rev(revinfo.p1)
+            p2r = revlog.rev(revinfo.p2)
+            if p1r != nullrev:
+                p1_chain_len = revlog._chaininfo(p1r)[0]
+            else:
+                p1_chain_len = -1
+            if p2r != nullrev:
+                p2_chain_len = revlog._chaininfo(p2r)[0]
+            else:
+                p2_chain_len = -1
+            dbg['p1-chain-len'] = p1_chain_len
+            dbg['p2-chain-len'] = p2_chain_len
+
+        # 1) if the revision is empty, no amount of delta can beat it
+        #
+        # 2) no delta for flag processor revision (see "candelta" for why)
         # not calling candelta since only one revision needs test, also to
         # avoid overhead fetching flags again.
-        if revinfo.flags & REVIDX_RAWTEXT_CHANGING_FLAGS:
-            return self._fullsnapshotinfo(fh, revinfo, target_rev)
-
-        cachedelta = revinfo.cachedelta
-        p1 = revinfo.p1
-        p2 = revinfo.p2
-        revlog = self.revlog
+        if not revinfo.textlen or revinfo.flags & REVIDX_RAWTEXT_CHANGING_FLAGS:
+            deltainfo = self._fullsnapshotinfo(fh, revinfo, target_rev)
+            if gather_debug:
+                end = util.timer()
+                dbg['duration'] = end - start
+                dbg[
+                    'delta-base'
+                ] = deltainfo.base  # pytype: disable=attribute-error
+                dbg['search_round_count'] = 0
+                dbg['using-cached-base'] = False
+                dbg['delta_try_count'] = 0
+                dbg['type'] = b"full"
+                dbg['snapshot-depth'] = 0
+                self._dbg_process_data(dbg)
+            return deltainfo
 
         deltainfo = None
-        p1r, p2r = revlog.rev(p1), revlog.rev(p2)
+
+        # If this source delta are to be forcibly reuse, let us comply early.
+        if (
+            revlog._generaldelta
+            and revinfo.cachedelta is not None
+            and revinfo.cachedelta[2] == DELTA_BASE_REUSE_FORCE
+        ):
+            base = revinfo.cachedelta[0]
+            if base == nullrev:
+                dbg_type = b"full"
+                deltainfo = self._fullsnapshotinfo(fh, revinfo, target_rev)
+                if gather_debug:
+                    snapshotdepth = 0
+            elif base not in excluded_bases:
+                delta = revinfo.cachedelta[1]
+                header, data = revlog.compress(delta)
+                deltalen = len(header) + len(data)
+                if gather_debug:
+                    offset = revlog.end(len(revlog) - 1)
+                    chainbase = revlog.chainbase(base)
+                    distance = deltalen + offset - revlog.start(chainbase)
+                    chainlen, compresseddeltalen = revlog._chaininfo(base)
+                    chainlen += 1
+                    compresseddeltalen += deltalen
+                    if base == p1r or base == p2r:
+                        dbg_type = b"delta"
+                        snapshotdepth = None
+                    elif not revlog.issnapshot(base):
+                        snapshotdepth = None
+                    else:
+                        dbg_type = b"snapshot"
+                        snapshotdepth = revlog.snapshotdepth(base) + 1
+                else:
+                    distance = None
+                    chainbase = None
+                    chainlen = None
+                    compresseddeltalen = None
+                    snapshotdepth = None
+                deltainfo = _deltainfo(
+                    distance=distance,
+                    deltalen=deltalen,
+                    data=(header, data),
+                    base=base,
+                    chainbase=chainbase,
+                    chainlen=chainlen,
+                    compresseddeltalen=compresseddeltalen,
+                    snapshotdepth=snapshotdepth,
+                )
+
+            if deltainfo is not None:
+                if gather_debug:
+                    end = util.timer()
+                    dbg['duration'] = end - start
+                    dbg[
+                        'delta-base'
+                    ] = deltainfo.base  # pytype: disable=attribute-error
+                    dbg['search_round_count'] = 0
+                    dbg['using-cached-base'] = True
+                    dbg['delta_try_count'] = 0
+                    dbg['type'] = b"full"
+                    if snapshotdepth is None:
+                        dbg['snapshot-depth'] = 0
+                    else:
+                        dbg['snapshot-depth'] = snapshotdepth
+                    self._dbg_process_data(dbg)
+                return deltainfo
+
+        # count the number of different delta we tried (for debug purpose)
+        dbg_try_count = 0
+        # count the number of "search round" we did. (for debug purpose)
+        dbg_try_rounds = 0
+        dbg_type = b'unknown'
+
+        if p1r is None:
+            p1r = revlog.rev(revinfo.p1)
+            p2r = revlog.rev(revinfo.p2)
+
+        if self._debug_search:
+            msg = b"DBG-DELTAS-SEARCH: SEARCH rev=%d\n"
+            msg %= target_rev
+            self._write_debug(msg)
+
         groups = _candidategroups(
-            self.revlog, revinfo.textlen, p1r, p2r, cachedelta
+            self.revlog,
+            revinfo.textlen,
+            p1r,
+            p2r,
+            cachedelta,
+            excluded_bases,
+            target_rev,
+            snapshot_cache=self._snapshot_cache,
         )
         candidaterevs = next(groups)
         while candidaterevs is not None:
+            dbg_try_rounds += 1
+            if self._debug_search:
+                prev = None
+                if deltainfo is not None:
+                    prev = deltainfo.base
+
+                if (
+                    cachedelta is not None
+                    and len(candidaterevs) == 1
+                    and cachedelta[0] in candidaterevs
+                ):
+                    round_type = b"cached-delta"
+                elif p1r in candidaterevs or p2r in candidaterevs:
+                    round_type = b"parents"
+                elif prev is not None and all(c < prev for c in candidaterevs):
+                    round_type = b"refine-down"
+                elif prev is not None and all(c > prev for c in candidaterevs):
+                    round_type = b"refine-up"
+                else:
+                    round_type = b"search-down"
+                msg = b"DBG-DELTAS-SEARCH: ROUND #%d - %d candidates - %s\n"
+                msg %= (dbg_try_rounds, len(candidaterevs), round_type)
+                self._write_debug(msg)
             nominateddeltas = []
             if deltainfo is not None:
+                if self._debug_search:
+                    msg = (
+                        b"DBG-DELTAS-SEARCH:   CONTENDER: rev=%d - length=%d\n"
+                    )
+                    msg %= (deltainfo.base, deltainfo.deltalen)
+                    self._write_debug(msg)
                 # if we already found a good delta,
                 # challenge it against refined candidates
                 nominateddeltas.append(deltainfo)
             for candidaterev in candidaterevs:
-                if candidaterev in excluded_bases:
-                    continue
-                if candidaterev >= target_rev:
-                    continue
-                candidatedelta = self._builddeltainfo(revinfo, candidaterev, fh)
+                if self._debug_search:
+                    msg = b"DBG-DELTAS-SEARCH:   CANDIDATE: rev=%d\n"
+                    msg %= candidaterev
+                    self._write_debug(msg)
+                    candidate_type = None
+                    if candidaterev == p1r:
+                        candidate_type = b"p1"
+                    elif candidaterev == p2r:
+                        candidate_type = b"p2"
+                    elif self.revlog.issnapshot(candidaterev):
+                        candidate_type = b"snapshot-%d"
+                        candidate_type %= self.revlog.snapshotdepth(
+                            candidaterev
+                        )
+
+                    if candidate_type is not None:
+                        msg = b"DBG-DELTAS-SEARCH:     type=%s\n"
+                        msg %= candidate_type
+                        self._write_debug(msg)
+                    msg = b"DBG-DELTAS-SEARCH:     size=%d\n"
+                    msg %= self.revlog.length(candidaterev)
+                    self._write_debug(msg)
+                    msg = b"DBG-DELTAS-SEARCH:     base=%d\n"
+                    msg %= self.revlog.deltaparent(candidaterev)
+                    self._write_debug(msg)
+
+                dbg_try_count += 1
+
+                if self._debug_search:
+                    delta_start = util.timer()
+                candidatedelta = self._builddeltainfo(
+                    revinfo,
+                    candidaterev,
+                    fh,
+                    target_rev=target_rev,
+                )
+                if self._debug_search:
+                    delta_end = util.timer()
+                    msg = b"DBG-DELTAS-SEARCH:     delta-search-time=%f\n"
+                    msg %= delta_end - delta_start
+                    self._write_debug(msg)
                 if candidatedelta is not None:
-                    if isgooddeltainfo(self.revlog, candidatedelta, revinfo):
+                    if is_good_delta_info(self.revlog, candidatedelta, revinfo):
+                        if self._debug_search:
+                            msg = b"DBG-DELTAS-SEARCH:     DELTA: length=%d (GOOD)\n"
+                            msg %= candidatedelta.deltalen
+                            self._write_debug(msg)
                         nominateddeltas.append(candidatedelta)
+                    elif self._debug_search:
+                        msg = b"DBG-DELTAS-SEARCH:     DELTA: length=%d (BAD)\n"
+                        msg %= candidatedelta.deltalen
+                        self._write_debug(msg)
+                elif self._debug_search:
+                    msg = b"DBG-DELTAS-SEARCH:     NO-DELTA\n"
+                    self._write_debug(msg)
             if nominateddeltas:
                 deltainfo = min(nominateddeltas, key=lambda x: x.deltalen)
             if deltainfo is not None:
@@ -1118,8 +1505,98 @@ class deltacomputer(object):
                 candidaterevs = next(groups)
 
         if deltainfo is None:
+            dbg_type = b"full"
             deltainfo = self._fullsnapshotinfo(fh, revinfo, target_rev)
+        elif deltainfo.snapshotdepth:  # pytype: disable=attribute-error
+            dbg_type = b"snapshot"
+        else:
+            dbg_type = b"delta"
+
+        if gather_debug:
+            end = util.timer()
+            if dbg_type == b'full':
+                used_cached = (
+                    cachedelta is not None
+                    and dbg_try_rounds == 0
+                    and dbg_try_count == 0
+                    and cachedelta[0] == nullrev
+                )
+            else:
+                used_cached = (
+                    cachedelta is not None
+                    and dbg_try_rounds == 1
+                    and dbg_try_count == 1
+                    and deltainfo.base == cachedelta[0]
+                )
+            dbg['duration'] = end - start
+            dbg[
+                'delta-base'
+            ] = deltainfo.base  # pytype: disable=attribute-error
+            dbg['search_round_count'] = dbg_try_rounds
+            dbg['using-cached-base'] = used_cached
+            dbg['delta_try_count'] = dbg_try_count
+            dbg['type'] = dbg_type
+            if (
+                deltainfo.snapshotdepth  # pytype: disable=attribute-error
+                is not None
+            ):
+                dbg[
+                    'snapshot-depth'
+                ] = deltainfo.snapshotdepth  # pytype: disable=attribute-error
+            else:
+                dbg['snapshot-depth'] = 0
+            self._dbg_process_data(dbg)
         return deltainfo
+
+    def _one_dbg_data(self):
+        return {
+            'duration': None,
+            'revision': None,
+            'delta-base': None,
+            'search_round_count': None,
+            'using-cached-base': None,
+            'delta_try_count': None,
+            'type': None,
+            'p1-chain-len': None,
+            'p2-chain-len': None,
+            'snapshot-depth': None,
+            'target-revlog': None,
+        }
+
+    def _dbg_process_data(self, dbg):
+        if self._debug_info is not None:
+            self._debug_info.append(dbg)
+
+        if self._write_debug is not None:
+            msg = (
+                b"DBG-DELTAS:"
+                b" %-12s"
+                b" rev=%d:"
+                b" delta-base=%d"
+                b" is-cached=%d"
+                b" - search-rounds=%d"
+                b" try-count=%d"
+                b" - delta-type=%-6s"
+                b" snap-depth=%d"
+                b" - p1-chain-length=%d"
+                b" p2-chain-length=%d"
+                b" - duration=%f"
+                b"\n"
+            )
+            msg %= (
+                dbg["target-revlog"],
+                dbg["revision"],
+                dbg["delta-base"],
+                dbg["using-cached-base"],
+                dbg["search_round_count"],
+                dbg["delta_try_count"],
+                dbg["type"],
+                dbg["snapshot-depth"],
+                dbg["p1-chain-len"],
+                dbg["p2-chain-len"],
+                dbg["duration"],
+            )
+            self._write_debug(msg)
 
 
 def delta_compression(default_compression_header, deltainfo):

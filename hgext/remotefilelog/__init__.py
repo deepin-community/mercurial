@@ -124,7 +124,6 @@ Configs:
       corruption before returning metadata
 
 """
-from __future__ import absolute_import
 
 import os
 import time
@@ -409,9 +408,7 @@ def cloneshallow(orig, ui, repo, *args, **opts):
             # bundle2 flavor of streamclones, so force us to use
             # v1 instead.
             if b'v2' in pullop.remotebundle2caps.get(b'stream', []):
-                pullop.remotebundle2caps[b'stream'] = [
-                    c for c in pullop.remotebundle2caps[b'stream'] if c != b'v2'
-                ]
+                pullop.remotebundle2caps[b'stream'] = []
             if bundle2:
                 return False, None
             supported, requirements = orig(pullop, bundle2=bundle2)
@@ -520,7 +517,7 @@ def checkunknownfiles(orig, repo, wctx, mctx, force, mresult, *args, **kwargs):
 
 
 # Prefetch files before status attempts to look at their size and contents
-def checklookup(orig, self, files):
+def checklookup(orig, self, files, mtime_boundary):
     repo = self._repo
     if isenabled(repo):
         prefetchfiles = []
@@ -530,7 +527,7 @@ def checklookup(orig, self, files):
                     prefetchfiles.append((f, hex(parent.filenode(f))))
         # batch fetch the needed files from the server
         repo.fileservice.prefetch(prefetchfiles)
-    return orig(self, files)
+    return orig(self, files, mtime_boundary)
 
 
 # Prefetch the logic that compares added and removed files for renames

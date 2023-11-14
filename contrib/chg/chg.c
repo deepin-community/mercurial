@@ -31,6 +31,8 @@
 #define PATH_MAX 4096
 #endif
 
+extern char **environ;
+
 struct cmdserveropts {
 	char sockname[PATH_MAX];
 	char initsockname[PATH_MAX];
@@ -238,7 +240,6 @@ static const char *gethgcmd(void)
 static void execcmdserver(const struct cmdserveropts *opts)
 {
 	const char *hgcmd = gethgcmd();
-
 	const char *baseargv[] = {
 	    hgcmd,     "serve",     "--no-profile",     "--cmdserver",
 	    "chgunix", "--address", opts->initsockname, "--daemon-postexec",
@@ -484,7 +485,7 @@ static void execoriginalhg(const char *argv[])
 		abortmsgerrno("failed to exec original hg");
 }
 
-int main(int argc, const char *argv[], const char *envp[])
+int main(int argc, const char *argv[])
 {
 	if (getenv("CHGDEBUG"))
 		enabledebugmsg();
@@ -513,13 +514,26 @@ int main(int argc, const char *argv[], const char *envp[])
 		}
 	}
 
+	/* Set $CHGHG to the path of the hg executable we intend to use. This
+	 * is a no-op if $CHGHG was expliclty specified, but otherwise this
+	 * ensures that we will spawn a new command server if we connect to an
+	 * existing one running from a different executable. This should only
+	 * only be needed when chg is built with HGPATHREL since otherwise the
+	 * hg executable used when CHGHG is absent should be deterministic.
+	 * */
+	if (setenv("CHGHG", gethgcmd(), 1) != 0)
+		abortmsgerrno("failed to setenv");
+
 	hgclient_t *hgc;
 	size_t retry = 0;
 	while (1) {
 		hgc = connectcmdserver(&opts);
 		if (!hgc)
 			abortmsg("cannot open hg client");
-		hgc_setenv(hgc, envp);
+		/* Use `environ(7)` instead of the optional `envp` argument to
+		 * `main` because `envp` does not update when the environment
+		 * changes, but `environ` does. */
+		hgc_setenv(hgc, (const char *const *)environ);
 		const char **insts = hgc_validate(hgc, argv + 1, argc - 1);
 		int needreconnect = runinstructions(&opts, insts);
 		free(insts);

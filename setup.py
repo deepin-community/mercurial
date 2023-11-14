@@ -5,98 +5,28 @@
 # 'python setup.py --help' for more options
 import os
 
-# Mercurial will never work on Python 3 before 3.5 due to a lack
-# of % formatting on bytestrings, and can't work on 3.6.0 or 3.6.1
-# due to a bug in % formatting in bytestrings.
-# We cannot support Python 3.5.0, 3.5.1, 3.5.2 because of bug in
-# codecs.escape_encode() where it raises SystemError on empty bytestring
-# bug link: https://bugs.python.org/issue25270
+# Mercurial can't work on 3.6.0 or 3.6.1 due to a bug in % formatting
+# in bytestrings.
 supportedpy = ','.join(
     [
-        '>=2.7.4',
-        '!=3.0.*',
-        '!=3.1.*',
-        '!=3.2.*',
-        '!=3.3.*',
-        '!=3.4.*',
-        '!=3.5.0',
-        '!=3.5.1',
-        '!=3.5.2',
-        '!=3.6.0',
-        '!=3.6.1',
+        '>=3.6.2',
     ]
 )
 
 import sys, platform
 import sysconfig
 
-if sys.version_info[0] >= 3:
-    printf = eval('print')
-    libdir_escape = 'unicode_escape'
 
-    def sysstr(s):
-        return s.decode('latin-1')
+def sysstr(s):
+    return s.decode('latin-1')
 
 
-else:
-    libdir_escape = 'string_escape'
+def eprint(*args, **kwargs):
+    kwargs['file'] = sys.stderr
+    print(*args, **kwargs)
 
-    def printf(*args, **kwargs):
-        f = kwargs.get('file', sys.stdout)
-        end = kwargs.get('end', '\n')
-        f.write(b' '.join(args) + end)
-
-    def sysstr(s):
-        return s
-
-
-# Attempt to guide users to a modern pip - this means that 2.6 users
-# should have a chance of getting a 4.2 release, and when we ratchet
-# the version requirement forward again hopefully everyone will get
-# something that works for them.
-if sys.version_info < (2, 7, 4, 'final'):
-    pip_message = (
-        'This may be due to an out of date pip. '
-        'Make sure you have pip >= 9.0.1.'
-    )
-    try:
-        import pip
-
-        pip_version = tuple([int(x) for x in pip.__version__.split('.')[:3]])
-        if pip_version < (9, 0, 1):
-            pip_message = (
-                'Your pip version is out of date, please install '
-                'pip >= 9.0.1. pip {} detected.'.format(pip.__version__)
-            )
-        else:
-            # pip is new enough - it must be something else
-            pip_message = ''
-    except Exception:
-        pass
-    error = """
-Mercurial does not support Python older than 2.7.4.
-Python {py} detected.
-{pip}
-""".format(
-        py=sys.version_info, pip=pip_message
-    )
-    printf(error, file=sys.stderr)
-    sys.exit(1)
 
 import ssl
-
-try:
-    ssl.SSLContext
-except AttributeError:
-    error = """
-The `ssl` module does not have the `SSLContext` class. This indicates an old
-Python version which does not support modern security features (which were
-added to Python 2.7 as part of "PEP 466"). Please make sure you have installed
-at least Python 2.7.9 or a Python version with backports of these security
-features.
-"""
-    printf(error, file=sys.stderr)
-    sys.exit(1)
 
 # ssl.HAS_TLSv1* are preferred to check support but they were added in Python
 # 3.7. Prior to CPython commit 6e8cda91d92da72800d891b2fc2073ecbc134d98
@@ -117,14 +47,10 @@ Please make sure that your Python installation was compiled against an OpenSSL
 version enabling these features (likely this requires the OpenSSL version to
 be at least 1.0.1).
 """
-    printf(error, file=sys.stderr)
+    print(error, file=sys.stderr)
     sys.exit(1)
 
-if sys.version_info[0] >= 3:
-    DYLIB_SUFFIX = sysconfig.get_config_vars()['EXT_SUFFIX']
-else:
-    # deprecated in Python 3
-    DYLIB_SUFFIX = sysconfig.get_config_vars()['SO']
+DYLIB_SUFFIX = sysconfig.get_config_vars()['EXT_SUFFIX']
 
 # Solaris Python packaging brain damage
 try:
@@ -174,7 +100,6 @@ else:
 ispypy = "PyPy" in sys.version
 
 import ctypes
-import errno
 import stat, subprocess, time
 import re
 import shutil
@@ -187,7 +112,10 @@ issetuptools = os.name == 'nt' or 'FORCE_SETUPTOOLS' in os.environ
 if issetuptools:
     from setuptools import setup
 else:
-    from distutils.core import setup
+    try:
+        from distutils.core import setup
+    except ModuleNotFoundError:
+        from setuptools import setup
 from distutils.ccompiler import new_compiler
 from distutils.core import Command, Extension
 from distutils.dist import Distribution
@@ -206,11 +134,7 @@ from distutils.errors import (
     DistutilsError,
     DistutilsExecError,
 )
-from distutils.sysconfig import get_python_inc, get_config_var
-from distutils.version import StrictVersion
-
-# Explain to distutils.StrictVersion how our release candidates are versionned
-StrictVersion.version_re = re.compile(r'^(\d+)\.(\d+)(\.(\d+))?-?(rc(\d+))?$')
+from distutils.sysconfig import get_python_inc
 
 
 def write_if_changed(path, content):
@@ -276,7 +200,7 @@ def hasheader(cc, headername):
 try:
     import py2exe
 
-    py2exe.Distribution  # silence unused import warning
+    py2exe.patch_distutils()
     py2exeloaded = True
     # import py2exe's patched Distribution class
     from distutils.core import Distribution
@@ -292,7 +216,7 @@ def runcmd(cmd, env, cwd=None):
     return p.returncode, out, err
 
 
-class hgcommand(object):
+class hgcommand:
     def __init__(self, cmd, env):
         self.cmd = cmd
         self.env = env
@@ -301,9 +225,10 @@ class hgcommand(object):
         cmd = self.cmd + args
         returncode, out, err = runcmd(cmd, self.env)
         err = filterhgerr(err)
-        if err or returncode != 0:
-            printf("stderr from '%s':" % (' '.join(cmd)), file=sys.stderr)
-            printf(err, file=sys.stderr)
+        if err:
+            print("stderr from '%s':" % (' '.join(cmd)), file=sys.stderr)
+            print(err, file=sys.stderr)
+        if returncode != 0:
             return b''
         return out
 
@@ -353,28 +278,45 @@ def findhg():
     # gives precedence to hg.exe in the current directory, so fall back to the
     # python invocation of local hg, where pythonXY.dll can always be found.
     check_cmd = ['log', '-r.', '-Ttest']
-    if os.name != 'nt' or not os.path.exists("hg.exe"):
+    attempts = []
+
+    def attempt(cmd, env):
         try:
             retcode, out, err = runcmd(hgcmd + check_cmd, hgenv)
-        except EnvironmentError:
-            retcode = -1
-        if retcode == 0 and not filterhgerr(err):
+            res = (True, retcode, out, err)
+            if retcode == 0 and not filterhgerr(err):
+                return True
+        except EnvironmentError as e:
+            res = (False, e)
+        attempts.append((cmd, res))
+        return False
+
+    if os.name != 'nt' or not os.path.exists("hg.exe"):
+        if attempt(hgcmd + check_cmd, hgenv):
             return hgcommand(hgcmd, hgenv)
 
     # Fall back to trying the local hg installation.
     hgenv = localhgenv()
     hgcmd = [sys.executable, 'hg']
-    try:
-        retcode, out, err = runcmd(hgcmd + check_cmd, hgenv)
-    except EnvironmentError:
-        retcode = -1
-    if retcode == 0 and not filterhgerr(err):
+    if attempt(hgcmd + check_cmd, hgenv):
         return hgcommand(hgcmd, hgenv)
 
-    raise SystemExit(
-        'Unable to find a working hg binary to extract the '
-        'version from the repository tags'
-    )
+    eprint("/!\\")
+    eprint(r"/!\ Unable to find a working hg binary")
+    eprint(r"/!\ Version cannot be extracted from the repository")
+    eprint(r"/!\ Re-run the setup once a first version is built")
+    eprint(r"/!\ Attempts:")
+    for i, e in enumerate(attempts):
+        eprint(r"/!\   attempt #%d:" % (i))
+        eprint(r"/!\     cmd:        ", e[0])
+        res = e[1]
+        if res[0]:
+            eprint(r"/!\     return code:", res[1])
+            eprint("/!\\     std output:\n%s" % (res[2].decode()), end="")
+            eprint("/!\\     std error:\n%s" % (res[3].decode()), end="")
+        else:
+            eprint(r"/!\     exception:  ", res[1])
+    return None
 
 
 def localhgenv():
@@ -399,29 +341,54 @@ def localhgenv():
 
 version = ''
 
-if os.path.isdir('.hg'):
+
+def _try_get_version():
     hg = findhg()
+    if hg is None:
+        return ''
+    hgid = None
+    numerictags = []
     cmd = ['log', '-r', '.', '--template', '{tags}\n']
-    numerictags = [t for t in sysstr(hg.run(cmd)).split() if t[0:1].isdigit()]
+    pieces = sysstr(hg.run(cmd)).split()
+    numerictags = [t for t in pieces if t[0:1].isdigit()]
     hgid = sysstr(hg.run(['id', '-i'])).strip()
+    if hgid.count('+') == 2:
+        hgid = hgid.replace("+", ".", 1)
     if not hgid:
-        # Bail out if hg is having problems interacting with this repository,
-        # rather than falling through and producing a bogus version number.
-        # Continuing with an invalid version number will break extensions
-        # that define minimumhgversion.
-        raise SystemExit('Unable to determine hg version from local repository')
+        eprint("/!\\")
+        eprint(r"/!\ Unable to determine hg version from local repository")
+        eprint(r"/!\ Failed to retrieve current revision tags")
+        return ''
     if numerictags:  # tag(s) found
         version = numerictags[-1]
         if hgid.endswith('+'):  # propagate the dirty status to the tag
             version += '+'
-    else:  # no tag found
-        ltagcmd = ['parents', '--template', '{latesttag}']
+    else:  # no tag found on the checked out revision
+        ltagcmd = ['log', '--rev', 'wdir()', '--template', '{latesttag}']
         ltag = sysstr(hg.run(ltagcmd))
-        changessincecmd = ['log', '-T', 'x\n', '-r', "only(.,'%s')" % ltag]
+        if not ltag:
+            eprint("/!\\")
+            eprint(r"/!\ Unable to determine hg version from local repository")
+            eprint(
+                r"/!\ Failed to retrieve current revision distance to lated tag"
+            )
+            return ''
+        changessincecmd = [
+            'log',
+            '-T',
+            'x\n',
+            '-r',
+            "only(parents(),'%s')" % ltag,
+        ]
         changessince = len(hg.run(changessincecmd).splitlines())
         version = '%s+hg%s.%s' % (ltag, changessince, hgid)
     if version.endswith('+'):
         version = version[:-1] + 'local' + time.strftime('%Y%m%d')
+    return version
+
+
+if os.path.isdir('.hg'):
+    version = _try_get_version()
 elif os.path.exists('.hg_archival.txt'):
     kw = dict(
         [[t.strip() for t in l.split(':', 1)] for l in open('.hg_archival.txt')]
@@ -441,21 +408,35 @@ elif os.path.exists('mercurial/__version__.py'):
     with open('mercurial/__version__.py') as f:
         data = f.read()
     version = re.search('version = b"(.*)"', data).group(1)
+if not version:
+    if os.environ.get("MERCURIAL_SETUP_MAKE_LOCAL") == "1":
+        version = "0.0+0"
+        eprint("/!\\")
+        eprint(r"/!\ Using '0.0+0' as the default version")
+        eprint(r"/!\ Re-run make local once that first version is built")
+        eprint("/!\\")
+    else:
+        eprint("/!\\")
+        eprint(r"/!\ Could not determine the Mercurial version")
+        eprint(r"/!\ You need to build a local version first")
+        eprint(r"/!\ Run `make local` and try again")
+        eprint("/!\\")
+        msg = "Run `make local` first to get a working local version"
+        raise SystemExit(msg)
 
-if version:
-    versionb = version
-    if not isinstance(versionb, bytes):
-        versionb = versionb.encode('ascii')
+versionb = version
+if not isinstance(versionb, bytes):
+    versionb = versionb.encode('ascii')
 
-    write_if_changed(
-        'mercurial/__version__.py',
-        b''.join(
-            [
-                b'# this file is autogenerated by setup.py\n'
-                b'version = b"%s"\n' % versionb,
-            ]
-        ),
-    )
+write_if_changed(
+    'mercurial/__version__.py',
+    b''.join(
+        [
+            b'# this file is autogenerated by setup.py\n'
+            b'version = b"%s"\n' % versionb,
+        ]
+    ),
+)
 
 
 class hgbuild(build):
@@ -535,8 +516,8 @@ class hgdist(Distribution):
             # (see mercurial/__modulepolicy__.py)
             if hgrustext != 'cpython' and hgrustext is not None:
                 if hgrustext:
-                    msg = 'unkown HGWITHRUSTEXT value: %s' % hgrustext
-                    printf(msg, file=sys.stderr)
+                    msg = 'unknown HGWITHRUSTEXT value: %s' % hgrustext
+                    print(msg, file=sys.stderr)
                 hgrustext = None
             self.rust = hgrustext is not None
             self.no_rust = not self.rust
@@ -597,8 +578,8 @@ class hgbuildext(build_ext):
                 e for e in self.extensions if e.name != 'mercurial.zstd'
             ]
 
-        # Build Rust standalon extensions if it'll be used
-        # and its build is not explictely disabled (for external build
+        # Build Rust standalone extensions if it'll be used
+        # and its build is not explicitly disabled (for external build
         # as Linux distributions would do)
         if self.distribution.rust and self.rust:
             if not sys.platform.startswith('linux'):
@@ -746,30 +727,55 @@ class buildhgextindex(Command):
 
 class buildhgexe(build_ext):
     description = 'compile hg.exe from mercurial/exewrapper.c'
-    user_options = build_ext.user_options + [
-        (
-            'long-paths-support',
-            None,
-            'enable support for long paths on '
-            'Windows (off by default and '
-            'experimental)',
-        ),
-    ]
 
-    LONG_PATHS_MANIFEST = """
-    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-    <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-        <application>
-            <windowsSettings
-            xmlns:ws2="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
-                <ws2:longPathAware>true</ws2:longPathAware>
-            </windowsSettings>
-        </application>
-    </assembly>"""
+    LONG_PATHS_MANIFEST = """\
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel
+          level="asInvoker"
+          uiAccess="false"
+        />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows Vista -->
+      <supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f0}"/>
+      <!-- Windows 7 -->
+      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"/>
+      <!-- Windows 8 -->
+      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>
+      <!-- Windows 10 and Windows 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings
+        xmlns:ws2="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
+      <ws2:longPathAware>true</ws2:longPathAware>
+    </windowsSettings>
+  </application>
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32"
+                        name="Microsoft.Windows.Common-Controls"
+                        version="6.0.0.0"
+                        processorArchitecture="*"
+                        publicKeyToken="6595b64144ccf1df"
+                        language="*" />
+    </dependentAssembly>
+  </dependency>
+</assembly>
+"""
 
     def initialize_options(self):
         build_ext.initialize_options(self)
-        self.long_paths_support = False
 
     def build_extensions(self):
         if os.name != 'nt':
@@ -780,8 +786,8 @@ class buildhgexe(build_ext):
 
         pythonlib = None
 
-        dir = os.path.dirname(self.get_ext_fullpath('dummy'))
-        self.hgtarget = os.path.join(dir, 'hg')
+        dirname = os.path.dirname(self.get_ext_fullpath('dummy'))
+        self.hgtarget = os.path.join(dirname, 'hg')
 
         if getattr(sys, 'dllhandle', None):
             # Different Python installs can have different Python library
@@ -810,12 +816,9 @@ class buildhgexe(build_ext):
 
                 # Copy the pythonXY.dll next to the binary so that it runs
                 # without tampering with PATH.
-                fsdecode = lambda x: x
-                if sys.version_info[0] >= 3:
-                    fsdecode = os.fsdecode
                 dest = os.path.join(
                     os.path.dirname(self.hgtarget),
-                    fsdecode(dllbasename),
+                    os.fsdecode(dllbasename),
                 )
 
                 if not os.path.exists(dest):
@@ -823,19 +826,18 @@ class buildhgexe(build_ext):
 
                 # Also overwrite python3.dll so that hgext.git is usable.
                 # TODO: also handle the MSYS flavor
-                if sys.version_info[0] >= 3:
-                    python_x = os.path.join(
-                        os.path.dirname(fsdecode(buf.value)),
-                        "python3.dll",
+                python_x = os.path.join(
+                    os.path.dirname(os.fsdecode(buf.value)),
+                    "python3.dll",
+                )
+
+                if os.path.exists(python_x):
+                    dest = os.path.join(
+                        os.path.dirname(self.hgtarget),
+                        os.path.basename(python_x),
                     )
 
-                    if os.path.exists(python_x):
-                        dest = os.path.join(
-                            os.path.dirname(self.hgtarget),
-                            os.path.basename(python_x),
-                        )
-
-                        shutil.copy(python_x, dest)
+                    shutil.copy(python_x, dest)
 
         if not pythonlib:
             log.warn(
@@ -850,34 +852,19 @@ class buildhgexe(build_ext):
             f.write(b'/* this file is autogenerated by setup.py */\n')
             f.write(b'#define HGPYTHONLIB "%s"\n' % pythonlib)
 
-        macros = None
-        if sys.version_info[0] >= 3:
-            macros = [('_UNICODE', None), ('UNICODE', None)]
-
         objects = self.compiler.compile(
             ['mercurial/exewrapper.c'],
             output_dir=self.build_temp,
-            macros=macros,
+            macros=[('_UNICODE', None), ('UNICODE', None)],
         )
         self.compiler.link_executable(
             objects, self.hgtarget, libraries=[], output_dir=self.build_temp
         )
-        if self.long_paths_support:
-            self.addlongpathsmanifest()
+
+        self.addlongpathsmanifest()
 
     def addlongpathsmanifest(self):
-        r"""Add manifest pieces so that hg.exe understands long paths
-
-        This is an EXPERIMENTAL feature, use with care.
-        To enable long paths support, one needs to do two things:
-        - build Mercurial with --long-paths-support option
-        - change HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\
-                 LongPathsEnabled to have value 1.
-
-        Please ignore 'warning 81010002: Unrecognized Element "longPathAware"';
-        it happens because Mercurial uses mt.exe circa 2008, which is not
-        yet aware of long paths support in the manifest (I think so at least).
-        This does not stop mt.exe from embedding/merging the XML properly.
+        """Add manifest pieces so that hg.exe understands long paths
 
         Why resource #1 should be used for .exe manifests? I don't know and
         wasn't able to find an explanation for mortals. But it seems to work.
@@ -885,21 +872,18 @@ class buildhgexe(build_ext):
         exefname = self.compiler.executable_filename(self.hgtarget)
         fdauto, manfname = tempfile.mkstemp(suffix='.hg.exe.manifest')
         os.close(fdauto)
-        with open(manfname, 'w') as f:
+        with open(manfname, 'w', encoding="UTF-8") as f:
             f.write(self.LONG_PATHS_MANIFEST)
         log.info("long paths manifest is written to '%s'" % manfname)
-        inputresource = '-inputresource:%s;#1' % exefname
         outputresource = '-outputresource:%s;#1' % exefname
         log.info("running mt.exe to update hg.exe's manifest in-place")
-        # supplying both -manifest and -inputresource to mt.exe makes
-        # it merge the embedded and supplied manifests in the -outputresource
+
         self.spawn(
             [
-                'mt.exe',
+                self.compiler.mt,
                 '-nologo',
                 '-manifest',
                 manfname,
-                inputresource,
                 outputresource,
             ]
         )
@@ -1069,6 +1053,10 @@ class hginstall(install):
         ),
     ]
 
+    sub_commands = install.sub_commands + [
+        ('install_completion', lambda self: True)
+    ]
+
     # Also helps setuptools not be sad while we refuse to create eggs.
     single_version_externally_managed = True
 
@@ -1183,9 +1171,41 @@ class hginstallscripts(install_scripts):
                 )
                 continue
 
-            data = data.replace(b'@LIBDIR@', libdir.encode(libdir_escape))
+            data = data.replace(b'@LIBDIR@', libdir.encode('unicode_escape'))
             with open(outfile, 'wb') as fp:
                 fp.write(data)
+
+
+class hginstallcompletion(Command):
+    description = 'Install shell completion'
+
+    def initialize_options(self):
+        self.install_dir = None
+        self.outputs = []
+
+    def finalize_options(self):
+        self.set_undefined_options(
+            'install_data', ('install_dir', 'install_dir')
+        )
+
+    def get_outputs(self):
+        return self.outputs
+
+    def run(self):
+        for src, dir_path, dest in (
+            (
+                'bash_completion',
+                ('share', 'bash-completion', 'completions'),
+                'hg',
+            ),
+            ('zsh_completion', ('share', 'zsh', 'site-functions'), '_hg'),
+        ):
+            dir = os.path.join(self.install_dir, *dir_path)
+            self.mkpath(dir)
+
+            dest = os.path.join(dir, dest)
+            self.outputs.append(dest)
+            self.copy_file(os.path.join('contrib', src), dest)
 
 
 # virtualenv installs custom distutils/__init__.py and
@@ -1278,6 +1298,7 @@ cmdclass = {
     'build_scripts': hgbuildscripts,
     'build_hgextindex': buildhgextindex,
     'install': hginstall,
+    'install_completion': hginstallcompletion,
     'install_lib': hginstalllib,
     'install_scripts': hginstallscripts,
     'build_hgexe': buildhgexe,
@@ -1297,6 +1318,7 @@ packages = [
     'mercurial.hgweb',
     'mercurial.interfaces',
     'mercurial.pure',
+    'mercurial.stabletailgraph',
     'mercurial.templates',
     'mercurial.thirdparty',
     'mercurial.thirdparty.attr',
@@ -1324,26 +1346,11 @@ packages = [
     'hgdemandimport',
 ]
 
-# The pygit2 dependency dropped py2 support with the 1.0 release in Dec 2019.
-# Prior releases do not build at all on Windows, because Visual Studio 2008
-# doesn't understand C 11.  Older Linux releases are buggy.
-if sys.version_info[0] == 2:
-    packages.remove('hgext.git')
-
-
 for name in os.listdir(os.path.join('mercurial', 'templates')):
     if name != '__pycache__' and os.path.isdir(
         os.path.join('mercurial', 'templates', name)
     ):
         packages.append('mercurial.templates.%s' % name)
-
-if sys.version_info[0] == 2:
-    packages.extend(
-        [
-            'mercurial.thirdparty.concurrent',
-            'mercurial.thirdparty.concurrent.futures',
-        ]
-    )
 
 if 'HG_PY2EXE_EXTRA_INSTALL_PACKAGES' in os.environ:
     # py2exe can't cope with namespace packages very well, so we have to
@@ -1428,12 +1435,9 @@ class RustExtension(Extension):
 
     rusttargetdir = os.path.join('rust', 'target', 'release')
 
-    def __init__(
-        self, mpath, sources, rustlibname, subcrate, py3_features=None, **kw
-    ):
+    def __init__(self, mpath, sources, rustlibname, subcrate, **kw):
         Extension.__init__(self, mpath, sources, **kw)
         srcdir = self.rustsrcdir = os.path.join('rust', subcrate)
-        self.py3_features = py3_features
 
         # adding Rust source and control files to depends so that the extension
         # gets rebuilt if they've changed
@@ -1479,17 +1483,9 @@ class RustExtension(Extension):
 
         cargocmd = ['cargo', 'rustc', '--release']
 
-        feature_flags = []
-
-        if sys.version_info[0] == 3 and self.py3_features is not None:
-            feature_flags.append(self.py3_features)
-            cargocmd.append('--no-default-features')
-
         rust_features = env.get("HG_RUST_FEATURES")
         if rust_features:
-            feature_flags.append(rust_features)
-
-        cargocmd.extend(('--features', " ".join(feature_flags)))
+            cargocmd.extend(('--features', rust_features))
 
         cargocmd.append('--')
         if sys.platform == 'darwin':
@@ -1498,15 +1494,12 @@ class RustExtension(Extension):
             )
         try:
             subprocess.check_call(cargocmd, env=env, cwd=self.rustsrcdir)
-        except OSError as exc:
-            if exc.errno == errno.ENOENT:
-                raise RustCompilationError("Cargo not found")
-            elif exc.errno == errno.EACCES:
-                raise RustCompilationError(
-                    "Cargo found, but permisssion to execute it is denied"
-                )
-            else:
-                raise
+        except FileNotFoundError:
+            raise RustCompilationError("Cargo not found")
+        except PermissionError:
+            raise RustCompilationError(
+                "Cargo found, but permission to execute it is denied"
+            )
         except subprocess.CalledProcessError:
             raise RustCompilationError(
                 "Cargo failed. Working directory: %r, "
@@ -1527,11 +1520,13 @@ class RustStandaloneExtension(RustExtension):
         target = [target_dir]
         target.extend(self.name.split('.'))
         target[-1] += DYLIB_SUFFIX
+        target = os.path.join(*target)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
         shutil.copy2(
             os.path.join(
                 self.rusttargetdir, self.dylibname + self.rustdylibsuffix()
             ),
-            os.path.join(*target),
+            target,
         )
 
 
@@ -1605,7 +1600,9 @@ extmodules = [
         extra_compile_args=common_cflags,
     ),
     RustStandaloneExtension(
-        'mercurial.rustext', 'hg-cpython', 'librusthg', py3_features='python3'
+        'mercurial.rustext',
+        'hg-cpython',
+        'librusthg',
     ),
 ]
 
@@ -1639,7 +1636,7 @@ except ImportError:
     # the cygwinccompiler package is not available on some Python
     # distributions like the ones from the optware project for Synology
     # DiskStation boxes
-    class HackedMingw32CCompiler(object):
+    class HackedMingw32CCompiler:
         pass
 
 
@@ -1673,6 +1670,10 @@ packagedata = {
     ],
     'mercurial.helptext.internals': [
         '*.txt',
+    ],
+    'mercurial.thirdparty.attr': [
+        '*.pyi',
+        'py.typed',
     ],
 }
 
@@ -1721,7 +1722,7 @@ if py2exeloaded:
     extra['console'] = [
         {
             'script': 'hg',
-            'copyright': 'Copyright (C) 2005-2021 Olivia Mackall and others',
+            'copyright': 'Copyright (C) 2005-2023 Olivia Mackall and others',
             'product_version': version,
         }
     ]
@@ -1758,41 +1759,6 @@ if os.name == 'nt':
     # Windows binary file versions for exe/dll files must have the
     # form W.X.Y.Z, where W,X,Y,Z are numbers in the range 0..65535
     setupversion = setupversion.split(r'+', 1)[0]
-
-if sys.platform == 'darwin' and os.path.exists('/usr/bin/xcodebuild'):
-    version = runcmd(['/usr/bin/xcodebuild', '-version'], {})[1].splitlines()
-    if version:
-        version = version[0]
-        if sys.version_info[0] == 3:
-            version = version.decode('utf-8')
-        xcode4 = version.startswith('Xcode') and StrictVersion(
-            version.split()[1]
-        ) >= StrictVersion('4.0')
-        xcode51 = re.match(r'^Xcode\s+5\.1', version) is not None
-    else:
-        # xcodebuild returns empty on OS X Lion with XCode 4.3 not
-        # installed, but instead with only command-line tools. Assume
-        # that only happens on >= Lion, thus no PPC support.
-        xcode4 = True
-        xcode51 = False
-
-    # XCode 4.0 dropped support for ppc architecture, which is hardcoded in
-    # distutils.sysconfig
-    if xcode4:
-        os.environ['ARCHFLAGS'] = ''
-
-    # XCode 5.1 changes clang such that it now fails to compile if the
-    # -mno-fused-madd flag is passed, but the version of Python shipped with
-    # OS X 10.9 Mavericks includes this flag. This causes problems in all
-    # C extension modules, and a bug has been filed upstream at
-    # http://bugs.python.org/issue21244. We also need to patch this here
-    # so Mercurial can continue to compile in the meantime.
-    if xcode51:
-        cflags = get_config_var('CFLAGS')
-        if cflags and re.search(r'-mno-fused-madd\b', cflags) is not None:
-            os.environ['CFLAGS'] = (
-                os.environ.get('CFLAGS', '') + ' -Qunused-arguments'
-            )
 
 setup(
     name='mercurial',

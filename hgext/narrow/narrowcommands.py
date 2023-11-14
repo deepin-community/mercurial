@@ -4,7 +4,6 @@
 #
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
-from __future__ import absolute_import
 
 import itertools
 import os
@@ -289,13 +288,15 @@ def _narrow(
                 repair.strip(ui, unfi, tostrip, topic=b'narrow', backup=backup)
 
         todelete = []
-        for t, f, f2, size in repo.store.datafiles():
-            if f.startswith(b'data/'):
-                file = f[5:-2]
-                if not newmatch(file):
-                    todelete.append(f)
-            elif f.startswith(b'meta/'):
-                dir = f[5:-13]
+        for entry in repo.store.data_entries():
+            if not entry.is_revlog:
+                continue
+            if entry.is_filelog:
+                if not newmatch(entry.target_id):
+                    for file_ in entry.files():
+                        todelete.append(file_.unencoded_path)
+            elif entry.is_manifestlog:
+                dir = entry.target_id
                 dirs = sorted(pathutil.dirs({dir})) + [dir]
                 include = True
                 for d in dirs:
@@ -306,7 +307,8 @@ def _narrow(
                     if visit == b'all':
                         break
                 if not include:
-                    todelete.append(f)
+                    for file_ in entry.files():
+                        todelete.append(file_.unencoded_path)
 
         repo.destroying()
 
@@ -321,7 +323,7 @@ def _narrow(
                 repo.store.markremoved(f)
 
             ui.status(_(b'deleting unwanted files from working copy\n'))
-            with repo.dirstate.parentchange():
+            with repo.dirstate.changing_parents(repo):
                 narrowspec.updateworkingcopy(repo, assumeclean=True)
                 narrowspec.copytoworkingcopy(repo)
 
@@ -381,7 +383,7 @@ def _widen(
         if ellipsesremote:
             ds = repo.dirstate
             p1, p2 = ds.p1(), ds.p2()
-            with ds.parentchange():
+            with ds.changing_parents(repo):
                 ds.setparents(repo.nullid, repo.nullid)
         if isoldellipses:
             with wrappedextraprepare:
@@ -417,13 +419,15 @@ def _widen(
                     repo, trmanager.transaction, source=b'widen'
                 )
                 # TODO: we should catch error.Abort here
-                bundle2.processbundle(repo, bundle, op=op)
+                bundle2.processbundle(repo, bundle, op=op, remote=remote)
 
         if ellipsesremote:
-            with ds.parentchange():
+            with ds.changing_parents(repo):
                 ds.setparents(p1, p2)
 
-        with repo.transaction(b'widening'), repo.dirstate.parentchange():
+        with repo.transaction(b'widening'), repo.dirstate.changing_parents(
+            repo
+        ):
             repo.setnewnarrowpats()
             narrowspec.updateworkingcopy(repo)
             narrowspec.copytoworkingcopy(repo)
@@ -562,20 +566,9 @@ def trackedcmd(ui, repo, remotepath=None, *pats, **opts):
         or update_working_copy
     )
 
-    oldincludes, oldexcludes = repo.narrowpats
-
-    # filter the user passed additions and deletions into actual additions and
-    # deletions of excludes and includes
-    addedincludes -= oldincludes
-    removedincludes &= oldincludes
-    addedexcludes -= oldexcludes
-    removedexcludes &= oldexcludes
-
-    widening = addedincludes or removedexcludes
-    narrowing = removedincludes or addedexcludes
-
     # Only print the current narrowspec.
     if only_show:
+        oldincludes, oldexcludes = repo.narrowpats
         ui.pager(b'tracked')
         fm = ui.formatter(b'narrow', opts)
         for i in sorted(oldincludes):
@@ -589,28 +582,39 @@ def trackedcmd(ui, repo, remotepath=None, *pats, **opts):
         fm.end()
         return 0
 
-    if update_working_copy:
-        with repo.wlock(), repo.lock(), repo.transaction(
-            b'narrow-wc'
-        ), repo.dirstate.parentchange():
-            narrowspec.updateworkingcopy(repo)
-            narrowspec.copytoworkingcopy(repo)
-        return 0
-
-    if not (widening or narrowing or autoremoveincludes):
-        ui.status(_(b"nothing to widen or narrow\n"))
-        return 0
-
     with repo.wlock(), repo.lock():
+        oldincludes, oldexcludes = repo.narrowpats
+
+        # filter the user passed additions and deletions into actual additions and
+        # deletions of excludes and includes
+        addedincludes -= oldincludes
+        removedincludes &= oldincludes
+        addedexcludes -= oldexcludes
+        removedexcludes &= oldexcludes
+
+        widening = addedincludes or removedexcludes
+        narrowing = removedincludes or addedexcludes
+
+        if update_working_copy:
+            with repo.transaction(b'narrow-wc'), repo.dirstate.changing_parents(
+                repo
+            ):
+                narrowspec.updateworkingcopy(repo)
+                narrowspec.copytoworkingcopy(repo)
+            return 0
+
+        if not (widening or narrowing or autoremoveincludes):
+            ui.status(_(b"nothing to widen or narrow\n"))
+            return 0
+
         cmdutil.bailifchanged(repo)
 
         # Find the revisions we have in common with the remote. These will
         # be used for finding local-only changes for narrowing. They will
         # also define the set of revisions to update for widening.
-        r = urlutil.get_unique_pull_path(b'tracked', repo, ui, remotepath)
-        url, branches = r
-        ui.status(_(b'comparing with %s\n') % urlutil.hidepassword(url))
-        remote = hg.peer(repo, opts, url)
+        path = urlutil.get_unique_pull_path_obj(b'tracked', ui, remotepath)
+        ui.status(_(b'comparing with %s\n') % urlutil.hidepassword(path.loc))
+        remote = hg.peer(repo, opts, path)
 
         try:
             # check narrow support before doing anything if widening needs to be
@@ -643,7 +647,7 @@ def trackedcmd(ui, repo, remotepath=None, *pats, **opts):
                     if (
                         ui.promptchoice(
                             _(
-                                b'remove these unused includes (yn)?'
+                                b'remove these unused includes (Yn)?'
                                 b'$$ &Yes $$ &No'
                             )
                         )

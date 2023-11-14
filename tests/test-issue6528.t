@@ -177,16 +177,14 @@ It's a tarball because unbundle might magically fix the issue later.
   $ cd ..
   $ mkdir repo-to-fix
   $ cd repo-to-fix
-#if windows
-tar interprets `:` in paths (like `C:`) as being remote, force local on Windows
-only since some versions of tar don't have this flag.
-
-  $ tar --force-local -xf $TESTDIR/bundles/issue6528.tar
-#else
-  $ tar xf $TESTDIR/bundles/issue6528.tar
-#endif
+  $ tar -xf - < "$TESTDIR"/bundles/issue6528.tar
 
 Check that the issue is present
+(It is currently not present with rhg but will be when optimizations are added
+to resolve ambiguous files at the end of status without reading their content
+if the size differs, and reading the expected size without resolving filelog
+deltas where possible.)
+
   $ hg st
   M D.txt
   M b.txt
@@ -203,9 +201,9 @@ Check that the issue is present
 
 Dry-run the fix
   $ hg debug-repair-issue6528 --dry-run
-  found affected revision 1 for filelog 'data/D.txt.i'
-  found affected revision 1 for filelog 'data/b.txt.i'
-  found affected revision 3 for filelog 'data/b.txt.i'
+  found affected revision 1 for file 'D.txt'
+  found affected revision 1 for file 'b.txt'
+  found affected revision 3 for file 'b.txt'
   $ hg st
   M D.txt
   M b.txt
@@ -222,9 +220,9 @@ Dry-run the fix
 
 Test the --paranoid option
   $ hg debug-repair-issue6528 --dry-run --paranoid
-  found affected revision 1 for filelog 'data/D.txt.i'
-  found affected revision 1 for filelog 'data/b.txt.i'
-  found affected revision 3 for filelog 'data/b.txt.i'
+  found affected revision 1 for file 'D.txt'
+  found affected revision 1 for file 'b.txt'
+  found affected revision 3 for file 'b.txt'
   $ hg st
   M D.txt
   M b.txt
@@ -241,10 +239,10 @@ Test the --paranoid option
 
 Run the fix
   $ hg debug-repair-issue6528
-  found affected revision 1 for filelog 'data/D.txt.i'
+  found affected revision 1 for file 'D.txt'
   repaired revision 1 of 'filelog data/D.txt.i'
-  found affected revision 1 for filelog 'data/b.txt.i'
-  found affected revision 3 for filelog 'data/b.txt.i'
+  found affected revision 1 for file 'b.txt'
+  found affected revision 3 for file 'b.txt'
   repaired revision 1 of 'filelog data/b.txt.i'
   repaired revision 3 of 'filelog data/b.txt.i'
 
@@ -280,19 +278,12 @@ Try the using the report options
   $ cd ..
   $ mkdir repo-to-fix-report
   $ cd repo-to-fix
-#if windows
-tar interprets `:` in paths (like `C:`) as being remote, force local on Windows
-only since some versions of tar don't have this flag.
-
-  $ tar --force-local -xf $TESTDIR/bundles/issue6528.tar
-#else
-  $ tar xf $TESTDIR/bundles/issue6528.tar
-#endif
+  $ tar -xf - < "$TESTDIR"/bundles/issue6528.tar
 
   $ hg debug-repair-issue6528 --to-report $TESTTMP/report.txt
-  found affected revision 1 for filelog 'data/D.txt.i'
-  found affected revision 1 for filelog 'data/b.txt.i'
-  found affected revision 3 for filelog 'data/b.txt.i'
+  found affected revision 1 for file 'D.txt'
+  found affected revision 1 for file 'b.txt'
+  found affected revision 3 for file 'b.txt'
   $ cat $TESTTMP/report.txt
   2a80419dfc31d7dfb308ac40f3f138282de7d73b D.txt
   a58b36ad6b6545195952793099613c2116f3563b,ea4f2f2463cca5b29ddf3461012b8ce5c6dac175 b.txt
@@ -374,14 +365,7 @@ Try it with a non-inline revlog
 
   $ mkdir repo-to-fix-not-inline
   $ cd repo-to-fix-not-inline
-#if windows
-tar interprets `:` in paths (like `C:`) as being remote, force local on Windows
-only since some versions of tar don't have this flag.
-
-  $ tar --force-local -xf $TESTDIR/bundles/issue6528.tar
-#else
-  $ tar xf $TESTDIR/bundles/issue6528.tar
-#endif
+  $ tar -xf - < "$TESTDIR"/bundles/issue6528.tar
   $ echo b >> b.txt
   $ hg commit -qm "inline -> separate"
   $ find .hg -name *b.txt.d
@@ -408,10 +392,10 @@ Status is correct, but the problem is still there, in the earlier revision
 
 Run the fix on the non-inline revlog
   $ hg debug-repair-issue6528
-  found affected revision 1 for filelog 'data/D.txt.i'
+  found affected revision 1 for file 'D.txt'
   repaired revision 1 of 'filelog data/D.txt.i'
-  found affected revision 1 for filelog 'data/b.txt.i'
-  found affected revision 3 for filelog 'data/b.txt.i'
+  found affected revision 1 for file 'b.txt'
+  found affected revision 3 for file 'b.txt'
   repaired revision 1 of 'filelog data/b.txt.i'
   repaired revision 3 of 'filelog data/b.txt.i'
 
@@ -572,9 +556,9 @@ That we do see the symptoms of the bug
 And that the repair command find issue to fix.
 
   $ hg debug-repair-issue6528 --dry-run
-  found affected revision 1 for filelog 'data/D.txt.i'
-  found affected revision 1 for filelog 'data/b.txt.i'
-  found affected revision 3 for filelog 'data/b.txt.i'
+  found affected revision 1 for file 'D.txt'
+  found affected revision 1 for file 'b.txt'
+  found affected revision 3 for file 'b.txt'
 
   $ cd ..
 
@@ -620,8 +604,8 @@ That we do see the symptoms of the bug
 And that the repair command find issue to fix.
 
   $ hg debug-repair-issue6528 --dry-run
-  found affected revision 1 for filelog 'data/D.txt.i'
-  found affected revision 1 for filelog 'data/b.txt.i'
-  found affected revision 3 for filelog 'data/b.txt.i'
+  found affected revision 1 for file 'D.txt'
+  found affected revision 1 for file 'b.txt'
+  found affected revision 3 for file 'b.txt'
 
   $ cd ..

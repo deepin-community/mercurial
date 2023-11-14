@@ -59,7 +59,7 @@ DEBIAN_ACCOUNT_ID_2 = '136693071363'
 UBUNTU_ACCOUNT_ID = '099720109477'
 
 
-WINDOWS_BASE_IMAGE_NAME = 'Windows_Server-2019-English-Full-Base-*'
+WINDOWS_BASE_IMAGE_NAME = 'Windows_Server-2022-English-Full-Base-*'
 
 
 KEY_PAIRS = {
@@ -173,6 +173,23 @@ WINDOWS_USER_DATA = r'''
 # Set administrator password
 net user Administrator "%s"
 wmic useraccount where "name='Administrator'" set PasswordExpires=FALSE
+
+# And set it via EC2Launch so it persists across reboots.
+$config = & $env:ProgramFiles\Amazon\EC2Launch\EC2Launch.exe get-agent-config --format json | ConvertFrom-Json
+$config | ConvertTo-Json -Depth 6 | Out-File -encoding UTF8 $env:ProgramData/Amazon/EC2Launch/config/agent-config.yml
+$setAdminAccount = @"
+{
+  "task": "setAdminAccount",
+  "inputs": {
+    "password": {
+      "type": "static",
+      "data": "%s"
+    }
+  }
+}
+"@
+$config.config | %%{if($_.stage -eq 'preReady'){$_.tasks += (ConvertFrom-Json -InputObject $setAdminAccount)}}
+$config | ConvertTo-Json -Depth 6 | Out-File -encoding UTF8 $env:ProgramData/Amazon/EC2Launch/config/agent-config.yml
 
 # First, make sure WinRM can't be connected to
 netsh advfirewall firewall set rule name="Windows Remote Management (HTTP-In)" new enable=yes action=block
@@ -752,7 +769,7 @@ def create_temp_windows_ec2_instances(
     )
 
     if bootstrap:
-        config['UserData'] = WINDOWS_USER_DATA % password
+        config['UserData'] = WINDOWS_USER_DATA % (password, password)
 
     with temporary_ec2_instances(c.ec2resource, config) as instances:
         wait_for_ip_addresses(instances)
@@ -904,7 +921,7 @@ def ensure_linux_dev_ami(c: AWSConnection, distro='debian10', prefix='hg-'):
                 'Ebs': {
                     'DeleteOnTermination': True,
                     'VolumeSize': 10,
-                    'VolumeType': 'gp2',
+                    'VolumeType': 'gp3',
                 },
             },
         ],
@@ -919,17 +936,12 @@ def ensure_linux_dev_ami(c: AWSConnection, distro='debian10', prefix='hg-'):
         'SecurityGroupIds': [c.security_groups['linux-dev-1'].id],
     }
 
-    requirements2_path = (
-        pathlib.Path(__file__).parent.parent / 'linux-requirements-py2.txt'
-    )
     requirements3_path = (
         pathlib.Path(__file__).parent.parent / 'linux-requirements-py3.txt'
     )
     requirements35_path = (
         pathlib.Path(__file__).parent.parent / 'linux-requirements-py3.5.txt'
     )
-    with requirements2_path.open('r', encoding='utf-8') as fh:
-        requirements2 = fh.read()
     with requirements3_path.open('r', encoding='utf-8') as fh:
         requirements3 = fh.read()
     with requirements35_path.open('r', encoding='utf-8') as fh:
@@ -941,7 +953,6 @@ def ensure_linux_dev_ami(c: AWSConnection, distro='debian10', prefix='hg-'):
         {
             'instance_config': config,
             'bootstrap_script': BOOTSTRAP_DEBIAN,
-            'requirements_py2': requirements2,
             'requirements_py3': requirements3,
             'requirements_py35': requirements35,
         }
@@ -975,10 +986,6 @@ def ensure_linux_dev_ami(c: AWSConnection, distro='debian10', prefix='hg-'):
             print('uploading bootstrap files')
             with sftp.open('%s/bootstrap' % home, 'wb') as fh:
                 fh.write(BOOTSTRAP_DEBIAN)
-                fh.chmod(0o0700)
-
-            with sftp.open('%s/requirements-py2.txt' % home, 'wb') as fh:
-                fh.write(requirements2)
                 fh.chmod(0o0700)
 
             with sftp.open('%s/requirements-py3.txt' % home, 'wb') as fh:
@@ -1048,7 +1055,7 @@ def temporary_linux_dev_instances(
             'Ebs': {
                 'DeleteOnTermination': True,
                 'VolumeSize': 12,
-                'VolumeType': 'gp2',
+                'VolumeType': 'gp3',
             },
         }
     ]
@@ -1075,7 +1082,7 @@ def temporary_linux_dev_instances(
                 'Ebs': {
                     'DeleteOnTermination': True,
                     'VolumeSize': 8,
-                    'VolumeType': 'gp2',
+                    'VolumeType': 'gp3',
                 },
             }
         )
@@ -1151,13 +1158,13 @@ def ensure_windows_dev_ami(
                 'Ebs': {
                     'DeleteOnTermination': True,
                     'VolumeSize': 32,
-                    'VolumeType': 'gp2',
+                    'VolumeType': 'gp3',
                 },
             }
         ],
         'ImageId': image.id,
         'InstanceInitiatedShutdownBehavior': 'stop',
-        'InstanceType': 't3.medium',
+        'InstanceType': 'm6i.large',
         'KeyName': '%sautomation' % prefix,
         'MaxCount': 1,
         'MinCount': 1,
@@ -1183,27 +1190,15 @@ def ensure_windows_dev_ami(
     with INSTALL_WINDOWS_DEPENDENCIES.open('r', encoding='utf-8') as fh:
         commands.extend(l.rstrip() for l in fh)
 
-    # Schedule run of EC2Launch on next boot. This ensures that UserData
-    # is executed.
-    # We disable setComputerName because it forces a reboot.
-    # We set an explicit admin password because this causes UserData to run
-    # as Administrator instead of System.
-    commands.extend(
-        [
-            r'''Set-Content -Path C:\ProgramData\Amazon\EC2-Windows\Launch\Config\LaunchConfig.json '''
-            r'''-Value '{"setComputerName": false, "setWallpaper": true, "addDnsSuffixList": true, '''
-            r'''"extendBootVolumeSize": true, "handleUserData": true, '''
-            r'''"adminPasswordType": "Specify", "adminPassword": "%s"}' '''
-            % c.automation.default_password(),
-            r'C:\ProgramData\Amazon\EC2-Windows\Launch\Scripts\InitializeInstance.ps1 '
-            r'–Schedule',
-        ]
-    )
-
     # Disable Windows Defender when bootstrapping because it just slows
     # things down.
     commands.insert(0, 'Set-MpPreference -DisableRealtimeMonitoring $true')
     commands.append('Set-MpPreference -DisableRealtimeMonitoring $false')
+
+    # Trigger shutdown to prepare for imaging.
+    commands.append(
+        'Stop-Computer -ComputerName localhost',
+    )
 
     # Compute a deterministic fingerprint to determine whether image needs
     # to be regenerated.
@@ -1311,7 +1306,7 @@ def temporary_windows_dev_instances(
                 'Ebs': {
                     'DeleteOnTermination': True,
                     'VolumeSize': 32,
-                    'VolumeType': 'gp2',
+                    'VolumeType': 'gp3',
                 },
             }
         ],

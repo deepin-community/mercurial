@@ -24,7 +24,7 @@
 
 ROOT = CWD + "/../.."
 
-VERSION = VARS.get("VERSION", "5.8")
+VERSION = VARS.get("VERSION", "0.0")
 MSI_NAME = VARS.get("MSI_NAME", "mercurial")
 EXTRA_MSI_FEATURES = VARS.get("EXTRA_MSI_FEATURES")
 SIGNING_PFX_PATH = VARS.get("SIGNING_PFX_PATH")
@@ -33,6 +33,12 @@ SIGNING_SUBJECT_NAME = VARS.get("SIGNING_SUBJECT_NAME")
 TIME_STAMP_SERVER_URL = VARS.get("TIME_STAMP_SERVER_URL", "http://timestamp.digicert.com")
 
 IS_WINDOWS = "windows" in BUILD_TARGET_TRIPLE
+IS_MACOS = "apple" in BUILD_TARGET_TRIPLE
+
+# Use in-memory resources for all resources. If false, most of the Python
+# stdlib will be in memory, but other things such as Mercurial itself will not
+# be. See the comment in resource_callback, below.
+USE_IN_MEMORY_RESOURCES = not IS_WINDOWS
 
 # Code to run in Python interpreter.
 RUN_CODE = """
@@ -57,6 +63,20 @@ if os.name == 'nt':
                 'site-packages',
             )
         )
+elif sys.platform == "darwin":
+    vi = sys.version_info
+
+    def joinuser(*args):
+        return os.path.expanduser(os.path.join(*args))
+
+    # Note: site.py uses `sys._framework` instead of hardcoding "Python" as the
+    #   3rd arg, but that is set to an empty string in an oxidized binary.  It
+    #   has a fallback to ~/.local when `sys._framework` isn't set, but we want
+    #   to match what the system python uses, so it sees pip installed stuff.
+    usersite = joinuser("~", "Library", "Python",
+                        "%d.%d" % vi[:2], "lib/python/site-packages")
+
+    sys.path.append(usersite)
 import hgdemandimport;
 hgdemandimport.enable();
 from mercurial import dispatch;
@@ -69,7 +89,7 @@ def make_distribution():
     return default_python_distribution(python_version = "3.9")
 
 def resource_callback(policy, resource):
-    if not IS_WINDOWS:
+    if USE_IN_MEMORY_RESOURCES:
         resource.add_location = "in-memory"
         return
 
@@ -100,7 +120,7 @@ def make_exe(dist):
     # extensions.
     packaging_policy.extension_module_filter = "all"
     packaging_policy.resources_location = "in-memory"
-    if IS_WINDOWS:
+    if not USE_IN_MEMORY_RESOURCES:
         packaging_policy.resources_location_fallback = "filesystem-relative:lib"
     packaging_policy.register_resource_callback(resource_callback)
 
@@ -128,6 +148,10 @@ def make_exe(dist):
     if IS_WINDOWS:
         exe.add_python_resources(
             exe.pip_install(["-r", ROOT + "/contrib/packaging/requirements-windows-py3.txt"]),
+        )
+    if IS_MACOS:
+        exe.add_python_resources(
+            exe.pip_install(["-r", ROOT + "/contrib/packaging/requirements-macos.txt"]),
         )
     extra_packages = VARS.get("extra_py_packages", "")
     if extra_packages:
@@ -273,7 +297,6 @@ def make_msi(manifest):
         "Platform": platform,
         "Version": VERSION,
         "Comments": "Installs Mercurial version %s" % VERSION,
-        "PythonVersion": "3",
         "MercurialHasLib": "1",
     }
 

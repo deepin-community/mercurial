@@ -61,10 +61,10 @@ Cloning a specific file when stream clone is supported
 
 Making sure we have the correct set of requirements
 
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode (tree !)
   dotencode (flat-fncache !)
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache (tree !)
   fncache (flat-fncache !)
   generaldelta
@@ -72,6 +72,7 @@ Making sure we have the correct set of requirements
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
   treemanifest (tree !)
@@ -86,10 +87,9 @@ Making sure store has the required files
   fncache (flat-fncache !)
   meta (tree !)
   narrowspec
+  requires
   undo
   undo.backupfiles
-  undo.narrowspec
-  undo.phaseroots
 
 Checking that repository has all the required data and not broken
 
@@ -99,4 +99,5 @@ Checking that repository has all the required data and not broken
   checking directory manifests (tree !)
   crosschecking files in changesets and manifests
   checking files
+  checking dirstate
   checked 40 changesets with 1 changes to 1 files

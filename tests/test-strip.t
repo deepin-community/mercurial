@@ -251,7 +251,7 @@
   
   $ hg debugbundle .hg/strip-backup/*
   Stream params: {Compression: BZ}
-  changegroup -- {nbchanges: 1, version: 02} (mandatory: True)
+  changegroup -- {nbchanges: 1, version: 03} (mandatory: True)
       264128213d290d868c54642d13aeaa3675551a78
   cache:rev-branch-cache -- {} (mandatory: False)
   phase-heads -- {} (mandatory: True)
@@ -709,7 +709,7 @@ test hg strip -B bookmark
   bookmark 'todelete' deleted
   $ hg id -ir dcbb326fdec2
   abort: unknown revision 'dcbb326fdec2'
-  [255]
+  [10]
   $ hg id -ir d62d843c9a01
   d62d843c9a01
   $ hg bookmarks
@@ -725,17 +725,17 @@ test hg strip -B bookmark
   bookmark 'multipledelete2' deleted
   $ hg id -ir e46a4836065c
   abort: unknown revision 'e46a4836065c'
-  [255]
+  [10]
   $ hg id -ir b4594d867745
   abort: unknown revision 'b4594d867745'
-  [255]
+  [10]
   $ hg strip -B singlenode1 -B singlenode2
   saved backup bundle to $TESTTMP/bookmarks/.hg/strip-backup/43227190fef8-8da858f2-backup.hg
   bookmark 'singlenode1' deleted
   bookmark 'singlenode2' deleted
   $ hg id -ir 43227190fef8
   abort: unknown revision '43227190fef8'
-  [255]
+  [10]
   $ hg strip -B unknownbookmark
   abort: bookmark 'unknownbookmark' not found
   [255]
@@ -750,7 +750,7 @@ test hg strip -B bookmark
   bookmark 'delete' deleted
   $ hg id -ir 6:2702dd0c91e7
   abort: unknown revision '2702dd0c91e7'
-  [255]
+  [10]
   $ hg update B
   0 files updated, 0 files merged, 0 files removed, 0 files unresolved
   (activating bookmark B)
@@ -1290,7 +1290,6 @@ Use delayedstrip to strip inside a transaction
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ echo 3 >> I
   $ cat > $TESTTMP/delayedstrip.py <<EOF
-  > from __future__ import absolute_import
   > from mercurial import commands, registrar, repair
   > cmdtable = {}
   > command = registrar.command(cmdtable)

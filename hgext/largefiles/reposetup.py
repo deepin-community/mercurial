@@ -7,7 +7,6 @@
 # GNU General Public License version 2 or any later version.
 
 '''setup for largefiles repositories: reposetup'''
-from __future__ import absolute_import
 
 import copy
 
@@ -21,6 +20,8 @@ from mercurial import (
     scmutil,
     util,
 )
+
+from mercurial.dirstateutils import timestamp
 
 from . import (
     lfcommands,
@@ -138,7 +139,7 @@ def reposetup(ui, repo):
             except error.LockError:
                 wlock = util.nullcontextmanager()
                 gotlock = False
-            with wlock:
+            with wlock, self.dirstate.running_status(self):
 
                 # First check if paths or patterns were specified on the
                 # command line.  If there were, and they don't match any
@@ -195,7 +196,7 @@ def reposetup(ui, repo):
                     match._files = [f for f in match._files if sfindirstate(f)]
                     # Don't waste time getting the ignored and unknown
                     # files from lfdirstate
-                    unsure, s = lfdirstate.status(
+                    unsure, s, mtime_boundary = lfdirstate.status(
                         match,
                         subrepos=[],
                         ignored=False,
@@ -210,6 +211,7 @@ def reposetup(ui, repo):
                         s.clean,
                     )
                     if parentworking:
+                        wctx = repo[None]
                         for lfile in unsure:
                             standin = lfutil.standin(lfile)
                             if standin not in ctx1:
@@ -222,7 +224,15 @@ def reposetup(ui, repo):
                             else:
                                 if listclean:
                                     clean.append(lfile)
-                                lfdirstate.set_clean(lfile)
+                                s = wctx[lfile].lstat()
+                                mode = s.st_mode
+                                size = s.st_size
+                                mtime = timestamp.reliable_mtime_of(
+                                    s, mtime_boundary
+                                )
+                                if mtime is not None:
+                                    cache_data = (mode, size, mtime)
+                                    lfdirstate.set_clean(lfile, cache_data)
                     else:
                         tocheck = unsure + modified + added + clean
                         modified, added, clean = [], [], []
@@ -310,7 +320,9 @@ def reposetup(ui, repo):
                     ]
 
                 if gotlock:
-                    lfdirstate.write()
+                    lfdirstate.write(self.currenttransaction())
+                else:
+                    lfdirstate.invalidate()
 
             self.lfstatus = True
             return scmutil.status(*result)
@@ -444,11 +456,17 @@ def reposetup(ui, repo):
     repo.prepushoutgoinghooks.add(b"largefiles", prepushoutgoinghook)
 
     def checkrequireslfiles(ui, repo, **kwargs):
-        if b'largefiles' not in repo.requirements and any(
-            lfutil.shortname + b'/' in f[1] for f in repo.store.datafiles()
-        ):
-            repo.requirements.add(b'largefiles')
-            scmutil.writereporequirements(repo)
+        with repo.lock():
+            if b'largefiles' in repo.requirements:
+                return
+            marker = lfutil.shortnameslash
+            for entry in repo.store.data_entries():
+                # XXX note that this match is not rooted and can wrongly match
+                # directory ending with ".hglf"
+                if entry.is_revlog and marker in entry.target_id:
+                    repo.requirements.add(b'largefiles')
+                    scmutil.writereporequirements(repo)
+                    break
 
     ui.setconfig(
         b'hooks', b'changegroup.lfiles', checkrequireslfiles, b'largefiles'

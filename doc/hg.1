@@ -803,6 +803,12 @@ will stop at the first failed \-\-update.
 Specifying bookmark as \fB.\fP is equivalent to specifying the active
 bookmark\(aqs name.
 .sp
+One can use the \fI\-\-remote\-hidden\fP flag to pull changesets
+hidden on the remote. This flag is "best effort", and will only
+work if the server supports the feature and is configured to
+allow the user to access hidden changesets. This option is
+experimental and backwards compatibility is not garanteed.
+.sp
 Returns 0 on success, 1 if an update had unresolved files.
 .sp
 Options:
@@ -831,6 +837,10 @@ bookmark to pull
 .BI \-b,  \-\-branch \ <BRANCH[+]>
 .
 a specific branch you would like to pull
+.TP
+.B \-\-remote\-hidden
+.
+include changesets hidden on the remote (EXPERIMENTAL)
 .TP
 .BI \-e,  \-\-ssh \ <CMD>
 .
@@ -1060,7 +1070,7 @@ template style to use
 .TP
 .B \-6,  \-\-ipv6
 .
-use IPv6 in addition to IPv4
+use IPv6 instead of IPv4
 .TP
 .BI \-\-certificate \ <FILE>
 .
@@ -1173,6 +1183,10 @@ amend the parent of the working directory
 .B \-s,  \-\-secret
 .
 use the secret phase for committing
+.TP
+.B \-\-draft
+.
+use the draft phase for committing
 .TP
 .B \-e,  \-\-edit
 .
@@ -2422,7 +2436,8 @@ Differences between files are shown using the unified diff format.
 .
 \%\fBhg diff\fP\: may generate unexpected results for merges, as it will
 default to comparing against the working directory\(aqs first
-parent changeset if no revisions are specified.
+parent changeset if no revisions are specified.  To diff against the
+conflict regions, you can use \fI\-\-config diff.merge=yes\fP.
 .RE
 .sp
 By default, the working directory files are compared to its first parent. To
@@ -5145,6 +5160,10 @@ Returns 0 on success, 1 if no changes found.
 Options:
 .INDENT 0.0
 .TP
+.B \-\-exact
+.
+compute the base from the revision specified
+.TP
 .B \-f,  \-\-force
 .
 run even when the destination is unrelated
@@ -6050,6 +6069,41 @@ No compression is performed.
 .sp
 Use this compression engine to explicitly disable compression.
 .UNINDENT
+.sp
+The compression engines can be prepended with \fBstream\fP to create a streaming bundle.
+These are bundles that are extremely efficient to produce and consume,
+but do not have guaranteed compatibility with older clients.
+.SS Available Options
+.sp
+The following options exist:
+.INDENT 0.0
+.TP
+.B changegroup
+.
+Include the changegroup data in the bundle (default to True).
+.TP
+.B cg.version
+.
+Select the version of the changegroup to use. Available options are : 01, 02
+or 03. By default it will be automatically selected according to the current
+repository format.
+.TP
+.B obsolescence
+.
+Include obsolescence\-markers relevant to the bundled changesets.
+.TP
+.B phases
+.
+Include phase information relevant to the bundled changesets.
+.TP
+.B revbranchcache
+.
+Include the "tags\-fnodes" cache inside the bundle.
+.TP
+.B tagsfnodescache
+.
+Include the "tags\-fnodes" cache inside the bundle.
+.UNINDENT
 .SS Examples
 .INDENT 0.0
 .TP
@@ -6069,6 +6123,15 @@ settings.
 .B \fBzstd\-v1\fP
 .sp
 This errors because \fBzstd\fP is not supported for \fBv1\fP types.
+.TP
+.B \fBnone\-streamv2\fP
+.sp
+Produce a \fBv2\fP streaming bundle with no compression.
+.TP
+.B \fBzstd\-v2;obsolescence=true;phases=true\fP
+.sp
+Produce a \fBv2\fP bundle with zstandard compression which includes
+obsolescence markers and phases.
 .UNINDENT
 .SH COLORIZING OUTPUTS
 .sp
@@ -8129,6 +8192,10 @@ Changegroups
 .
 Config Registrar
 .TP
+.B dirstate\-v2
+.
+dirstate\-v2 file format
+.TP
 .B extensions
 .
 Extension API
@@ -8282,8 +8349,13 @@ Uses the internal tag merge algorithm (experimental).
 .B \fB:union\fP
 .sp
 Uses the internal non\-interactive simple merge algorithm for merging
-files. It will use both left and right sides for conflict regions.
+files. It will use both local and other sides for conflict regions by
+adding local on top of other.
 No markers are inserted.
+.TP
+.B \fB:union\-other\-first\fP
+.sp
+Like :union, but add other on top of local.
 .UNINDENT
 .sp
 Internal tools are always available and do not require a GUI but will
@@ -8497,8 +8569,10 @@ which will prevent the pager from running.
 Mercurial accepts several notations for identifying one or more files
 at a time.
 .sp
-By default, Mercurial treats filenames as shell\-style extended glob
-patterns.
+By default, Mercurial treats filenames verbatim without pattern
+matching, relative to the current working directory. Note that your
+system shell might perform pattern matching of its own before passing
+filenames into Mercurial.
 .sp
 Alternate pattern notations must be specified explicitly.
 .IP Note
@@ -8512,7 +8586,8 @@ To use a plain path name without any pattern matching, start it with
 current repository root, and when the path points to a directory, it is matched
 recursively. To match all files in a directory non\-recursively (not including
 any files in subdirectories), \fBrootfilesin:\fP can be used, specifying an
-absolute path (relative to the repository root).
+absolute path (relative to the repository root). To match a single file exactly,
+relative to the repository root, you can use \fBfilepath:\fP.
 .sp
 To use an extended glob, start a name with \fBglob:\fP. Globs are rooted
 at the current directory; a glob such as \fB*.c\fP will only match files
@@ -8546,11 +8621,15 @@ Plain examples:
 .sp
 .nf
 .ft C
-path:foo/bar        a name bar in a directory named foo in the root
-                    of the repository
-path:path:name      a file or directory named "path:name"
-rootfilesin:foo/bar the files in a directory called foo/bar, but not any files
-                    in its subdirectories and not a file bar in directory foo
+path:foo/bar                  a name bar in a directory named foo in the root
+                              of the repository
+path:some/path                a file or directory named "some/path"
+filepath:some/path/to/a/file  exactly a single file named
+                              "some/path/to/a/file", relative to the root
+                              of the repository
+rootfilesin:foo/bar           the files in a directory called foo/bar, but
+                              not any files in its subdirectories and not
+                              a file bar in directory foo
 .ft P
 .fi
 .sp
@@ -9214,9 +9293,12 @@ Pattern matching is supported for \fInamespace\fP. See
 .TP
 .B \fBnodefromfile(path)\fP
 .sp
-An alias for \fB::.\fP (ancestors of the working directory\(aqs first parent).
-If file pattern is specified, the histories of files matching given
-pattern in the revision given by startrev are followed, including copies.
+Read a list of nodes from the file at \fIpath\fP.
+.sp
+This applies \fIid(LINE)\fP to each line of the file.
+.sp
+This is useful when the amount of nodes you need to specify gets too large
+for the command line.
 .TP
 .B \fBnone()\fP
 .sp
@@ -9336,11 +9418,17 @@ The keys can be:
 .IP \(bu 2
 .
 \fBnode\fP the nodeid of the revision
+.IP \(bu 2
+.
+\fBrandom\fP randomly shuffle revisions
 .UNINDENT
 .sp
 The \fBtopo\fP sort order cannot be combined with other sort keys. This sort
 takes one optional argument, \fBtopo.firstbranch\fP, which takes a revset that
 specifies what topographical branches to prioritize in the sort.
+.sp
+The \fBrandom\fP sort takes one optional \fBrandom.seed\fP argument to control
+the pseudo\-randomness of the result.
 .TP
 .B \fBsubrepo([pattern])\fP
 .sp
@@ -9486,6 +9574,110 @@ hg diff \-r 1.3::1.5
 .ft P
 .fi
 .UNINDENT
+.SH RUST IN MERCURIAL
+.sp
+Mercurial can be augmented with Rust extensions for speeding up certain
+operations.
+.SS Compatibility
+.sp
+Though the Rust extensions are only tested by the project under Linux, users of
+MacOS, FreeBSD and other UNIX\-likes have been using the Rust extensions. Your
+mileage may vary, but by all means do give us feedback or signal your interest
+for better support.
+.sp
+No Rust extensions are available for Windows at this time.
+.SS Features
+.sp
+The following operations are sped up when using Rust:
+.INDENT 0.0
+.INDENT 3.5
+.INDENT 0.0
+.IP \(bu 2
+.
+discovery of differences between repositories (pull/push)
+.IP \(bu 2
+.
+nodemap (see \%\fBhg help config.format.use\-persistent\-nodemap\fP\:)
+.IP \(bu 2
+.
+all commands using the dirstate (status, commit, diff, add, update, etc.)
+.IP \(bu 2
+.
+dirstate\-v2 (see \%\fBhg help config.format.use\-dirstate\-v2\fP\:)
+.IP \(bu 2
+.
+iteration over ancestors in a graph
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.sp
+More features are in the works, and improvements on the above listed are still
+in progress. For more experimental work see the "rhg" section.
+.SS Checking for Rust
+.sp
+You may already have the Rust extensions depending on how you install
+Mercurial:
+.sp
+.nf
+.ft C
+$ hg debuginstall | grep \-i rust
+checking Rust extensions (installed)
+checking module policy (rust+c\-allow)
+.ft P
+.fi
+.sp
+If those lines don\(aqt even exist, you\(aqre using an old version of \fIhg\fP which does
+not have any Rust extensions yet.
+.SS Installing
+.sp
+You will need \fIcargo\fP to be in your \fI$PATH\fP. See the "MSRV" section for which
+version to use.
+.SS Using pip
+.sp
+Users of \fIpip\fP can install the Rust extensions with the following command:
+.sp
+.nf
+.ft C
+$ pip install mercurial \-\-global\-option \-\-rust \-\-no\-use\-pep517
+.ft P
+.fi
+.sp
+\fI\-\-no\-use\-pep517\fP is here to tell \fIpip\fP to preserve backwards compatibility with
+the legacy \fIsetup.py\fP system. Mercurial has not yet migrated its complex setup
+to the new system, so we still need this to add compiled extensions.
+.sp
+This might take a couple of minutes because you\(aqre compiling everything.
+.sp
+See the "Checking for Rust" section to see if the install succeeded.
+.SS From your distribution
+.sp
+Some distributions are shipping Mercurial with Rust extensions enabled and
+pre\-compiled (meaning you won\(aqt have to install \fIcargo\fP), or allow you to
+specify an install flag. Check with your specific distribution for how to do
+that, or ask their team to add support for hg+Rust!
+.SS From source
+.sp
+Please refer to the \fIrust/README.rst\fP file in the Mercurial repository for
+instructions on how to install from source.
+.SS MSRV
+.sp
+The minimum supported Rust version is defined in \fIrust/clippy.toml\fP.
+The project\(aqs policy is to keep it at or below the version from Debian testing,
+to make the distributions\(aq job easier.
+.SS rhg
+.sp
+There exists an experimental pure\-Rust version of Mercurial called \fIrhg\fP with a
+fallback mechanism for unsupported invocations. It allows for much faster
+execution of certain commands while adding no discernable overhead for the rest.
+.sp
+The only way of trying it out is by building it from source. Please refer to
+\fIrust/README.rst\fP in the Mercurial repository.
+.sp
+See \fIhg help config.rhg\fP for configuration options.
+.SS Contributing
+.sp
+If you would like to help the Rust endeavor, please refer to \fIrust/README.rst\fP
+in the Mercurial repository.
 .SH USING MERCURIAL FROM SCRIPTS AND AUTOMATION
 .sp
 It is common for machines (as opposed to humans) to consume Mercurial.
@@ -9951,6 +10143,14 @@ keywords depends on the exact context of the templater. These
 keywords are usually available for templating a log\-like command:
 .INDENT 0.0
 .TP
+.B _fast_rank
+.
+the rank of a changeset if cached
+.sp
+The rank of a revision is the size of the sub\-graph it defines as a head.
+Equivalently, the rank of a revision \fIr\fP is the size of the set
+\fIancestors(r)\fP, \fIr\fP included.
+.TP
 .B activebookmark
 .
 String. The active bookmark, if it is associated with the changeset.
@@ -10260,6 +10460,10 @@ XML entities.
 Any text. Returns the name before an email address,
 interpreting it as per RFC 5322.
 .TP
+.B reverse
+.
+List. Reverses the order of list items.
+.TP
 .B revescape
 .
 Any text. Escapes all "special" characters, except @.
@@ -10355,8 +10559,8 @@ Returns the requested hgrc config option as an integer.
 .TP
 .B date(date[, fmt])
 .
-Format a date. See \%\fBhg help dates\fP\: for formatting
-strings. The default is a Unix date format, including the timezone:
+Format a date. The format string uses the Python strftime format.
+The default is a Unix date format, including the timezone:
 "Mon Sep 04 15:13:13 2006 0700".
 .TP
 .B dict([[key=]value...])
@@ -11277,6 +11481,10 @@ mark a branch as closed, hiding it from the branch list
 .
 use the secret phase for committing
 .TP
+.B \-\-draft
+.
+use the draft phase for committing
+.TP
 .BI \-n,  \-\-note \ <VALUE>
 .
 store a note on the amend
@@ -11368,7 +11576,7 @@ maxsize = 1.5 MB
 maxfiles = 3
 
 [blackbox]
-# Include nanoseconds in log entries with %f (see Python function
+# Include microseconds in log entries with %f (see Python function
 # datetime.datetime.strftime)
 date\-format = %Y\-%m\-%d @ %H:%M:%S.%f
 .ft P
@@ -12144,8 +12352,10 @@ for most needs.
 Bundle files can be generated with the \%\fBhg bundle\fP\: command. Typically
 \%\fBhg bundle \-\-all\fP\: is used to produce a bundle of the entire repository.
 .sp
-\%\fBhg debugcreatestreamclonebundle\fP\: can be used to produce a special
-\fIstreaming clonebundle\fP. These are bundle files that are extremely efficient
+The bundlespec option \fIstream\fP (see \%\fBhg help bundlespec\fP\:)
+can be used to produce a special \fIstreaming clonebundle\fP, typically using
+\%\fBhg bundle \-\-all \-\-type="none\-streamv2"\fP\:.
+These are bundle files that are extremely efficient
 to produce and consume (read: fast). However, they are larger than
 traditional bundle formats and require that clients support the exact set
 of repository data store formats in use by the repository that created them.
@@ -12276,6 +12486,161 @@ message informing them how to bypass the clone bundles facility when a failure
 occurs. So server operators should prepare for some people to follow these
 instructions when a failure occurs, thus driving more load to the original
 Mercurial server when the bundle hosting service fails.
+.SS inline clonebundles
+.sp
+It is possible to transmit clonebundles inline in case repositories are
+accessed over SSH. This avoids having to setup an external HTTPS server
+and results in the same access control as already present for the SSH setup.
+.sp
+Inline clonebundles should be placed into the \fI.hg/bundle\-cache\fP directory.
+A clonebundle at \fI.hg/bundle\-cache/mybundle.bundle\fP is referred to
+in the \fIclonebundles.manifest\fP file as \fIpeer\-bundle\-cache://mybundle.bundle\fP.
+.SS auto\-generation of clone bundles
+.sp
+It is possible to set Mercurial to automatically re\-generate clone bundles when
+enough new content is available.
+.sp
+Mercurial will take care of the process asynchronously. The defined list of
+bundle\-type will be generated, uploaded, and advertised. Older bundles will get
+decommissioned as newer ones replace them.
+.SS Bundles Generation:
+.sp
+The extension can generate multiple variants of the clone bundle. Each
+different variant will be defined by the "bundle\-spec" they use:
+.sp
+.nf
+.ft C
+[clone\-bundles]
+auto\-generate.formats= zstd\-v2, gzip\-v2
+.ft P
+.fi
+.sp
+See \fIhg help bundlespec\fP for details about available options.
+.sp
+By default, new bundles are generated when 5% of the repository contents or at
+least 1000 revisions are not contained in the cached bundles. This option can
+be controlled by the \fIclone\-bundles.trigger.below\-bundled\-ratio\fP option
+(default 0.95) and the \fIclone\-bundles.trigger.revs\fP option (default 1000):
+.sp
+.nf
+.ft C
+[clone\-bundles]
+trigger.below\-bundled\-ratio=0.95
+trigger.revs=1000
+.ft P
+.fi
+.sp
+This logic can be manually triggered using the \fIadmin::clone\-bundles\-refresh\fP
+command, or automatically on each repository change if
+\fIclone\-bundles.auto\-generate.on\-change\fP is set to \fIyes\fP:
+.sp
+.nf
+.ft C
+[clone\-bundles]
+auto\-generate.on\-change=yes
+auto\-generate.formats= zstd\-v2, gzip\-v2
+.ft P
+.fi
+.SS Automatic Inline serving
+.sp
+The simplest way to serve the generated bundle is through the Mercurial
+protocol. However it is not the most efficient as request will still be served
+by that main server. It is useful in case where authentication is complexe or
+when an efficient mirror system is already in use anyway. See the \fIinline
+clonebundles\fP section above for details about inline clonebundles
+.sp
+To automatically serve generated bundle through inline clonebundle, simply set
+the following option:
+.sp
+.nf
+.ft C
+auto\-generate.serve\-inline=yes
+.ft P
+.fi
+.sp
+Enabling this option disable the managed upload and serving explained below.
+.SS Bundles Upload and Serving:
+.sp
+This is the most efficient way to serve automatically generated clone bundles,
+but requires some setup.
+.sp
+The generated bundles need to be made available to users through a "public" URL.
+This should be donne through \fIclone\-bundles.upload\-command\fP configuration. The
+value of this command should be a shell command. It will have access to the
+bundle file path through the \fI$HGCB_BUNDLE_PATH\fP variable. And the expected
+basename in the "public" URL is accessible at:
+.sp
+.nf
+.ft C
+[clone\-bundles]
+upload\-command=sftp put $HGCB_BUNDLE_PATH       sftp://bundles.host/clone\-bundles/$HGCB_BUNDLE_BASENAME
+.ft P
+.fi
+.sp
+If the file was already uploaded, the command must still succeed.
+.sp
+After upload, the file should be available at an url defined by
+\fIclone\-bundles.url\-template\fP.
+.INDENT 0.0
+.INDENT 3.5
+.sp
+[clone\-bundles]
+url\-template=https://bundles.host/cache/clone\-bundles/{basename}
+.UNINDENT
+.UNINDENT
+.SS Old bundles cleanup:
+.sp
+When new bundles are generated, the older ones are no longer necessary and can
+be removed from storage. This is done through the \fIclone\-bundles.delete\-command\fP
+configuration. The command is given the url of the artifact to delete through
+the \fI$HGCB_BUNDLE_URL\fP environment variable.
+.INDENT 0.0
+.INDENT 3.5
+.sp
+[clone\-bundles]
+delete\-command=sftp rm sftp://bundles.host/clone\-bundles/$HGCB_BUNDLE_BASENAME
+.UNINDENT
+.UNINDENT
+.sp
+If the file was already deleted, the command must still succeed.
+.SS Commands
+.SS Uncategorized commands
+.SS admin::clone\-bundles\-clear
+.sp
+remove existing clone bundle caches:
+.sp
+.nf
+.ft C
+hg admin::clone\-bundles\-clear
+.ft P
+.fi
+.sp
+See \fIhg help admin::clone\-bundles\-refresh\fP for details on how to regenerate
+them.
+.sp
+This command will only affect bundles currently available, it will not
+affect bundles being asynchronously generated.
+.SS admin::clone\-bundles\-refresh
+.sp
+generate clone bundles according to the configuration:
+.sp
+.nf
+.ft C
+hg admin::clone\-bundles\-refresh
+.ft P
+.fi
+.sp
+This runs the logic for automatic generation, removing outdated bundles and
+generating new ones if necessary. See \%\fBhg help \-e clone\-bundles\fP\: for
+details about how to configure this feature.
+.sp
+Options:
+.INDENT 0.0
+.TP
+.B \-\-background
+.
+start bundle generation in the background
+.UNINDENT
 .SS closehead
 .sp
 close arbitrary heads without checking them out first
@@ -13472,6 +13837,13 @@ rewrite file content in changesets or working copy (EXPERIMENTAL)
 Provides a command that runs configured tools on the contents of modified files,
 writing back any fixes to the working copy or replacing changesets.
 .sp
+Fixer tools are run in the repository\(aqs root directory. This allows them to read
+configuration files from the working copy, or even write to the working copy.
+The working copy is not updated to match the revision being fixed. In fact,
+several revisions may be fixed in parallel. Writes to the working copy are not
+amended into the revision being fixed; fixer tools MUST always read content to
+be fixed from stdin, and write fixed file content back to stdout.
+.sp
 Here is an example configuration that causes \%\fBhg fix\fP\: to apply automatic
 formatting fixes to modified lines in C++ code:
 .sp
@@ -13608,13 +13980,6 @@ perform other post\-fixing work. The supported hooks are:
   previously passed to the "postfixfile" hook.
 .ft P
 .fi
-.sp
-Fixer tools are run in the repository\(aqs root directory. This allows them to read
-configuration files from the working copy, or even write to the working copy.
-The working copy is not updated to match the revision being fixed. In fact,
-several revisions may be fixed in parallel. Writes to the working copy are not
-amended into the revision being fixed; fixer tools should always write fixed
-file content back to stdout as documented above.
 .SS Commands
 .SS File content management
 .SS fix
@@ -13627,7 +13992,8 @@ hg fix [OPTION]... [FILE]...
 .ft P
 .fi
 .sp
-Runs any configured tools to fix the content of files. Only affects files
+Runs any configured tools to fix the content of files. (See
+\%\fBhg help \-e fix\fP\: for details about configuring tools.) Only affects files
 with changes, unless file arguments are provided. Only affects changed lines
 of files, unless the \-\-whole flag is used. Some tools may always affect the
 whole file regardless of \-\-whole.
@@ -15460,6 +15826,10 @@ amend the parent of the working directory
 .B \-s,  \-\-secret
 .
 use the secret phase for committing
+.TP
+.B \-\-draft
+.
+use the draft phase for committing
 .TP
 .B \-e,  \-\-edit
 .
@@ -17735,6 +18105,10 @@ amend the parent of the working directory
 .
 use the secret phase for committing
 .TP
+.B \-\-draft
+.
+use the draft phase for committing
+.TP
 .B \-e,  \-\-edit
 .
 invoke editor on commit messages
@@ -19068,7 +19442,7 @@ Source code repository: \%https://www.mercurial\-scm.org/repo/hg\:
 Mailing list: \%https://www.mercurial\-scm.org/mailman/listinfo/mercurial/\:
 .SH COPYING
 .sp
-Copyright (C) 2005\-2021 Olivia Mackall.
+Copyright (C) 2005\-2023 Olivia Mackall.
 Free use of this software is granted under the terms of the GNU General
 Public License version 2 or any later version.
 .\" Common link and substitution definitions.

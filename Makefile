@@ -58,7 +58,7 @@ help:
 all: build doc
 
 local:
-	$(PYTHON) setup.py $(PURE) \
+	MERCURIAL_SETUP_MAKE_LOCAL=1 $(PYTHON) setup.py $(PURE) \
 	  build_py -c -d . \
 	  build_ext $(COMPILERFLAG) -i \
 	  build_hgexe $(COMPILERFLAG) -i \
@@ -138,6 +138,7 @@ tests:
         # Run Rust tests if cargo is installed
 	if command -v $(CARGO) >/dev/null 2>&1; then \
 		$(MAKE) rust-tests; \
+		$(MAKE) cargo-clippy; \
 	fi
 	cd tests && $(PYTHON) run-tests.py $(TESTFLAGS)
 
@@ -151,12 +152,13 @@ testpy-%:
         $(MAKE) -f $(HGROOT)/contrib/Makefile.python PYTHONVER=$* PREFIX=$(HGPYTHONS)/$* python )
 	cd tests && $(HGPYTHONS)/$*/bin/python run-tests.py $(TESTFLAGS)
 
-rust-tests: py_feature = $(shell $(PYTHON) -c \
- 'import sys; print(["python27-bin", "python3-bin"][sys.version_info[0] >= 3])')
 rust-tests:
-	cd $(HGROOT)/rust/hg-cpython \
-		&& $(CARGO) test --quiet --all \
-			--no-default-features --features "$(py_feature) $(HG_RUST_FEATURES)"
+	cd $(HGROOT)/rust \
+		&& $(CARGO) test --quiet --all --features "$(HG_RUST_FEATURES)"
+
+cargo-clippy:
+	cd $(HGROOT)/rust \
+		&& $(CARGO) clippy --all --features "$(HG_RUST_FEATURES)" -- -D warnings
 
 check-code:
 	hg manifest | xargs python contrib/check-code.py
@@ -204,11 +206,13 @@ i18n/hg.pot: $(PYFILES) $(DOCFILES) i18n/posplit i18n/hggettext
 # Packaging targets
 
 packaging_targets := \
-  centos7 \
-  centos8 \
+  rhel7 \
+  rhel8 \
+  rhel9 \
   deb \
-  docker-centos7 \
-  docker-centos8 \
+  docker-rhel7 \
+  docker-rhel8 \
+  docker-rhel9 \
   docker-debian-bullseye \
   docker-debian-buster \
   docker-debian-stretch \
@@ -238,16 +242,6 @@ osx:
         # Place a bogon .DS_Store file in the target dir so we can be
         # sure it doesn't get included in the final package.
 	touch build/mercurial/.DS_Store
-        # install zsh completions - this location appears to be
-        # searched by default as of macOS Sierra.
-	install -d build/mercurial/usr/local/share/zsh/site-functions/
-	install -m 0644 contrib/zsh_completion build/mercurial/usr/local/share/zsh/site-functions/_hg
-        # install bash completions - there doesn't appear to be a
-        # place that's searched by default for bash, so we'll follow
-        # the lead of Apple's git install and just put it in a
-        # location of our own.
-	install -d build/mercurial/usr/local/hg/contrib/
-	install -m 0644 contrib/bash_completion build/mercurial/usr/local/hg/contrib/hg-completion.bash
 	make -C contrib/chg \
 	  HGPATH=/usr/local/bin/hg \
 	  PYTHON=/usr/bin/python2.7 \
@@ -271,10 +265,9 @@ pyoxidizer:
 	$(PYOXIDIZER) build --path ./rust/hgcli --release
 
 
-PYOX_DIR=build/pyoxidizer/x86_64-pc-windows-msvc/release/app
-
 # a temporary target to setup all we need for run-tests.py --pyoxidizer
 # (should go away as the run-tests implementation improves
+pyoxidizer-windows-tests: PYOX_DIR=build/pyoxidizer/x86_64-pc-windows-msvc/release/app
 pyoxidizer-windows-tests: pyoxidizer
 	rm -rf $(PYOX_DIR)/templates
 	cp -ar $(PYOX_DIR)/lib/mercurial/templates $(PYOX_DIR)/templates
@@ -288,9 +281,25 @@ pyoxidizer-windows-tests: pyoxidizer
 	cp -ar doc $(PYOX_DIR)/doc
 
 
+# a temporary target to setup all we need for run-tests.py --pyoxidizer
+# (should go away as the run-tests implementation improves
+pyoxidizer-macos-tests: PYOX_DIR=build/pyoxidizer/x86_64-apple-darwin/release/app
+pyoxidizer-macos-tests: pyoxidizer
+	rm -rf $(PYOX_DIR)/templates
+	cp -a mercurial/templates $(PYOX_DIR)/templates
+	rm -rf $(PYOX_DIR)/helptext
+	cp -a mercurial/helptext $(PYOX_DIR)/helptext
+	rm -rf $(PYOX_DIR)/defaultrc
+	cp -a mercurial/defaultrc $(PYOX_DIR)/defaultrc
+	rm -rf $(PYOX_DIR)/contrib
+	cp -a contrib $(PYOX_DIR)/contrib
+	rm -rf $(PYOX_DIR)/doc
+	cp -a doc $(PYOX_DIR)/doc
+
+
 .PHONY: help all local build doc cleanbutpackages clean install install-bin \
 	install-doc install-home install-home-bin install-home-doc \
 	dist dist-notests check tests rust-tests check-code format-c \
-	update-pot pyoxidizer pyoxidizer-windows-tests \
+	update-pot pyoxidizer pyoxidizer-windows-tests pyoxidizer-macos-tests \
 	$(packaging_targets) \
 	osx

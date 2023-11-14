@@ -1,15 +1,5 @@
 #require serve
 
-#testcases sshv1 sshv2
-
-#if sshv2
-  $ cat >> $HGRCPATH << EOF
-  > [experimental]
-  > sshpeer.advertise-v2 = true
-  > sshserver.support-v2 = true
-  > EOF
-#endif
-
   $ hg init test
   $ cd test
 
@@ -18,12 +8,7 @@
   adding foo
   $ hg commit -m 1
 
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 1 changes to 1 files
+  $ hg verify -q
 
   $ hg serve -p $HGPORT -d --pid-file=hg.pid
   $ cat hg.pid >> $DAEMON_PIDS
@@ -40,12 +25,7 @@
   1 files updated, 0 files merged, 0 files removed, 0 files unresolved
 
   $ cd copy
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 1 changes to 1 files
+  $ hg verify -q
 
   $ hg co
   0 files updated, 0 files merged, 0 files removed, 0 files unresolved
@@ -100,12 +80,12 @@ MSYS changes 'file:' into 'file;'
 It's tricky to make file:// URLs working on every platform with
 regular shell commands.
 
-  $ URL=`"$PYTHON" -c "from __future__ import print_function; import os; print('file://foobar' + ('/' + os.getcwd().replace(os.sep, '/')).replace('//', '/') + '/../test')"`
+  $ URL=`"$PYTHON" -c "import os; print('file://foobar' + ('/' + os.getcwd().replace(os.sep, '/')).replace('//', '/') + '/../test')"`
   $ hg pull -q "$URL"
   abort: file:// URLs can only refer to localhost
   [255]
 
-  $ URL=`"$PYTHON" -c "from __future__ import print_function; import os; print('file://localhost' + ('/' + os.getcwd().replace(os.sep, '/')).replace('//', '/') + '/../test')"`
+  $ URL=`"$PYTHON" -c "import os; print('file://localhost' + ('/' + os.getcwd().replace(os.sep, '/')).replace('//', '/') + '/../test')"`
   $ hg pull -q "$URL"
 
 SEC: check for unsafe ssh url

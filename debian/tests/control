@@ -1,11 +1,12 @@
 Tests: testsuite
 Depends:
     @,
+    python3-packaging,
     zip,
     unzip,
     netbase,
     subversion,
-#    python3-subversion,
+    python3-subversion,
     cvs,
     bzr,
     tla,
@@ -15,11 +16,12 @@ Depends:
     python3-dev,
     less,
     gettext,
-    pylint3,
+    pylint,
     python3-pygments,
     python3-docutils,
     sqlite3,
     clang-format,
     python3-vcr,
     python3-fuzzywuzzy,
+    python3-pygit2,
 Restrictions: allow-stderr

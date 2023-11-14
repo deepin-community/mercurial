@@ -6,6 +6,8 @@
   > [format]
   > # stabilize test accross variant
   > revlog-compression=zlib
+  > [storage]
+  > dirstate-v2.slow-path=allow
   > EOF
 
 store and revlogv1 are required in source
@@ -30,17 +32,171 @@ store and revlogv1 are required in source
 Cannot upgrade shared repositories
 
   $ hg init share-parent
+  $ hg -R share-parent debugbuilddag -n .+9
+  $ hg -R share-parent up tip
+  10 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ hg -q share share-parent share-child
 
-  $ hg -R share-child debugupgraderepo
-  abort: cannot upgrade repository; unsupported source requirement: shared
+  $ hg -R share-child debugupgraderepo --config format.sparse-revlog=no
+  abort: cannot use these actions on a share repository: sparserevlog
+  (upgrade the main repository directly)
   [255]
 
-Do not yet support upgrading treemanifest repos
+Unless the action is compatible with share
+
+  $ hg -R share-child debugupgraderepo --config format.use-dirstate-v2=yes --quiet
+  requirements
+     preserved: * (glob)
+     added: dirstate-v2
+  
+  no revlogs to process
+  
+
+  $ hg -R share-child debugupgraderepo --config format.use-dirstate-v2=yes --quiet --run
+  upgrade will perform the following actions:
+  
+  requirements
+     preserved: * (glob)
+     added: dirstate-v2
+  
+  no revlogs to process
+  
+  $ hg debugformat -R share-child | grep dirstate-v2
+  dirstate-v2:        yes
+  $ hg debugformat -R share-parent | grep dirstate-v2
+  dirstate-v2:         no
+  $ hg status --all -R share-child
+  C nf0
+  C nf1
+  C nf2
+  C nf3
+  C nf4
+  C nf5
+  C nf6
+  C nf7
+  C nf8
+  C nf9
+  $ hg log -l 3 -R share-child
+  changeset:   9:0059eb38e4a4
+  tag:         tip
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:09 1970 +0000
+  summary:     r9
+  
+  changeset:   8:4d5be70c8130
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:08 1970 +0000
+  summary:     r8
+  
+  changeset:   7:e60bfe72517e
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:07 1970 +0000
+  summary:     r7
+  
+  $ hg status --all -R share-parent
+  C nf0
+  C nf1
+  C nf2
+  C nf3
+  C nf4
+  C nf5
+  C nf6
+  C nf7
+  C nf8
+  C nf9
+  $ hg log -l 3 -R share-parent
+  changeset:   9:0059eb38e4a4
+  tag:         tip
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:09 1970 +0000
+  summary:     r9
+  
+  changeset:   8:4d5be70c8130
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:08 1970 +0000
+  summary:     r8
+  
+  changeset:   7:e60bfe72517e
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:07 1970 +0000
+  summary:     r7
+  
+
+  $ hg -R share-child debugupgraderepo --config format.use-dirstate-v2=no --quiet --run
+  upgrade will perform the following actions:
+  
+  requirements
+     preserved: * (glob)
+     removed: dirstate-v2
+  
+  no revlogs to process
+  
+  $ hg debugformat -R share-child | grep dirstate-v2
+  dirstate-v2:         no
+  $ hg debugformat -R share-parent | grep dirstate-v2
+  dirstate-v2:         no
+  $ hg status --all -R share-child
+  C nf0
+  C nf1
+  C nf2
+  C nf3
+  C nf4
+  C nf5
+  C nf6
+  C nf7
+  C nf8
+  C nf9
+  $ hg log -l 3 -R share-child
+  changeset:   9:0059eb38e4a4
+  tag:         tip
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:09 1970 +0000
+  summary:     r9
+  
+  changeset:   8:4d5be70c8130
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:08 1970 +0000
+  summary:     r8
+  
+  changeset:   7:e60bfe72517e
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:07 1970 +0000
+  summary:     r7
+  
+  $ hg status --all -R share-parent
+  C nf0
+  C nf1
+  C nf2
+  C nf3
+  C nf4
+  C nf5
+  C nf6
+  C nf7
+  C nf8
+  C nf9
+  $ hg log -l 3 -R share-parent
+  changeset:   9:0059eb38e4a4
+  tag:         tip
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:09 1970 +0000
+  summary:     r9
+  
+  changeset:   8:4d5be70c8130
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:08 1970 +0000
+  summary:     r8
+  
+  changeset:   7:e60bfe72517e
+  user:        debugbuilddag
+  date:        Thu Jan 01 00:00:07 1970 +0000
+  summary:     r7
+  
+
+Do not yet support downgrading treemanifest repos
 
   $ hg --config experimental.treemanifest=true init treemanifest
   $ hg -R treemanifest debugupgraderepo
-  abort: cannot upgrade repository; unsupported source requirement: treemanifest
+  abort: cannot upgrade repository; requirement would be removed: treemanifest
   [255]
 
 Cannot add treemanifest requirement during upgrade
@@ -58,9 +214,10 @@ An upgrade of a repository created with recommended settings only suggests optim
   format-variant     repo
   fncache:            yes
   dirstate-v2:         no
+  tracked-hint:        no
   dotencode:          yes
   generaldelta:       yes
-  share-safe:          no
+  share-safe:         yes
   sparserevlog:       yes
   persistent-nodemap:  no (no-rust !)
   persistent-nodemap: yes (rust !)
@@ -74,9 +231,10 @@ An upgrade of a repository created with recommended settings only suggests optim
   format-variant     repo config default
   fncache:            yes    yes     yes
   dirstate-v2:         no     no      no
+  tracked-hint:        no     no      no
   dotencode:          yes    yes     yes
   generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
+  share-safe:         yes    yes     yes
   sparserevlog:       yes    yes     yes
   persistent-nodemap:  no     no      no (no-rust !)
   persistent-nodemap: yes    yes      no (rust !)
@@ -91,9 +249,10 @@ An upgrade of a repository created with recommended settings only suggests optim
   format-variant     repo config default
   fncache:            yes     no     yes
   dirstate-v2:         no     no      no
+  tracked-hint:        no     no      no
   dotencode:          yes     no     yes
   generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
+  share-safe:         yes    yes     yes
   sparserevlog:       yes    yes     yes
   persistent-nodemap:  no     no      no (no-rust !)
   persistent-nodemap: yes    yes      no (rust !)
@@ -108,9 +267,10 @@ An upgrade of a repository created with recommended settings only suggests optim
   format-variant     repo config default
   [formatvariant.name.mismatchconfig|fncache:           ][formatvariant.repo.mismatchconfig| yes][formatvariant.config.special|     no][formatvariant.default|     yes]
   [formatvariant.name.uptodate|dirstate-v2:       ][formatvariant.repo.uptodate|  no][formatvariant.config.default|     no][formatvariant.default|      no]
+  [formatvariant.name.uptodate|tracked-hint:      ][formatvariant.repo.uptodate|  no][formatvariant.config.default|     no][formatvariant.default|      no]
   [formatvariant.name.mismatchconfig|dotencode:         ][formatvariant.repo.mismatchconfig| yes][formatvariant.config.special|     no][formatvariant.default|     yes]
   [formatvariant.name.uptodate|generaldelta:      ][formatvariant.repo.uptodate| yes][formatvariant.config.default|    yes][formatvariant.default|     yes]
-  [formatvariant.name.uptodate|share-safe:        ][formatvariant.repo.uptodate|  no][formatvariant.config.default|     no][formatvariant.default|      no]
+  [formatvariant.name.uptodate|share-safe:        ][formatvariant.repo.uptodate| yes][formatvariant.config.default|    yes][formatvariant.default|     yes]
   [formatvariant.name.uptodate|sparserevlog:      ][formatvariant.repo.uptodate| yes][formatvariant.config.default|    yes][formatvariant.default|     yes]
   [formatvariant.name.uptodate|persistent-nodemap:][formatvariant.repo.uptodate|  no][formatvariant.config.default|     no][formatvariant.default|      no] (no-rust !)
   [formatvariant.name.mismatchdefault|persistent-nodemap:][formatvariant.repo.mismatchdefault| yes][formatvariant.config.special|    yes][formatvariant.default|      no] (rust !)
@@ -136,6 +296,12 @@ An upgrade of a repository created with recommended settings only suggests optim
     "repo": false
    },
    {
+    "config": false,
+    "default": false,
+    "name": "tracked-hint",
+    "repo": false
+   },
+   {
     "config": true,
     "default": true,
     "name": "dotencode",
@@ -148,10 +314,10 @@ An upgrade of a repository created with recommended settings only suggests optim
     "repo": true
    },
    {
-    "config": false,
-    "default": false,
+    "config": true,
+    "default": true,
     "name": "share-safe",
-    "repo": false
+    "repo": true
    },
    {
     "config": true,
@@ -210,13 +376,10 @@ An upgrade of a repository created with recommended settings only suggests optim
   performing an upgrade with "--run" will make the following changes:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
-  processed revlogs:
-    - all-filelogs
-    - changelog
-    - manifest
+  no revlogs to process
   
   additional optimizations are available by specifying "--optimize <name>":
   
@@ -235,13 +398,10 @@ An upgrade of a repository created with recommended settings only suggests optim
 
   $ hg debugupgraderepo --quiet
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
-  processed revlogs:
-    - all-filelogs
-    - changelog
-    - manifest
+  no revlogs to process
   
 
 --optimize can be used to add optimizations
@@ -251,8 +411,8 @@ An upgrade of a repository created with recommended settings only suggests optim
   performing an upgrade with "--run" will make the following changes:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
   optimisations: re-delta-parent
   
@@ -283,8 +443,8 @@ modern form of the option
   performing an upgrade with "--run" will make the following changes:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
   optimisations: re-delta-parent
   
@@ -307,12 +467,27 @@ modern form of the option
   re-delta-fulladd
      every revision will be re-added as if it was new content. It will go through the full storage mechanism giving extensions a chance to process it (eg. lfs). This is similar to "re-delta-all" but even slower since more logic is involved.
   
+
   $ hg debugupgrade --optimize re-delta-parent --quiet
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
   optimisations: re-delta-parent
+  
+  processed revlogs:
+    - all-filelogs
+    - changelog
+    - manifest
+  
+
+passing multiple optimization:
+
+  $ hg debugupgrade --optimize re-delta-parent --optimize re-delta-multibase --quiet
+  requirements
+     preserved: * (glob)
+  
+  optimisations: re-delta-multibase, re-delta-parent
   
   processed revlogs:
     - all-filelogs
@@ -338,6 +513,7 @@ Various sub-optimal detections work
   format-variant     repo
   fncache:             no
   dirstate-v2:         no
+  tracked-hint:        no
   dotencode:           no
   generaldelta:        no
   share-safe:          no
@@ -353,9 +529,10 @@ Various sub-optimal detections work
   format-variant     repo config default
   fncache:             no    yes     yes
   dirstate-v2:         no     no      no
+  tracked-hint:        no     no      no
   dotencode:           no    yes     yes
   generaldelta:        no    yes     yes
-  share-safe:          no     no      no
+  share-safe:          no    yes     yes
   sparserevlog:        no    yes     yes
   persistent-nodemap:  no     no      no (no-rust !)
   persistent-nodemap:  no    yes      no (rust !)
@@ -370,9 +547,10 @@ Various sub-optimal detections work
   format-variant     repo config default
   fncache:             no    yes     yes
   dirstate-v2:         no     no      no
+  tracked-hint:        no     no      no
   dotencode:           no    yes     yes
   generaldelta:        no     no     yes
-  share-safe:          no     no      no
+  share-safe:          no    yes     yes
   sparserevlog:        no     no     yes
   persistent-nodemap:  no     no      no (no-rust !)
   persistent-nodemap:  no    yes      no (rust !)
@@ -387,9 +565,10 @@ Various sub-optimal detections work
   format-variant     repo config default
   [formatvariant.name.mismatchconfig|fncache:           ][formatvariant.repo.mismatchconfig|  no][formatvariant.config.default|    yes][formatvariant.default|     yes]
   [formatvariant.name.uptodate|dirstate-v2:       ][formatvariant.repo.uptodate|  no][formatvariant.config.default|     no][formatvariant.default|      no]
+  [formatvariant.name.uptodate|tracked-hint:      ][formatvariant.repo.uptodate|  no][formatvariant.config.default|     no][formatvariant.default|      no]
   [formatvariant.name.mismatchconfig|dotencode:         ][formatvariant.repo.mismatchconfig|  no][formatvariant.config.default|    yes][formatvariant.default|     yes]
   [formatvariant.name.mismatchdefault|generaldelta:      ][formatvariant.repo.mismatchdefault|  no][formatvariant.config.special|     no][formatvariant.default|     yes]
-  [formatvariant.name.uptodate|share-safe:        ][formatvariant.repo.uptodate|  no][formatvariant.config.default|     no][formatvariant.default|      no]
+  [formatvariant.name.mismatchconfig|share-safe:        ][formatvariant.repo.mismatchconfig|  no][formatvariant.config.default|    yes][formatvariant.default|     yes]
   [formatvariant.name.mismatchdefault|sparserevlog:      ][formatvariant.repo.mismatchdefault|  no][formatvariant.config.special|     no][formatvariant.default|     yes]
   [formatvariant.name.uptodate|persistent-nodemap:][formatvariant.repo.uptodate|  no][formatvariant.config.default|     no][formatvariant.default|      no] (no-rust !)
   [formatvariant.name.mismatchconfig|persistent-nodemap:][formatvariant.repo.mismatchconfig|  no][formatvariant.config.special|    yes][formatvariant.default|      no] (rust !)
@@ -401,6 +580,10 @@ Various sub-optimal detections work
   [formatvariant.name.mismatchdefault|compression:       ][formatvariant.repo.mismatchdefault| zlib][formatvariant.config.special|   zlib][formatvariant.default|    zstd] (zstd !)
   [formatvariant.name.uptodate|compression-level: ][formatvariant.repo.uptodate| default][formatvariant.config.default| default][formatvariant.default| default]
   $ hg debugupgraderepo
+  note:    selecting all-filelogs for processing to change: dotencode
+  note:    selecting all-manifestlogs for processing to change: dotencode
+  note:    selecting changelog for processing to change: dotencode
+  
   repository lacks features recommended by current config options:
   
   fncache
@@ -411,6 +594,9 @@ Various sub-optimal detections work
   
   generaldelta
      deltas within internal storage are unable to choose optimal revisions; repository is larger and slower than it could be; interaction with other repositories may require extra network and CPU resources, making "hg push" and "hg pull" slower
+  
+  share-safe
+     old shared repositories do not share source repository requirements and config. This leads to various problems when the source repository format is upgraded or some new extensions are enabled.
   
   sparserevlog
      in order to limit disk reading and memory usage on older version, the span of a delta chain from its root to its end is limited, whatever the relevant data in this span. This can severly limit Mercurial ability to build good chain of delta resulting is much more storage space being taken and limit reusability of on disk delta during exchange.
@@ -423,8 +609,8 @@ Various sub-optimal detections work
   
   requirements
      preserved: revlogv1, store
-     added: dotencode, fncache, generaldelta, sparserevlog (no-rust !)
-     added: dotencode, fncache, generaldelta, persistent-nodemap, sparserevlog (rust !)
+     added: dotencode, fncache, generaldelta, share-safe, sparserevlog (no-rust !)
+     added: dotencode, fncache, generaldelta, persistent-nodemap, share-safe, sparserevlog (rust !)
   
   fncache
      repository will be more resilient to storing certain paths and performance of certain operations should be improved
@@ -434,6 +620,9 @@ Various sub-optimal detections work
   
   generaldelta
      repository storage will be able to create optimal deltas; new repository data will be smaller and read times should decrease; interacting with other repositories using this storage model should require less network and CPU resources, making "hg push" and "hg pull" faster
+  
+  share-safe
+     Upgrades a repository to share-safe format so that future shares of this repository share its requirements and configs.
   
   sparserevlog
      Revlog supports delta chain with more unused data between payload. These gaps will be skipped at read time. This allows for better delta chains, making a better compression and faster exchange with server.
@@ -463,8 +652,8 @@ Various sub-optimal detections work
   $ hg debugupgraderepo --quiet
   requirements
      preserved: revlogv1, store
-     added: dotencode, fncache, generaldelta, sparserevlog (no-rust !)
-     added: dotencode, fncache, generaldelta, persistent-nodemap, sparserevlog (rust !)
+     added: dotencode, fncache, generaldelta, share-safe, sparserevlog (no-rust !)
+     added: dotencode, fncache, generaldelta, persistent-nodemap, share-safe, sparserevlog (rust !)
   
   processed revlogs:
     - all-filelogs
@@ -473,6 +662,10 @@ Various sub-optimal detections work
   
 
   $ hg --config format.dotencode=false debugupgraderepo
+  note:    selecting all-filelogs for processing to change: fncache
+  note:    selecting all-manifestlogs for processing to change: fncache
+  note:    selecting changelog for processing to change: fncache
+  
   repository lacks features recommended by current config options:
   
   fncache
@@ -480,6 +673,9 @@ Various sub-optimal detections work
   
   generaldelta
      deltas within internal storage are unable to choose optimal revisions; repository is larger and slower than it could be; interaction with other repositories may require extra network and CPU resources, making "hg push" and "hg pull" slower
+  
+  share-safe
+     old shared repositories do not share source repository requirements and config. This leads to various problems when the source repository format is upgraded or some new extensions are enabled.
   
   sparserevlog
      in order to limit disk reading and memory usage on older version, the span of a delta chain from its root to its end is limited, whatever the relevant data in this span. This can severly limit Mercurial ability to build good chain of delta resulting is much more storage space being taken and limit reusability of on disk delta during exchange.
@@ -497,14 +693,17 @@ Various sub-optimal detections work
   
   requirements
      preserved: revlogv1, store
-     added: fncache, generaldelta, sparserevlog (no-rust !)
-     added: fncache, generaldelta, persistent-nodemap, sparserevlog (rust !)
+     added: fncache, generaldelta, share-safe, sparserevlog (no-rust !)
+     added: fncache, generaldelta, persistent-nodemap, share-safe, sparserevlog (rust !)
   
   fncache
      repository will be more resilient to storing certain paths and performance of certain operations should be improved
   
   generaldelta
      repository storage will be able to create optimal deltas; new repository data will be smaller and read times should decrease; interacting with other repositories using this storage model should require less network and CPU resources, making "hg push" and "hg pull" faster
+  
+  share-safe
+     Upgrades a repository to share-safe format so that future shares of this repository share its requirements and configs.
   
   sparserevlog
      Revlog supports delta chain with more unused data between payload. These gaps will be skipped at read time. This allows for better delta chains, making a better compression and faster exchange with server.
@@ -550,7 +749,6 @@ Upgrading a repository to generaldelta works
   $ touch FooBarDirectory.d/f1
   $ hg -q commit -A -m 'add f1'
   $ hg -q up -r 0
-  >>> from __future__ import absolute_import, print_function
   >>> import random
   >>> random.seed(0) # have a reproducible content
   >>> with open("f2", "wb") as f:
@@ -567,11 +765,15 @@ make sure we have a .d file
   .hg/store/data/f2.i
 
   $ hg debugupgraderepo --run --config format.sparse-revlog=false
+  note:    selecting all-filelogs for processing to change: generaldelta
+  note:    selecting all-manifestlogs for processing to change: generaldelta
+  note:    selecting changelog for processing to change: generaldelta
+  
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, revlogv1, store (no-rust !)
-     preserved: dotencode, fncache, persistent-nodemap, revlogv1, store (rust !)
+     preserved: dotencode, fncache, revlogv1, share-safe, store (no-rust !)
+     preserved: dotencode, fncache, persistent-nodemap, revlogv1, share-safe, store (rust !)
      added: generaldelta
   
   generaldelta
@@ -596,6 +798,7 @@ make sure we have a .d file
   finished migrating 3 changelog revisions; change in size: 0 bytes
   finished migrating 9 total revisions; total change in store size: -17 bytes
   copying phaseroots
+  copying requires
   data fully upgraded in a temporary repository
   marking source repository as being upgraded; clients will be unable to read from repository
   starting in-place swap of repository data
@@ -610,20 +813,24 @@ make sure we have a .d file
 Original requirements backed up
 
   $ cat .hg/upgradebackup.*/requires
+  share-safe
+  $ cat .hg/upgradebackup.*/store/requires
   dotencode
   fncache
   persistent-nodemap (rust !)
   revlogv1
   store
+  upgradeinprogress
 
 generaldelta added to original requirements files
 
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlogv1
+  share-safe
   store
 
 store directory has files we expect
@@ -632,11 +839,12 @@ store directory has files we expect
   00changelog.i
   00manifest.i
   data
+  data-s
   fncache
   phaseroots
+  requires
   undo
   undo.backupfiles
-  undo.phaseroots
 
 manifest should be generaldelta
 
@@ -645,12 +853,7 @@ manifest should be generaldelta
 
 verify should be happy
 
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 3 changes to 3 files
+  $ hg verify -q
 
 old store should be backed up
 
@@ -660,22 +863,27 @@ old store should be backed up
   00changelog.i
   00manifest.i
   data
+  data-s
   fncache
   phaseroots
+  requires
   undo
-  undo.backup.fncache
+  undo.backup.fncache.bck
   undo.backupfiles
-  undo.phaseroots
 
 unless --no-backup is passed
 
   $ rm -rf .hg/upgradebackup.*/
   $ hg debugupgraderepo --run --no-backup
+  note:    selecting all-filelogs for processing to change: sparserevlog
+  note:    selecting all-manifestlogs for processing to change: sparserevlog
+  note:    selecting changelog for processing to change: sparserevlog
+  
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, store (rust !)
      added: sparserevlog
   
   sparserevlog
@@ -700,6 +908,7 @@ unless --no-backup is passed
   finished migrating 3 changelog revisions; change in size: 0 bytes
   finished migrating 9 total revisions; total change in store size: 0 bytes
   copying phaseroots
+  copying requires
   data fully upgraded in a temporary repository
   marking source repository as being upgraded; clients will be unable to read from repository
   starting in-place swap of repository data
@@ -716,8 +925,8 @@ We can restrict optimization to some revlog:
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
   optimisations: re-delta-parent
   
@@ -746,6 +955,7 @@ We can restrict optimization to some revlog:
   finished migrating 3 changelog revisions; change in size: 0 bytes
   finished migrating 9 total revisions; total change in store size: 0 bytes
   copying phaseroots
+  copying requires
   data fully upgraded in a temporary repository
   marking source repository as being upgraded; clients will be unable to read from repository
   starting in-place swap of repository data
@@ -757,8 +967,7 @@ We can restrict optimization to some revlog:
 Check that the repo still works fine
 
   $ hg log -G --stat
-  @  changeset:   2:76d4395f5413 (no-py3 !)
-  @  changeset:   2:fca376863211 (py3 !)
+  @  changeset:   2:fca376863211
   |  tag:         tip
   |  parent:      0:ba592bf28da2
   |  user:        test
@@ -781,12 +990,7 @@ Check that the repo still works fine
   
   
 
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 3 changes to 3 files
+  $ hg verify -q
 
 Check we can select negatively
 
@@ -794,8 +998,8 @@ Check we can select negatively
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
   optimisations: re-delta-parent
   
@@ -825,6 +1029,7 @@ Check we can select negatively
   finished migrating 3 changelog revisions; change in size: 0 bytes
   finished migrating 9 total revisions; total change in store size: 0 bytes
   copying phaseroots
+  copying requires
   data fully upgraded in a temporary repository
   marking source repository as being upgraded; clients will be unable to read from repository
   starting in-place swap of repository data
@@ -832,12 +1037,7 @@ Check we can select negatively
   store replacement complete; repository was inconsistent for *s (glob)
   finalizing requirements file and making repository readable again
   removing temporary repository $TESTTMP/upgradegd/.hg/upgrade.* (glob)
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 3 changes to 3 files
+  $ hg verify -q
 
 Check that we can select changelog only
 
@@ -845,8 +1045,8 @@ Check that we can select changelog only
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
   optimisations: re-delta-parent
   
@@ -875,6 +1075,7 @@ Check that we can select changelog only
   finished migrating 3 changelog revisions; change in size: 0 bytes
   finished migrating 9 total revisions; total change in store size: 0 bytes
   copying phaseroots
+  copying requires
   data fully upgraded in a temporary repository
   marking source repository as being upgraded; clients will be unable to read from repository
   starting in-place swap of repository data
@@ -882,12 +1083,7 @@ Check that we can select changelog only
   store replacement complete; repository was inconsistent for *s (glob)
   finalizing requirements file and making repository readable again
   removing temporary repository $TESTTMP/upgradegd/.hg/upgrade.* (glob)
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 3 changes to 3 files
+  $ hg verify -q
 
 Check that we can select filelog only
 
@@ -895,8 +1091,8 @@ Check that we can select filelog only
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
   optimisations: re-delta-parent
   
@@ -925,6 +1121,7 @@ Check that we can select filelog only
   finished migrating 3 changelog revisions; change in size: 0 bytes
   finished migrating 9 total revisions; total change in store size: 0 bytes
   copying phaseroots
+  copying requires
   data fully upgraded in a temporary repository
   marking source repository as being upgraded; clients will be unable to read from repository
   starting in-place swap of repository data
@@ -932,25 +1129,37 @@ Check that we can select filelog only
   store replacement complete; repository was inconsistent for *s (glob)
   finalizing requirements file and making repository readable again
   removing temporary repository $TESTTMP/upgradegd/.hg/upgrade.* (glob)
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 3 changes to 3 files
+  $ hg verify -q
 
 
 Check you can't skip revlog clone during important format downgrade
 
   $ echo "[format]" > .hg/hgrc
   $ echo "sparse-revlog=no" >> .hg/hgrc
+  $ hg debugupgrade --optimize re-delta-parent --no-manifest --no-backup --quiet
+  warning: ignoring  --no-manifest, as upgrade is changing: sparserevlog
+  
+  requirements
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, store (rust !)
+     removed: sparserevlog
+  
+  optimisations: re-delta-parent
+  
+  processed revlogs:
+    - all-filelogs
+    - changelog
+    - manifest
+  
   $ hg debugupgrade --optimize re-delta-parent --run --manifest --no-backup --debug --traceback
-  ignoring revlogs selection flags, format requirements change: sparserevlog
+  note:    selecting all-filelogs for processing to change: sparserevlog
+  note:    selecting changelog for processing to change: sparserevlog
+  
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, store (rust !)
      removed: sparserevlog
   
   optimisations: re-delta-parent
@@ -982,6 +1191,7 @@ Check you can't skip revlog clone during important format downgrade
   finished migrating 3 changelog revisions; change in size: 0 bytes
   finished migrating 9 total revisions; total change in store size: 0 bytes
   copying phaseroots
+  copying requires
   data fully upgraded in a temporary repository
   marking source repository as being upgraded; clients will be unable to read from repository
   starting in-place swap of repository data
@@ -989,23 +1199,20 @@ Check you can't skip revlog clone during important format downgrade
   store replacement complete; repository was inconsistent for *s (glob)
   finalizing requirements file and making repository readable again
   removing temporary repository $TESTTMP/upgradegd/.hg/upgrade.* (glob)
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 3 changes to 3 files
+  $ hg verify -q
 
 Check you can't skip revlog clone during important format upgrade
 
   $ echo "sparse-revlog=yes" >> .hg/hgrc
   $ hg debugupgrade --optimize re-delta-parent --run --manifest --no-backup --debug --traceback
-  ignoring revlogs selection flags, format requirements change: sparserevlog
+  note:    selecting all-filelogs for processing to change: sparserevlog
+  note:    selecting changelog for processing to change: sparserevlog
+  
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, store (rust !)
      added: sparserevlog
   
   optimisations: re-delta-parent
@@ -1040,6 +1247,7 @@ Check you can't skip revlog clone during important format upgrade
   finished migrating 3 changelog revisions; change in size: 0 bytes
   finished migrating 9 total revisions; total change in store size: 0 bytes
   copying phaseroots
+  copying requires
   data fully upgraded in a temporary repository
   marking source repository as being upgraded; clients will be unable to read from repository
   starting in-place swap of repository data
@@ -1047,12 +1255,7 @@ Check you can't skip revlog clone during important format upgrade
   store replacement complete; repository was inconsistent for *s (glob)
   finalizing requirements file and making repository readable again
   removing temporary repository $TESTTMP/upgradegd/.hg/upgrade.* (glob)
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 3 changes to 3 files
+  $ hg verify -q
 
   $ cd ..
 
@@ -1070,8 +1273,8 @@ store files with special filenames aren't encoded during copy
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
   optimisations: re-delta-fulladd
   
@@ -1098,6 +1301,7 @@ store files with special filenames aren't encoded during copy
   finished migrating 3 total revisions; total change in store size: 0 bytes
   copying .XX_special_filename
   copying phaseroots
+  copying requires
   data fully upgraded in a temporary repository
   marking source repository as being upgraded; clients will be unable to read from repository
   starting in-place swap of repository data
@@ -1129,25 +1333,27 @@ Check upgrading a large file repository
   $ touch foo
   $ hg add --large foo
   $ hg -q commit -m initial
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   fncache
   generaldelta
   largefiles
   persistent-nodemap (rust !)
   revlogv1
+  share-safe
   sparserevlog
   store
 
   $ hg debugupgraderepo --run
   nothing to do
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   fncache
   generaldelta
   largefiles
   persistent-nodemap (rust !)
   revlogv1
+  share-safe
   sparserevlog
   store
 
@@ -1160,7 +1366,7 @@ Check upgrading a large file repository
   $ echo '123456789012345' > lfs.bin
   $ hg ci -Am 'lfs.bin'
   adding lfs.bin
-  $ grep lfs .hg/requires
+  $ hg debugrequires | grep lfs
   lfs
   $ find .hg/store/lfs -type f
   .hg/store/lfs/objects/d0/beab232adff5ba365880366ad30b1edb85c4c5372442b5d2fe27adc96d653f
@@ -1168,16 +1374,11 @@ Check upgrading a large file repository
   $ hg debugupgraderepo --run
   nothing to do
 
-  $ grep lfs .hg/requires
+  $ hg debugrequires | grep lfs
   lfs
   $ find .hg/store/lfs -type f
   .hg/store/lfs/objects/d0/beab232adff5ba365880366ad30b1edb85c4c5372442b5d2fe27adc96d653f
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 2 changesets with 2 changes to 2 files
+  $ hg verify -q
   $ hg debugdata lfs.bin 0
   version https://git-lfs.github.com/spec/v1
   oid sha256:d0beab232adff5ba365880366ad30b1edb85c4c5372442b5d2fe27adc96d653f
@@ -1227,17 +1428,17 @@ repository config is taken in account
   format.revlog-compression=$BUNDLE2_COMPRESSIONS$
   format.maxchainlen=9001
   $ hg debugdeltachain file
-      rev  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
-        0       1        1       -1    base         77        182         77   0.42308        77         0    0.00000         77         77   1.00000        1
-        1       1        2        0      p1         21        191         98   0.51309        98         0    0.00000         98         98   1.00000        1
-        2       1        2        0   other         30        200        107   0.53500       128        21    0.19626        128        128   0.83594        1
+      rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
+        0      -1      -1       1        1       -1    base         77        182         77   0.42308        77         0    0.00000         77         77   1.00000        1
+        1       0      -1       1        2        0      p1         21        191         98   0.51309        98         0    0.00000         98         98   1.00000        1
+        2       1      -1       1        2        0    snap         30        200        107   0.53500       128        21    0.19626        128        128   0.83594        1
 
   $ hg debugupgraderepo --run --optimize 're-delta-all'
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
   
   optimisations: re-delta-all
   
@@ -1263,6 +1464,7 @@ repository config is taken in account
   finished migrating 3 changelog revisions; change in size: 0 bytes
   finished migrating 9 total revisions; total change in store size: -9 bytes
   copying phaseroots
+  copying requires
   data fully upgraded in a temporary repository
   marking source repository as being upgraded; clients will be unable to read from repository
   starting in-place swap of repository data
@@ -1274,10 +1476,10 @@ repository config is taken in account
   copy of old repository backed up at $TESTTMP/localconfig/.hg/upgradebackup.* (glob)
   the old repository will not be deleted; remove it to free up disk space once the upgraded repository is verified
   $ hg debugdeltachain file
-      rev  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
-        0       1        1       -1    base         77        182         77   0.42308        77         0    0.00000         77         77   1.00000        1
-        1       1        2        0      p1         21        191         98   0.51309        98         0    0.00000         98         98   1.00000        1
-        2       1        3        1      p1         21        200        119   0.59500       119         0    0.00000        119        119   1.00000        1
+      rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
+        0      -1      -1       1        1       -1    base         77        182         77   0.42308        77         0    0.00000         77         77   1.00000        1
+        1       0      -1       1        2        0      p1         21        191         98   0.51309        98         0    0.00000         98         98   1.00000        1
+        2       1      -1       1        3        1      p1         21        200        119   0.59500       119         0    0.00000        119        119   1.00000        1
   $ cd ..
 
   $ cat << EOF >> $HGRCPATH
@@ -1293,12 +1495,13 @@ Check upgrading a sparse-revlog repository
   $ touch foo
   $ hg add foo
   $ hg -q commit -m "foo"
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlogv1
+  share-safe
   store
 
 Check that we can add the sparse-revlog format requirement
@@ -1306,8 +1509,8 @@ Check that we can add the sparse-revlog format requirement
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, store (rust !)
      added: sparserevlog
   
   processed revlogs:
@@ -1315,12 +1518,13 @@ Check that we can add the sparse-revlog format requirement
     - changelog
     - manifest
   
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlogv1
+  share-safe
   sparserevlog
   store
 
@@ -1329,8 +1533,8 @@ Check that we can remove the sparse-revlog format requirement
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, store (rust !)
      removed: sparserevlog
   
   processed revlogs:
@@ -1338,12 +1542,13 @@ Check that we can remove the sparse-revlog format requirement
     - changelog
     - manifest
   
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlogv1
+  share-safe
   store
 
 #if zstd
@@ -1357,8 +1562,8 @@ upgrade
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, store (rust !)
      added: revlog-compression-zstd, sparserevlog
   
   processed revlogs:
@@ -1370,9 +1575,10 @@ upgrade
   format-variant     repo config default
   fncache:            yes    yes     yes
   dirstate-v2:         no     no      no
+  tracked-hint:        no     no      no
   dotencode:          yes    yes     yes
   generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
+  share-safe:         yes    yes     yes
   sparserevlog:       yes    yes     yes
   persistent-nodemap:  no     no      no (no-rust !)
   persistent-nodemap: yes    yes      no (rust !)
@@ -1383,13 +1589,14 @@ upgrade
   compression:        zlib   zlib    zlib (no-zstd !)
   compression:        zstd   zlib    zstd (zstd !)
   compression-level:  default default default
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd
   revlogv1
+  share-safe
   sparserevlog
   store
 
@@ -1399,8 +1606,8 @@ downgrade
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
      removed: revlog-compression-zstd
   
   processed revlogs:
@@ -1412,9 +1619,10 @@ downgrade
   format-variant     repo config default
   fncache:            yes    yes     yes
   dirstate-v2:         no     no      no
+  tracked-hint:        no     no      no
   dotencode:          yes    yes     yes
   generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
+  share-safe:         yes    yes     yes
   sparserevlog:       yes    yes     yes
   persistent-nodemap:  no     no      no (no-rust !)
   persistent-nodemap: yes    yes      no (rust !)
@@ -1425,12 +1633,13 @@ downgrade
   compression:        zlib   zlib    zlib (no-zstd !)
   compression:        zlib   zlib    zstd (zstd !)
   compression-level:  default default default
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlogv1
+  share-safe
   sparserevlog
   store
 
@@ -1444,8 +1653,8 @@ upgrade from hgrc
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlogv1, share-safe, sparserevlog, store (rust !)
      added: revlog-compression-zstd
   
   processed revlogs:
@@ -1457,9 +1666,10 @@ upgrade from hgrc
   format-variant     repo config default
   fncache:            yes    yes     yes
   dirstate-v2:         no     no      no
+  tracked-hint:        no     no      no
   dotencode:          yes    yes     yes
   generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
+  share-safe:         yes    yes     yes
   sparserevlog:       yes    yes     yes
   persistent-nodemap:  no     no      no (no-rust !)
   persistent-nodemap: yes    yes      no (rust !)
@@ -1470,13 +1680,14 @@ upgrade from hgrc
   compression:        zlib   zlib    zlib (no-zstd !)
   compression:        zstd   zstd    zstd (zstd !)
   compression-level:  default default default
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd
   revlogv1
+  share-safe
   sparserevlog
   store
 
@@ -1492,9 +1703,9 @@ upgrade
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, store (no-zstd !)
-     preserved: dotencode, fncache, generaldelta, revlog-compression-zstd, sparserevlog, store (zstd no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlog-compression-zstd, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, share-safe, store (no-zstd !)
+     preserved: dotencode, fncache, generaldelta, revlog-compression-zstd, share-safe, sparserevlog, store (zstd no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlog-compression-zstd, share-safe, sparserevlog, store (rust !)
      removed: revlogv1
      added: exp-revlogv2.2 (zstd !)
      added: exp-revlogv2.2, sparserevlog (no-zstd !)
@@ -1508,9 +1719,10 @@ upgrade
   format-variant     repo config default
   fncache:            yes    yes     yes
   dirstate-v2:         no     no      no
+  tracked-hint:        no     no      no
   dotencode:          yes    yes     yes
   generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
+  share-safe:         yes    yes     yes
   sparserevlog:       yes    yes     yes
   persistent-nodemap:  no     no      no (no-rust !)
   persistent-nodemap: yes    yes      no (rust !)
@@ -1521,13 +1733,14 @@ upgrade
   compression:        zlib   zlib    zlib (no-zstd !)
   compression:        zstd   zstd    zstd (zstd !)
   compression-level:  default default default
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   exp-revlogv2.2
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
+  share-safe
   sparserevlog
   store
   $ hg debugsidedata -c 0
@@ -1541,9 +1754,9 @@ downgrade
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, sparserevlog, store (no-zstd !)
-     preserved: dotencode, fncache, generaldelta, revlog-compression-zstd, sparserevlog, store (zstd no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlog-compression-zstd, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, share-safe, sparserevlog, store (no-zstd !)
+     preserved: dotencode, fncache, generaldelta, revlog-compression-zstd, share-safe, sparserevlog, store (zstd no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlog-compression-zstd, share-safe, sparserevlog, store (rust !)
      removed: exp-revlogv2.2
      added: revlogv1
   
@@ -1556,9 +1769,10 @@ downgrade
   format-variant     repo config default
   fncache:            yes    yes     yes
   dirstate-v2:         no     no      no
+  tracked-hint:        no     no      no
   dotencode:          yes    yes     yes
   generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
+  share-safe:         yes    yes     yes
   sparserevlog:       yes    yes     yes
   persistent-nodemap:  no     no      no (no-rust !)
   persistent-nodemap: yes    yes      no (rust !)
@@ -1569,13 +1783,14 @@ downgrade
   compression:        zlib   zlib    zlib (no-zstd !)
   compression:        zstd   zstd    zstd (zstd !)
   compression-level:  default default default
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
   $ hg debugsidedata -c 0
@@ -1590,9 +1805,9 @@ upgrade from hgrc
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, fncache, generaldelta, sparserevlog, store (no-zstd !)
-     preserved: dotencode, fncache, generaldelta, revlog-compression-zstd, sparserevlog, store (zstd no-rust !)
-     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlog-compression-zstd, sparserevlog, store (rust !)
+     preserved: dotencode, fncache, generaldelta, share-safe, sparserevlog, store (no-zstd !)
+     preserved: dotencode, fncache, generaldelta, revlog-compression-zstd, share-safe, sparserevlog, store (zstd no-rust !)
+     preserved: dotencode, fncache, generaldelta, persistent-nodemap, revlog-compression-zstd, share-safe, sparserevlog, store (rust !)
      removed: revlogv1
      added: exp-revlogv2.2
   
@@ -1605,9 +1820,10 @@ upgrade from hgrc
   format-variant     repo config default
   fncache:            yes    yes     yes
   dirstate-v2:         no     no      no
+  tracked-hint:        no     no      no
   dotencode:          yes    yes     yes
   generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
+  share-safe:         yes    yes     yes
   sparserevlog:       yes    yes     yes
   persistent-nodemap:  no     no      no (no-rust !)
   persistent-nodemap: yes    yes      no (rust !)
@@ -1618,13 +1834,14 @@ upgrade from hgrc
   compression:        zlib   zlib    zlib (no-zstd !)
   compression:        zstd   zstd    zstd (zstd !)
   compression-level:  default default default
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
   exp-revlogv2.2
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
+  share-safe
   sparserevlog
   store
   $ hg debugsidedata -c 0
@@ -1634,39 +1851,30 @@ Demonstrate that nothing to perform upgrade will still run all the way through
   $ hg debugupgraderepo --run
   nothing to do
 
-#if rust
+#if no-rust
+
+  $ cat << EOF >> $HGRCPATH
+  > [storage]
+  > dirstate-v2.slow-path = allow
+  > EOF
+
+#endif
 
 Upgrade to dirstate-v2
 
-  $ hg debugformat -v --config format.exp-dirstate-v2=1
-  format-variant     repo config default
-  fncache:            yes    yes     yes
+  $ hg debugformat -v --config format.use-dirstate-v2=1 | grep dirstate-v2
   dirstate-v2:         no    yes      no
-  dotencode:          yes    yes     yes
-  generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
-  sparserevlog:       yes    yes     yes
-  persistent-nodemap: yes    yes      no
-  copies-sdc:          no     no      no
-  revlog-v2:          yes    yes      no
-  changelog-v2:        no     no      no
-  plain-cl-delta:     yes    yes     yes
-  compression:        zstd   zstd    zstd
-  compression-level:  default default default
-  $ hg debugupgraderepo --config format.exp-dirstate-v2=1 --run
+  $ hg debugupgraderepo --config format.use-dirstate-v2=1 --run
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, exp-revlogv2.2, fncache, generaldelta, persistent-nodemap, revlog-compression-zstd, sparserevlog, store
-     added: exp-dirstate-v2
+     preserved: * (glob)
+     added: dirstate-v2
   
   dirstate-v2
      "hg status" will be faster
   
-  processed revlogs:
-    - all-filelogs
-    - changelog
-    - manifest
+  no revlogs to process
   
   beginning upgrade...
   repository locked and read-only
@@ -1677,23 +1885,10 @@ Upgrade to dirstate-v2
   removing temporary repository $TESTTMP/sparserevlogrepo/.hg/upgrade.* (glob)
   $ ls .hg/upgradebackup.*/dirstate
   .hg/upgradebackup.*/dirstate (glob)
-  $ hg debugformat -v
-  format-variant     repo config default
-  fncache:            yes    yes     yes
+  $ hg debugformat -v | grep dirstate-v2
   dirstate-v2:        yes     no      no
-  dotencode:          yes    yes     yes
-  generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
-  sparserevlog:       yes    yes     yes
-  persistent-nodemap: yes    yes      no
-  copies-sdc:          no     no      no
-  revlog-v2:          yes    yes      no
-  changelog-v2:        no     no      no
-  plain-cl-delta:     yes    yes     yes
-  compression:        zstd   zstd    zstd
-  compression-level:  default default default
   $ hg status
-  $ dd status=none bs=12 count=1 if=.hg/dirstate
+  $ dd bs=12 count=1 if=.hg/dirstate 2> /dev/null
   dirstate-v2
 
 Downgrade from dirstate-v2
@@ -1702,13 +1897,10 @@ Downgrade from dirstate-v2
   upgrade will perform the following actions:
   
   requirements
-     preserved: dotencode, exp-revlogv2.2, fncache, generaldelta, persistent-nodemap, revlog-compression-zstd, sparserevlog, store
-     removed: exp-dirstate-v2
+     preserved: * (glob)
+     removed: dirstate-v2
   
-  processed revlogs:
-    - all-filelogs
-    - changelog
-    - manifest
+  no revlogs to process
   
   beginning upgrade...
   repository locked and read-only
@@ -1717,21 +1909,195 @@ Downgrade from dirstate-v2
   downgrading from dirstate-v2 to v1
   replaced files will be backed up at $TESTTMP/sparserevlogrepo/.hg/upgradebackup.* (glob)
   removing temporary repository $TESTTMP/sparserevlogrepo/.hg/upgrade.* (glob)
-  $ hg debugformat -v
-  format-variant     repo config default
-  fncache:            yes    yes     yes
+  $ hg debugformat -v | grep dirstate-v2
   dirstate-v2:         no     no      no
-  dotencode:          yes    yes     yes
-  generaldelta:       yes    yes     yes
-  share-safe:          no     no      no
-  sparserevlog:       yes    yes     yes
-  persistent-nodemap: yes    yes      no
-  copies-sdc:          no     no      no
-  revlog-v2:          yes    yes      no
-  changelog-v2:        no     no      no
-  plain-cl-delta:     yes    yes     yes
-  compression:        zstd   zstd    zstd
-  compression-level:  default default default
   $ hg status
 
-#endif
+  $ cd ..
+
+dirstate-v2: upgrade and downgrade from and empty repository:
+-------------------------------------------------------------
+
+  $ hg init --config format.use-dirstate-v2=no dirstate-v2-empty
+  $ cd dirstate-v2-empty
+  $ hg debugformat | grep dirstate-v2
+  dirstate-v2:         no
+
+upgrade
+
+  $ hg debugupgraderepo --run --config format.use-dirstate-v2=yes
+  upgrade will perform the following actions:
+  
+  requirements
+     preserved: * (glob)
+     added: dirstate-v2
+  
+  dirstate-v2
+     "hg status" will be faster
+  
+  no revlogs to process
+  
+  beginning upgrade...
+  repository locked and read-only
+  creating temporary repository to stage upgraded data: $TESTTMP/dirstate-v2-empty/.hg/upgrade.* (glob)
+  (it is safe to interrupt this process any time before data migration completes)
+  upgrading to dirstate-v2 from v1
+  replaced files will be backed up at $TESTTMP/dirstate-v2-empty/.hg/upgradebackup.* (glob)
+  removing temporary repository $TESTTMP/dirstate-v2-empty/.hg/upgrade.* (glob)
+  $ hg debugformat | grep dirstate-v2
+  dirstate-v2:        yes
+
+downgrade
+
+  $ hg debugupgraderepo --run --config format.use-dirstate-v2=no
+  upgrade will perform the following actions:
+  
+  requirements
+     preserved: * (glob)
+     removed: dirstate-v2
+  
+  no revlogs to process
+  
+  beginning upgrade...
+  repository locked and read-only
+  creating temporary repository to stage upgraded data: $TESTTMP/dirstate-v2-empty/.hg/upgrade.* (glob)
+  (it is safe to interrupt this process any time before data migration completes)
+  downgrading from dirstate-v2 to v1
+  replaced files will be backed up at $TESTTMP/dirstate-v2-empty/.hg/upgradebackup.* (glob)
+  removing temporary repository $TESTTMP/dirstate-v2-empty/.hg/upgrade.* (glob)
+  $ hg debugformat | grep dirstate-v2
+  dirstate-v2:         no
+
+  $ cd ..
+
+Test automatic upgrade/downgrade
+================================
+
+
+For dirstate v2
+---------------
+
+create an initial repository
+
+  $ hg init auto-upgrade \
+  >     --config format.use-dirstate-v2=no \
+  >     --config format.use-dirstate-tracked-hint=yes \
+  >     --config format.use-share-safe=no
+  $ hg debugbuilddag -R auto-upgrade --new-file .+5
+  $ hg -R auto-upgrade update
+  6 files updated, 0 files merged, 0 files removed, 0 files unresolved
+  $ hg debugformat -R auto-upgrade | grep dirstate-v2
+  dirstate-v2:         no
+
+upgrade it to dirstate-v2 automatically
+
+  $ hg status -R auto-upgrade \
+  >     --config format.use-dirstate-v2.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-dirstate-v2=yes
+  automatically upgrading repository to the `dirstate-v2` feature
+  (see `hg help config.format.use-dirstate-v2` for details)
+  $ hg debugformat -R auto-upgrade | grep dirstate-v2
+  dirstate-v2:        yes
+
+downgrade it from dirstate-v2 automatically
+
+  $ hg status -R auto-upgrade \
+  >     --config format.use-dirstate-v2.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-dirstate-v2=no
+  automatically downgrading repository from the `dirstate-v2` feature
+  (see `hg help config.format.use-dirstate-v2` for details)
+  $ hg debugformat -R auto-upgrade | grep dirstate-v2
+  dirstate-v2:         no
+
+
+For multiple change at the same time
+------------------------------------
+
+  $ hg debugformat -R auto-upgrade | grep -E '(dirstate-v2|tracked|share-safe)'
+  dirstate-v2:         no
+  tracked-hint:       yes
+  share-safe:          no
+
+  $ hg status -R auto-upgrade \
+  >     --config format.use-dirstate-v2.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-dirstate-v2=yes \
+  >     --config format.use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-dirstate-tracked-hint=no\
+  >     --config format.use-share-safe.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-share-safe=yes
+  automatically upgrading repository to the `dirstate-v2` feature
+  (see `hg help config.format.use-dirstate-v2` for details)
+  automatically upgrading repository to the `share-safe` feature
+  (see `hg help config.format.use-share-safe` for details)
+  automatically downgrading repository from the `tracked-hint` feature
+  (see `hg help config.format.use-dirstate-tracked-hint` for details)
+  $ hg debugformat -R auto-upgrade | grep -E '(dirstate-v2|tracked|share-safe)'
+  dirstate-v2:        yes
+  tracked-hint:        no
+  share-safe:         yes
+
+Quiet upgrade and downgrade
+---------------------------
+
+
+  $ hg debugformat -R auto-upgrade | grep -E '(dirstate-v2|tracked|share-safe)'
+  dirstate-v2:        yes
+  tracked-hint:        no
+  share-safe:         yes
+  $ hg status -R auto-upgrade \
+  >     --config format.use-dirstate-v2.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-dirstate-v2.automatic-upgrade-of-mismatching-repositories:quiet=yes \
+  >     --config format.use-dirstate-v2=no \
+  >     --config format.use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories:quiet=yes \
+  >     --config format.use-dirstate-tracked-hint=yes \
+  >     --config format.use-share-safe.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-share-safe.automatic-upgrade-of-mismatching-repositories:quiet=yes \
+  >     --config format.use-share-safe=no
+
+  $ hg debugformat -R auto-upgrade | grep -E '(dirstate-v2|tracked|share-safe)'
+  dirstate-v2:         no
+  tracked-hint:       yes
+  share-safe:          no
+
+  $ hg status -R auto-upgrade \
+  >     --config format.use-dirstate-v2.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-dirstate-v2.automatic-upgrade-of-mismatching-repositories:quiet=yes \
+  >     --config format.use-dirstate-v2=yes \
+  >     --config format.use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories:quiet=yes \
+  >     --config format.use-dirstate-tracked-hint=no\
+  >     --config format.use-share-safe.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-share-safe.automatic-upgrade-of-mismatching-repositories:quiet=yes \
+  >     --config format.use-share-safe=yes
+  $ hg debugformat -R auto-upgrade | grep -E '(dirstate-v2|tracked|share-safe)'
+  dirstate-v2:        yes
+  tracked-hint:        no
+  share-safe:         yes
+
+Attempting Auto-upgrade on a read-only repository
+-------------------------------------------------
+
+  $ chmod -R a-w auto-upgrade
+
+  $ hg status -R auto-upgrade \
+  >     --config format.use-dirstate-v2.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-dirstate-v2=no
+  $ hg debugformat -R auto-upgrade | grep dirstate-v2
+  dirstate-v2:        yes
+
+  $ chmod -R u+w auto-upgrade
+
+Attempting Auto-upgrade on a locked repository
+----------------------------------------------
+
+  $ hg -R auto-upgrade debuglock --set-lock --quiet &
+  $ echo $! >> $DAEMON_PIDS
+  $ $RUNTESTDIR/testlib/wait-on-file 10 auto-upgrade/.hg/store/lock
+  $ hg status -R auto-upgrade \
+  >     --config format.use-dirstate-v2.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-dirstate-v2=no
+  $ hg debugformat -R auto-upgrade | grep dirstate-v2
+  dirstate-v2:        yes
+
+  $ killdaemons.py

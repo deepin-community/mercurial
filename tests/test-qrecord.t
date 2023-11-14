@@ -68,6 +68,7 @@ help record (record)
       --close-branch        mark a branch head as closed
       --amend               amend the parent of the working directory
    -s --secret              use the secret phase for committing
+      --draft               use the draft phase for committing
    -e --edit                invoke editor on commit messages
    -I --include PATTERN [+] include names matching the given patterns
    -X --exclude PATTERN [+] exclude names matching the given patterns
@@ -117,7 +118,7 @@ help (bad mq)
 
   $ echo "mq=nonexistent" >> $HGRCPATH
   $ hg help qrecord
-  *** failed to import extension mq from nonexistent: [Errno *] * (glob)
+  *** failed to import extension "mq" from nonexistent: [Errno *] * (glob)
   hg qrecord [OPTION]... PATCH [FILE]...
   
   interactively record a new patch

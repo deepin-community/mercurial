@@ -5,7 +5,6 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
 import functools
 
@@ -19,6 +18,7 @@ from . import (
     bookmarks,
     branchmap,
     error,
+    obsolete,
     phases,
     pycompat,
     scmutil,
@@ -73,7 +73,7 @@ def findcommonincoming(repo, remote, heads=None, force=False, ancestorsof=None):
     return (list(common), anyinc, heads or list(srvheads))
 
 
-class outgoing(object):
+class outgoing:
     """Represents the result of a findcommonoutgoing() call.
 
     Members:
@@ -104,14 +104,14 @@ class outgoing(object):
         if ancestorsof is None:
             ancestorsof = cl.heads()
         if missingroots:
-            discbases = []
-            for n in missingroots:
-                discbases.extend([p for p in cl.parents(n) if p != repo.nullid])
             # TODO remove call to nodesbetween.
             # TODO populate attributes on outgoing instance instead of setting
             # discbases.
             csets, roots, heads = cl.nodesbetween(missingroots, ancestorsof)
             included = set(csets)
+            discbases = []
+            for n in csets:
+                discbases.extend([p for p in cl.parents(n) if p != repo.nullid])
             ancestorsof = heads
             commonheads = [n for n in discbases if n not in included]
         elif not commonheads:
@@ -140,17 +140,6 @@ class outgoing(object):
         if self._missing is None:
             self._computecommonmissing()
         return self._missing
-
-    @property
-    def missingheads(self):
-        util.nouideprecwarn(
-            b'outgoing.missingheads never contained what the name suggests and '
-            b'was renamed to outgoing.ancestorsof. check your code for '
-            b'correctness.',
-            b'5.5',
-            stacklevel=2,
-        )
-        return self.ancestorsof
 
 
 def findcommonoutgoing(
@@ -248,7 +237,7 @@ def _headssummary(pushop):
 
     knownnode = cl.hasnode  # do not use nodemap until it is filtered
     # A. register remote heads of branches which are in outgoing set
-    for branch, heads in pycompat.iteritems(remotemap):
+    for branch, heads in remotemap.items():
         # don't add head info about branches which we don't have locally
         if branch not in branches:
             continue
@@ -272,14 +261,14 @@ def _headssummary(pushop):
         repo,
         (
             (branch, heads[1])
-            for branch, heads in pycompat.iteritems(headssum)
+            for branch, heads in headssum.items()
             if heads[0] is not None
         ),
     )
     newmap.update(repo, (ctx.rev() for ctx in missingctx))
-    for branch, newheads in pycompat.iteritems(newmap):
+    for branch, newheads in newmap.items():
         headssum[branch][1][:] = newheads
-    for branch, items in pycompat.iteritems(headssum):
+    for branch, items in headssum.items():
         for l in items:
             if l is not None:
                 l.sort()
@@ -390,9 +379,7 @@ def checkheads(pushop):
         headssum = _oldheadssummary(repo, remoteheads, outgoing, inc)
     pushop.pushbranchmap = headssum
     newbranches = [
-        branch
-        for branch, heads in pycompat.iteritems(headssum)
-        if heads[0] is None
+        branch for branch, heads in headssum.items() if heads[0] is None
     ]
     # 1. Check for new branches on the remote.
     if newbranches and not newbranch:  # new branch requires --new-branch
@@ -556,12 +543,16 @@ def _postprocessobsolete(pushop, futurecommon, candidate_newhs):
     if len(localcandidate) == 1:
         return unknownheads | set(candidate_newhs), set()
 
+    obsrevs = obsolete.getrevs(unfi, b'obsolete')
+    futurenonobsolete = frozenset(futurecommon) - obsrevs
+
     # actually process branch replacement
     while localcandidate:
         nh = localcandidate.pop()
+        r = torev(nh)
         current_branch = unfi[nh].branch()
         # run this check early to skip the evaluation of the whole branch
-        if torev(nh) in futurecommon or ispublic(torev(nh)):
+        if ispublic(r) or r not in obsrevs:
             newhs.add(nh)
             continue
 
@@ -583,7 +574,7 @@ def _postprocessobsolete(pushop, futurecommon, candidate_newhs):
         # * if we have no markers to push to obsolete it.
         if (
             any(ispublic(r) for r in branchrevs)
-            or any(torev(n) in futurecommon for n in branchnodes)
+            or any(torev(n) in futurenonobsolete for n in branchnodes)
             or any(not hasoutmarker(n) for n in branchnodes)
         ):
             newhs.add(nh)

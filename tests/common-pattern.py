@@ -1,5 +1,4 @@
 # common patterns in test at can safely be replaced
-from __future__ import absolute_import
 
 import os
 
@@ -11,7 +10,7 @@ substitutions = [
     (
         br'bundlecaps=HG20%2Cbundle2%3DHG20%250A'
         br'bookmarks%250A'
-        br'changegroup%253D01%252C02%250A'
+        br'changegroup%253D01%252C02%252C03%250A'
         br'checkheads%253Drelated%250A'
         br'digests%253Dmd5%252Csha1%252Csha512%250A'
         br'error%253Dabort%252Cunsupportedcontent%252Cpushraced%252Cpushkey%250A'
@@ -27,7 +26,7 @@ substitutions = [
     (
         br'bundlecaps=HG20%2Cbundle2%3DHG20%250A'
         br'bookmarks%250A'
-        br'changegroup%253D01%252C02%250A'
+        br'changegroup%253D01%252C02%252C03%250A'
         br'checkheads%3Drelated%0A'
         br'digests%253Dmd5%252Csha1%252Csha512%250A'
         br'error%253Dabort%252Cunsupportedcontent%252Cpushraced%252Cpushkey%250A'
@@ -43,7 +42,7 @@ substitutions = [
     (
         br'bundle2=HG20%0A'
         br'bookmarks%0A'
-        br'changegroup%3D01%2C02%0A'
+        br'changegroup%3D01%2C02%2C03%0A'
         br'checkheads%3Drelated%0A'
         br'digests%3Dmd5%2Csha1%2Csha512%0A'
         br'error%3Dabort%2Cunsupportedcontent%2Cpushraced%2Cpushkey%0A'
@@ -60,7 +59,7 @@ substitutions = [
     (
         br'bundle2=HG20%0A'
         br'bookmarks%0A'
-        br'changegroup%3D01%2C02%0A'
+        br'changegroup%3D01%2C02%2C03%0A'
         br'checkheads%3Drelated%0A'
         br'digests%3Dmd5%2Csha1%2Csha512%0A'
         br'error%3Dabort%2Cunsupportedcontent%2Cpushraced%2Cpushkey%0A'
@@ -75,7 +74,7 @@ substitutions = [
     (
         br'bundle2=HG20%0A'
         br'bookmarks%0A'
-        br'changegroup%3D01%2C02%0A'
+        br'changegroup%3D01%2C02%2C03%0A'
         br'digests%3Dmd5%2Csha1%2Csha512%0A'
         br'error%3Dabort%2Cunsupportedcontent%2Cpushraced%2Cpushkey%0A'
         br'hgtagsfnodes%0A'
@@ -123,6 +122,11 @@ substitutions = [
             % (m.group(1), m.group(2))
         ),
     ),
+    # `discovery debug output
+    (
+        br'\b(\d+) total queries in \d.\d\d\d\ds\b',
+        lambda m: (br'%s total queries in *.????s (glob)' % m.group(1)),
+    ),
 ]
 
 # Various platform error strings, keyed on a common replacement string
@@ -136,6 +140,11 @@ _errors = {
         br'No such file or directory',
         # FormatMessage(ERROR_FILE_NOT_FOUND)
         br'The system cannot find the file specified',
+    ),
+    br'$EACCES$': (
+        br'Permission denied \(os error 13\)',
+        # strerror
+        br'Permission denied',
     ),
     br'$ENOTDIR$': (
         # strerror()
@@ -159,6 +168,7 @@ _errors = {
     br'$EADDRNOTAVAIL$': (
         # strerror()
         br'Cannot assign requested address',
+        br'Can\'t assign requested address',
         # FormatMessage(WSAEADDRNOTAVAIL)
     ),
 }

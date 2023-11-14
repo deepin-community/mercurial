@@ -9,12 +9,7 @@ Try some commands:
   $ hg grep wah
   [1]
   $ hg manifest
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 0 changesets with 0 changes to 0 files
+  $ hg verify -q
 
 Check the basic files created:
 
@@ -25,9 +20,10 @@ Check the basic files created:
   store
   wcache
 
-Should be empty:
+Should be empty (except for the "basic" requires):
 
   $ ls .hg/store
+  requires
 
 Poke at a clone:
 
@@ -36,23 +32,19 @@ Poke at a clone:
   updating to branch default
   0 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ cd b
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 0 changesets with 0 changes to 0 files
+  $ hg verify -q
   $ ls .hg
   00changelog.i
+  branch
   cache
-  dirstate
   hgrc
   requires
   store
   wcache
 
-Should be empty:
+Should be empty (except for the "basic" requires):
 
   $ ls .hg/store
+  requires
 
   $ cd ..

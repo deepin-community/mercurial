@@ -1,6 +1,16 @@
 #testcases stripbased phasebased
 #testcases abortflag abortcommand
 #testcases continueflag continuecommand
+#testcases dirstate-v1 dirstate-v2
+
+#if dirstate-v2
+  $ cat >> $HGRCPATH << EOF
+  > [format]
+  > use-dirstate-v2=1
+  > [storage]
+  > dirstate-v2.slow-path=allow
+  > EOF
+#endif
 
   $ cat <<EOF >> $HGRCPATH
   > [extensions]
@@ -16,7 +26,7 @@
 
   $ cat <<EOF >> $HGRCPATH
   > [format]
-  > internal-phase = yes
+  > use-internal-phase = yes
   > EOF
 
 #endif
@@ -253,11 +263,11 @@ unshelve and conflicts with tracked and untracked files
   M f
   ? f.orig
   $ cat f
-  <<<<<<< working-copy: d44eae5c3d33 - shelve: pending changes temporary commit
+  <<<<<<< working-copy:   d44eae5c3d33 - shelve: pending changes temporary commit
   g
   =======
   f
-  >>>>>>> shelve:       aef214a5229c - shelve: changes to: commit stuff
+  >>>>>>> shelved change: aef214a5229c - shelve: changes to: commit stuff
   $ cat f.orig
   g
   $ hg unshelve --abort -t false
@@ -295,11 +305,11 @@ unshelve and conflicts with tracked and untracked files
   M f
   ? f.orig
   $ cat f
-  <<<<<<< working-copy: 6b563750f973 - test: intermediate other change
+  <<<<<<< working-copy:   6b563750f973 - test: intermediate other change
   g
   =======
   f
-  >>>>>>> shelve:       aef214a5229c - shelve: changes to: commit stuff
+  >>>>>>> shelved change: aef214a5229c - shelve: changes to: commit stuff
   $ cat f.orig
   g
 
@@ -986,9 +996,9 @@ Demonstrate that the labels are correct in the merge conflict
   [240]
   $ cat foo
   r0
-  <<<<<<< working-copy: 0b2fcf2a90e9 - shelve: pending changes temporary commit
+  <<<<<<< working-copy:   0b2fcf2a90e9 - shelve: pending changes temporary commit
   this is in wdir, conflicts with shelve
   =======
   this will be shelved
-  >>>>>>> shelve:       9c072a2163db - shelve: changes to: r0
+  >>>>>>> shelved change: 9c072a2163db - shelve: changes to: r0
   $ cd ..

@@ -18,7 +18,7 @@ use hg::revlog::{Node, RevlogIndex};
 use hg::{Graph, GraphError, Revision, WORKING_DIRECTORY_REVISION};
 use libc::{c_int, ssize_t};
 
-const REVLOG_CABI_VERSION: c_int = 2;
+const REVLOG_CABI_VERSION: c_int = 3;
 
 #[repr(C)]
 pub struct Revlog_CAPI {
@@ -29,6 +29,10 @@ pub struct Revlog_CAPI {
         index: *mut revlog_capi::RawPyObject,
         rev: ssize_t,
     ) -> *const Node,
+    fast_rank: unsafe extern "C" fn(
+        index: *mut revlog_capi::RawPyObject,
+        rev: ssize_t,
+    ) -> ssize_t,
     index_parents: unsafe extern "C" fn(
         index: *mut revlog_capi::RawPyObject,
         rev: c_int,
@@ -151,6 +155,38 @@ impl Graph for Index {
         match code {
             0 => Ok(res),
             _ => Err(GraphError::ParentOutOfRange(rev)),
+        }
+    }
+}
+
+impl vcsgraph::graph::Graph for Index {
+    fn parents(
+        &self,
+        rev: Revision,
+    ) -> Result<vcsgraph::graph::Parents, vcsgraph::graph::GraphReadError>
+    {
+        match Graph::parents(self, rev) {
+            Ok(parents) => Ok(vcsgraph::graph::Parents(parents)),
+            Err(GraphError::ParentOutOfRange(rev)) => {
+                Err(vcsgraph::graph::GraphReadError::KeyedInvalidKey(rev))
+            }
+            Err(GraphError::WorkingDirectoryUnsupported) => Err(
+                vcsgraph::graph::GraphReadError::WorkingDirectoryUnsupported,
+            ),
+        }
+    }
+}
+
+impl vcsgraph::graph::RankedGraph for Index {
+    fn rank(
+        &self,
+        rev: Revision,
+    ) -> Result<vcsgraph::graph::Rank, vcsgraph::graph::GraphReadError> {
+        match unsafe {
+            (self.capi.fast_rank)(self.index.as_ptr(), rev as ssize_t)
+        } {
+            -1 => Err(vcsgraph::graph::GraphReadError::InconsistentGraphData),
+            rank => Ok(rank as usize),
         }
     }
 }

@@ -11,7 +11,6 @@
 allowing operations like diff and log with revsets.
 """
 
-from __future__ import absolute_import
 
 from .i18n import _
 from .pycompat import getattr
@@ -71,6 +70,7 @@ class unionrevlog(revlog.revlog):
                 _sds,
                 _dcm,
                 _sdcm,
+                rank,
             ) = rev
             flags = _start & 0xFFFF
 
@@ -107,12 +107,13 @@ class unionrevlog(revlog.revlog):
                 0,  # sidedata size
                 revlog_constants.COMP_MODE_INLINE,
                 revlog_constants.COMP_MODE_INLINE,
+                rank,
             )
             self.index.append(e)
             self.bundlerevs.add(n)
             n += 1
 
-    def _chunk(self, rev):
+    def _chunk(self, rev, df=None):
         if rev <= self.repotiprev:
             return revlog.revlog._chunk(self, rev)
         return self.revlog2._chunk(self.node(rev))
@@ -145,7 +146,19 @@ class unionrevlog(revlog.revlog):
             func = super(unionrevlog, self)._revisiondata
         return func(node, _df=_df, raw=raw)
 
-    def addrevision(self, text, transaction, link, p1=None, p2=None, d=None):
+    def addrevision(
+        self,
+        text,
+        transaction,
+        link,
+        p1,
+        p2,
+        cachedelta=None,
+        node=None,
+        flags=revlog.REVIDX_DEFAULT_FLAGS,
+        deltacomputer=None,
+        sidedata=None,
+    ):
         raise NotImplementedError
 
     def addgroup(
@@ -156,7 +169,8 @@ class unionrevlog(revlog.revlog):
         alwayscache=False,
         addrevisioncb=None,
         duplicaterevisioncb=None,
-        maybemissingparents=False,
+        debug_info=None,
+        delta_base_reuse_policy=None,
     ):
         raise NotImplementedError
 
@@ -208,7 +222,7 @@ class unionpeer(localrepo.localpeer):
         return False
 
 
-class unionrepository(object):
+class unionrepository:
     """Represents the union of data in 2 repositories.
 
     Instances are not usable if constructed directly. Use ``instance()``
@@ -256,8 +270,8 @@ class unionrepository(object):
     def cancopy(self):
         return False
 
-    def peer(self):
-        return unionpeer(self)
+    def peer(self, path=None, remotehidden=False):
+        return unionpeer(self, path=None, remotehidden=remotehidden)
 
     def getcwd(self):
         return encoding.getcwd()  # always outside the repo

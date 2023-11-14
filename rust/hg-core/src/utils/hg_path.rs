@@ -8,7 +8,6 @@
 use crate::utils::SliceExt;
 use std::borrow::Borrow;
 use std::borrow::Cow;
-use std::convert::TryFrom;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::ops::Deref;
@@ -144,15 +143,8 @@ impl From<HgPathError> for std::io::Error {
 /// On Unix, it's just byte-to-byte conversion. On Windows, it has to be
 /// decoded from MBCS to WTF-8. If WindowsUTF8Plan is implemented, the source
 /// character encoding will be determined on a per-repository basis.
-//
-// FIXME: (adapted from a comment in the stdlib)
-// `HgPath::new()` current implementation relies on `Slice` being
-// layout-compatible with `[u8]`.
-// When attribute privacy is implemented, `Slice` should be annotated as
-// `#[repr(transparent)]`.
-// Anyway, `Slice` representation and layout are considered implementation
-// detail, are not documented and must not be relied upon.
 #[derive(Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[repr(transparent)]
 pub struct HgPath {
     inner: [u8],
 }
@@ -213,20 +205,18 @@ impl HgPath {
     /// ```
     pub fn split_filename(&self) -> (&Self, &Self) {
         match &self.inner.iter().rposition(|c| *c == b'/') {
-            None => (HgPath::new(""), &self),
+            None => (HgPath::new(""), self),
             Some(size) => (
                 HgPath::new(&self.inner[..*size]),
                 HgPath::new(&self.inner[*size + 1..]),
             ),
         }
     }
-    pub fn join<T: ?Sized + AsRef<Self>>(&self, other: &T) -> HgPathBuf {
-        let mut inner = self.inner.to_owned();
-        if !inner.is_empty() && inner.last() != Some(&b'/') {
-            inner.push(b'/');
-        }
-        inner.extend(other.as_ref().bytes());
-        HgPathBuf::from_bytes(&inner)
+
+    pub fn join(&self, path: &HgPath) -> HgPathBuf {
+        let mut buf = self.to_owned();
+        buf.push(path);
+        buf
     }
 
     pub fn components(&self) -> impl Iterator<Item = &HgPath> {
@@ -336,7 +326,7 @@ impl HgPath {
     #[cfg(unix)]
     /// Split a pathname into drive and path. On Posix, drive is always empty.
     pub fn split_drive(&self) -> (&HgPath, &HgPath) {
-        (HgPath::new(b""), &self)
+        (HgPath::new(b""), self)
     }
 
     /// Checks for errors in the path, short-circuiting at the first one.
@@ -405,7 +395,15 @@ impl HgPathBuf {
     pub fn new() -> Self {
         Default::default()
     }
-    pub fn push(&mut self, byte: u8) {
+
+    pub fn push<T: ?Sized + AsRef<HgPath>>(&mut self, other: &T) {
+        if !self.inner.is_empty() && self.inner.last() != Some(&b'/') {
+            self.inner.push(b'/');
+        }
+        self.inner.extend(other.as_ref().bytes())
+    }
+
+    pub fn push_byte(&mut self, byte: u8) {
         self.inner.push(byte);
     }
     pub fn from_bytes(s: &[u8]) -> HgPathBuf {
@@ -433,7 +431,7 @@ impl Deref for HgPathBuf {
 
     #[inline]
     fn deref(&self) -> &HgPath {
-        &HgPath::new(&self.inner)
+        HgPath::new(&self.inner)
     }
 }
 
@@ -443,15 +441,15 @@ impl<T: ?Sized + AsRef<HgPath>> From<&T> for HgPathBuf {
     }
 }
 
-impl Into<Vec<u8>> for HgPathBuf {
-    fn into(self) -> Vec<u8> {
-        self.inner
+impl From<HgPathBuf> for Vec<u8> {
+    fn from(val: HgPathBuf) -> Self {
+        val.inner
     }
 }
 
 impl Borrow<HgPath> for HgPathBuf {
     fn borrow(&self) -> &HgPath {
-        &HgPath::new(self.as_bytes())
+        HgPath::new(self.as_bytes())
     }
 }
 
@@ -481,10 +479,11 @@ impl Extend<u8> for HgPathBuf {
     }
 }
 
-/// TODO: Once https://www.mercurial-scm.org/wiki/WindowsUTF8Plan is
+/// Create a new [`OsString`] from types referenceable as [`HgPath`].
+///
+/// TODO: Once <https://www.mercurial-scm.org/wiki/WindowsUTF8Plan> is
 /// implemented, these conversion utils will have to work differently depending
 /// on the repository encoding: either `UTF-8` or `MBCS`.
-
 pub fn hg_path_to_os_string<P: AsRef<HgPath>>(
     hg_path: P,
 ) -> Result<OsString, HgPathError> {
@@ -493,19 +492,21 @@ pub fn hg_path_to_os_string<P: AsRef<HgPath>>(
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        os_str = std::ffi::OsStr::from_bytes(&hg_path.as_ref().as_bytes());
+        os_str = std::ffi::OsStr::from_bytes(hg_path.as_ref().as_bytes());
     }
     // TODO Handle other platforms
     // TODO: convert from WTF8 to Windows MBCS (ANSI encoding).
     Ok(os_str.to_os_string())
 }
 
+/// Create a new [`PathBuf`] from types referenceable as [`HgPath`].
 pub fn hg_path_to_path_buf<P: AsRef<HgPath>>(
     hg_path: P,
 ) -> Result<PathBuf, HgPathError> {
     Ok(Path::new(&hg_path_to_os_string(hg_path)?).to_path_buf())
 }
 
+/// Create a new [`HgPathBuf`] from types referenceable as [`OsStr`].
 pub fn os_string_to_hg_path_buf<S: AsRef<OsStr>>(
     os_string: S,
 ) -> Result<HgPathBuf, HgPathError> {
@@ -513,7 +514,7 @@ pub fn os_string_to_hg_path_buf<S: AsRef<OsStr>>(
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        buf = HgPathBuf::from_bytes(&os_string.as_ref().as_bytes());
+        buf = HgPathBuf::from_bytes(os_string.as_ref().as_bytes());
     }
     // TODO Handle other platforms
     // TODO: convert from WTF8 to Windows MBCS (ANSI encoding).
@@ -522,6 +523,7 @@ pub fn os_string_to_hg_path_buf<S: AsRef<OsStr>>(
     Ok(buf)
 }
 
+/// Create a new [`HgPathBuf`] from types referenceable as [`Path`].
 pub fn path_to_hg_path_buf<P: AsRef<Path>>(
     path: P,
 ) -> Result<HgPathBuf, HgPathError> {
@@ -530,7 +532,7 @@ pub fn path_to_hg_path_buf<P: AsRef<Path>>(
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        buf = HgPathBuf::from_bytes(&os_str.as_bytes());
+        buf = HgPathBuf::from_bytes(os_str.as_bytes());
     }
     // TODO Handle other platforms
     // TODO: convert from WTF8 to Windows MBCS (ANSI encoding).

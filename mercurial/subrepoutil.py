@@ -5,9 +5,7 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
-import errno
 import os
 import posixpath
 import re
@@ -64,9 +62,7 @@ def state(ctx, ui):
         if f in ctx:
             try:
                 data = ctx[f].data()
-            except IOError as err:
-                if err.errno != errno.ENOENT:
-                    raise
+            except FileNotFoundError:
                 # handle missing subrepo spec files as removed
                 ui.warn(
                     _(b"warning: subrepo spec file \'%s\' not found\n")
@@ -103,9 +99,8 @@ def state(ctx, ui):
                         % (repo.pathto(b'.hgsubstate'), (i + 1))
                     )
                 rev[path] = revision
-        except IOError as err:
-            if err.errno != errno.ENOENT:
-                raise
+        except FileNotFoundError:
+            pass
 
     def remap(src):
         # type: (bytes) -> bytes
@@ -191,7 +186,7 @@ def submerge(repo, wctx, mctx, actx, overwrite, labels=None):
         repo.ui.debug(b"  subrepo %s: %s %s\n" % (s, msg, r))
 
     promptssrc = filemerge.partextras(labels)
-    for s, l in sorted(pycompat.iteritems(s1)):
+    for s, l in sorted(s1.items()):
         a = sa.get(s, nullstate)
         ld = l  # local state with possible dirty flag for compares
         if wctx.sub(s).dirty():
@@ -389,7 +384,7 @@ def repo_rel_or_abs_source(repo):
     Either absolute or relative the outermost repo"""
     parent = repo
     chunks = []
-    while util.safehasattr(parent, b'_subparent'):
+    while util.safehasattr(parent, '_subparent'):
         source = urlutil.url(parent._subsource)
         chunks.append(bytes(source))
         if source.isabs():
@@ -405,7 +400,7 @@ def reporelpath(repo):
     # type: (localrepo.localrepository) -> bytes
     """return path to this (sub)repo as seen from outermost repo"""
     parent = repo
-    while util.safehasattr(parent, b'_subparent'):
+    while util.safehasattr(parent, '_subparent'):
         parent = parent._subparent
     return repo.root[len(pathutil.normasprefix(parent.root)) :]
 
@@ -420,7 +415,7 @@ def _abssource(repo, push=False, abort=True):
     # type: (localrepo.localrepository, bool, bool) -> Optional[bytes]
     """return pull/push path of repo - either based on parent repo .hgsub info
     or on the top repo config. Abort or return None if no source found."""
-    if util.safehasattr(repo, b'_subparent'):
+    if util.safehasattr(repo, '_subparent'):
         source = urlutil.url(repo._subsource)
         if source.isabs():
             return bytes(source)
@@ -433,7 +428,7 @@ def _abssource(repo, push=False, abort=True):
             return bytes(parent)
     else:  # recursion reached top repo
         path = None
-        if util.safehasattr(repo, b'_subtoppath'):
+        if util.safehasattr(repo, '_subtoppath'):
             path = repo._subtoppath
         elif push and repo.ui.config(b'paths', b'default-push'):
             path = repo.ui.config(b'paths', b'default-push')

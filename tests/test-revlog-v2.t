@@ -20,16 +20,9 @@ Can create and open repo with revlog v2 requirement
 
   $ hg init new-repo
   $ cd new-repo
-  $ cat .hg/requires
-  dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  $ hg debugrequires | grep revlogv2
   exp-revlogv2.2
-  fncache
-  generaldelta
-  persistent-nodemap (rust !)
-  revlog-compression-zstd (zstd !)
-  sparserevlog
-  store
+  dirstate-v2 (dirstate-v2 !)
 
   $ hg log
 
@@ -124,16 +117,6 @@ The two repository should be identical, this diff MUST be empty
 hg verify should be happy
 -------------------------
 
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 1 changes to 1 files
+  $ hg verify -q
 
-  $ hg verify -R ../cloned-repo
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 1 changes to 1 files
+  $ hg verify -R ../cloned-repo -q

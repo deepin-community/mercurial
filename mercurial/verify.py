@@ -5,7 +5,6 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
 import os
 
@@ -16,6 +15,7 @@ from .utils import stringutil
 from . import (
     error,
     pycompat,
+    requirements,
     revlog,
     util,
 )
@@ -55,7 +55,7 @@ WARN_NULLID_COPY_SOURCE = _(
 )
 
 
-class verifier(object):
+class verifier:
     def __init__(self, repo, level=None):
         self.repo = repo.unfiltered()
         self.ui = repo.ui
@@ -211,6 +211,12 @@ class verifier(object):
         self._crosscheckfiles(filelinkrevs, filenodes)
         totalfiles, filerevisions = self._verifyfiles(filenodes, filelinkrevs)
 
+        if self.errors:
+            ui.warn(_(b"not checking dirstate because of previous errors\n"))
+            dirstate_errors = 0
+        else:
+            dirstate_errors = self._verify_dirstate()
+
         # final report
         ui.status(
             _(b"checked %d changesets with %d changes to %d files\n")
@@ -226,6 +232,11 @@ class verifier(object):
                 msg = _(b"(first damaged changeset appears to be %d)\n")
                 msg %= min(self.badrevs)
                 ui.warn(msg)
+            if dirstate_errors:
+                ui.warn(
+                    _(b"dirstate inconsistent with current parent's manifest\n")
+                )
+                ui.warn(_(b"%d dirstate errors\n") % dirstate_errors)
             return 1
         return 0
 
@@ -395,21 +406,25 @@ class verifier(object):
             storefiles = set()
             subdirs = set()
             revlogv1 = self.revlogv1
-            for t, f, f2, size in repo.store.datafiles():
-                if not f:
-                    self._err(None, _(b"cannot decode filename '%s'") % f2)
-                elif (size > 0 or not revlogv1) and f.startswith(b'meta/'):
-                    storefiles.add(_normpath(f))
-                    subdirs.add(os.path.dirname(f))
+            undecodable = []
+            for entry in repo.store.data_entries(undecodable=undecodable):
+                for file_ in entry.files():
+                    f = file_.unencoded_path
+                    size = file_.file_size(repo.store.vfs)
+                    if (size > 0 or not revlogv1) and f.startswith(b'meta/'):
+                        storefiles.add(_normpath(f))
+                        subdirs.add(os.path.dirname(f))
+            for f in undecodable:
+                self._err(None, _(b"cannot decode filename '%s'") % f)
             subdirprogress = ui.makeprogress(
                 _(b'checking'), unit=_(b'manifests'), total=len(subdirs)
             )
 
-        for subdir, linkrevs in pycompat.iteritems(subdirnodes):
+        for subdir, linkrevs in subdirnodes.items():
             subdirfilenodes = self._verifymanifest(
                 linkrevs, subdir, storefiles, subdirprogress
             )
-            for f, onefilenodes in pycompat.iteritems(subdirfilenodes):
+            for f, onefilenodes in subdirfilenodes.items():
                 filenodes.setdefault(f, {}).update(onefilenodes)
 
         if not dir and subdirnodes:
@@ -459,11 +474,15 @@ class verifier(object):
         ui.status(_(b"checking files\n"))
 
         storefiles = set()
-        for rl_type, f, f2, size in repo.store.datafiles():
-            if not f:
-                self._err(None, _(b"cannot decode filename '%s'") % f2)
-            elif (size > 0 or not revlogv1) and f.startswith(b'data/'):
-                storefiles.add(_normpath(f))
+        undecodable = []
+        for entry in repo.store.data_entries(undecodable=undecodable):
+            for file_ in entry.files():
+                size = file_.file_size(repo.store.vfs)
+                f = file_.unencoded_path
+                if (size > 0 or not revlogv1) and f.startswith(b'data/'):
+                    storefiles.add(_normpath(f))
+        for f in undecodable:
+            self._err(None, _(b"cannot decode filename '%s'") % f)
 
         state = {
             # TODO this assumes revlog storage for changelog.
@@ -573,7 +592,7 @@ class verifier(object):
 
             # cross-check
             if f in filenodes:
-                fns = [(v, k) for k, v in pycompat.iteritems(filenodes[f])]
+                fns = [(v, k) for k, v in filenodes[f].items()]
                 for lr, node in sorted(fns):
                     msg = _(b"manifest refers to unknown revision %s")
                     self._err(lr, msg % short(node), f)
@@ -584,3 +603,25 @@ class verifier(object):
                 self._warn(_(b"warning: orphan data file '%s'") % f)
 
         return len(files), revisions
+
+    def _verify_dirstate(self):
+        """Check that the dirstate is consistent with the parent's manifest"""
+        repo = self.repo
+        ui = self.ui
+        ui.status(_(b"checking dirstate\n"))
+
+        parent1, parent2 = repo.dirstate.parents()
+        m1 = repo[parent1].manifest()
+        m2 = repo[parent2].manifest()
+        dirstate_errors = 0
+
+        is_narrow = requirements.NARROW_REQUIREMENT in repo.requirements
+        narrow_matcher = repo.narrowmatch() if is_narrow else None
+
+        for err in repo.dirstate.verify(m1, m2, parent1, narrow_matcher):
+            ui.error(err)
+            dirstate_errors += 1
+
+        if dirstate_errors:
+            self.errors += dirstate_errors
+        return dirstate_errors

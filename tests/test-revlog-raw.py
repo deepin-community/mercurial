@@ -1,8 +1,6 @@
 # test revlog interaction about raw data (flagprocessor)
 
-from __future__ import absolute_import, print_function
 
-import collections
 import hashlib
 import sys
 
@@ -20,7 +18,7 @@ from mercurial.revlogutils import (
 )
 
 
-class _NoTransaction(object):
+class _NoTransaction:
     """transaction like object to update the nodemap outside a transaction"""
 
     def __init__(self):
@@ -54,10 +52,6 @@ tvfs.options = {
     b'revlogv1': True,
     b'sparse-revlog': True,
 }
-
-# The test wants to control whether to use delta explicitly, based on
-# "storedeltachains".
-revlog.revlog._isgooddeltainfo = lambda self, d, textlen: self._storedeltachains
 
 
 def abort(msg):
@@ -151,7 +145,7 @@ def addgroupcopy(rlog, tr, destname=b'_destrevlog', optimaldelta=True):
     code path, which is not covered by "appendrev" alone.
     """
 
-    class dummychangegroup(object):
+    class dummychangegroup:
         @staticmethod
         def deltachunk(pnode):
             pnode = pnode or rlog.nullid
@@ -325,7 +319,7 @@ def writecases(rlog, tr):
             rawtext = text
         if rlog.rawsize(rev) != len(rawtext):
             abort('rev %d: wrong rawsize' % rev)
-        if rlog.revision(rev, raw=False) != text:
+        if rlog.revision(rev) != text:
             abort('rev %d: wrong text' % rev)
         if rlog.rawdata(rev) != rawtext:
             abort('rev %d: wrong rawtext' % rev)
@@ -472,21 +466,21 @@ def issnapshottest(rlog):
         print('  got:      %s' % result)
 
 
-snapshotmapall = {0: [6, 8, 11, 17, 19, 25], 8: [21], -1: [0, 30]}
-snapshotmap15 = {0: [17, 19, 25], 8: [21], -1: [30]}
+snapshotmapall = {0: {6, 8, 11, 17, 19, 25}, 8: {21}, -1: {0, 30}}
+snapshotmap15 = {0: {17, 19, 25}, 8: {21}, -1: {30}}
 
 
 def findsnapshottest(rlog):
-    resultall = collections.defaultdict(list)
-    deltas._findsnapshots(rlog, resultall, 0)
-    resultall = dict(resultall.items())
+    cache = deltas.SnapshotCache()
+    cache.update(rlog)
+    resultall = dict(cache.snapshots)
     if resultall != snapshotmapall:
         print('snapshot map  differ:')
         print('  expected: %s' % snapshotmapall)
         print('  got:      %s' % resultall)
-    result15 = collections.defaultdict(list)
-    deltas._findsnapshots(rlog, result15, 15)
-    result15 = dict(result15.items())
+    cache15 = deltas.SnapshotCache()
+    cache15.update(rlog, 15)
+    result15 = dict(cache15.snapshots)
     if result15 != snapshotmap15:
         print('snapshot map  differ:')
         print('  expected: %s' % snapshotmap15)

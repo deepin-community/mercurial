@@ -29,14 +29,19 @@ $PYTHON38_x86_SHA256 = "ad07633a1f0cd795f3bf9da33729f662281df196b4567fa795829f3b
 $PYTHON38_x64_URL = "https://www.python.org/ftp/python/3.8.10/python-3.8.10-amd64.exe"
 $PYTHON38_x64_SHA256 = "7628244cb53408b50639d2c1287c659f4e29d3dfdb9084b11aed5870c0c6a48a"
 
-$PYTHON39_x86_URL = "https://www.python.org/ftp/python/3.9.5/python-3.9.5.exe"
-$PYTHON39_x86_SHA256 = "505129081a839b699a6ab9064b441ad922ef03767b5dd4241fd0c2166baf64de"
-$PYTHON39_x64_URL = "https://www.python.org/ftp/python/3.9.5/python-3.9.5-amd64.exe"
-$PYTHON39_x64_SHA256 = "84d5243088ba00c11e51905c704dbe041040dfff044f4e1ce5476844ee2e6eac"
+$PYTHON39_x86_URL = "https://www.python.org/ftp/python/3.9.12/python-3.9.12.exe"
+$PYTHON39_x86_SHA256 = "3d883326f30ac231c06b33f2a8ea700a185c20bf98d01da118079e9134d5fd20"
+$PYTHON39_X64_URL = "https://www.python.org/ftp/python/3.9.12/python-3.9.12-amd64.exe"
+$PYTHON39_x64_SHA256 = "2ba57ab2281094f78fc0227a27f4d47c90d94094e7cca35ce78419e616b3cb63"
 
-# PIP 19.2.3.
-$PIP_URL = "https://github.com/pypa/get-pip/raw/309a56c5fd94bd1134053a541cb4657a4e47e09d/get-pip.py"
-$PIP_SHA256 = "57e3643ff19f018f8a00dfaa6b7e4620e3c1a7a2171fd218425366ec006b3bfe"
+$PYTHON310_x86_URL = "https://www.python.org/ftp/python/3.10.4/python-3.10.4.exe"
+$PYTHON310_x86_SHA256 = "97c37c53c7a826f5b00e185754ab2a324a919f7afc469b20764b71715c80041d"
+$PYTHON310_X64_URL = "https://www.python.org/ftp/python/3.10.4/python-3.10.4-amd64.exe"
+$PYTHON310_x64_SHA256 = "a81fc4180f34e5733c3f15526c668ff55de096366f9006d8a44c0336704e50f1"
+
+# PIP 22.0.4.
+$PIP_URL = "https://github.com/pypa/get-pip/raw/38e54e5de07c66e875c11a1ebbdb938854625dd8/public/get-pip.py"
+$PIP_SHA256 = "e235c437e5c7d7524fbce3880ca39b917a73dc565e0c813465b7a7a329bb279a"
 
 $INNO_SETUP_URL = "http://files.jrsoftware.org/is/5/innosetup-5.6.1-unicode.exe"
 $INNO_SETUP_SHA256 = "27D49E9BC769E9D1B214C153011978DB90DC01C2ACD1DDCD9ED7B3FE3B96B538"
@@ -44,9 +49,9 @@ $INNO_SETUP_SHA256 = "27D49E9BC769E9D1B214C153011978DB90DC01C2ACD1DDCD9ED7B3FE3B
 $MINGW_BIN_URL = "https://osdn.net/frs/redir.php?m=constant&f=mingw%2F68260%2Fmingw-get-0.6.3-mingw32-pre-20170905-1-bin.zip"
 $MINGW_BIN_SHA256 = "2AB8EFD7C7D1FC8EAF8B2FA4DA4EEF8F3E47768284C021599BC7435839A046DF"
 
-$MERCURIAL_WHEEL_FILENAME = "mercurial-5.8.1-cp39-cp39-win_amd64.whl"
-$MERCURIAL_WHEEL_URL = "https://files.pythonhosted.org/packages/5c/b5/a5fa664761eef29b6c90eb24cb09ab8fe2c9b4b86af41d42c17476aff29b/$MERCURIAL_WHEEL_FILENAME"
-$MERCURIAL_WHEEL_SHA256 = "cbf3efa68fd7ebf94691bd00d2c86bbd47ca73620c8faa4f18b6c394bf5f82b0"
+$MERCURIAL_WHEEL_FILENAME = "mercurial-6.1.4-cp39-cp39-win_amd64.whl"
+$MERCURIAL_WHEEL_URL = "https://files.pythonhosted.org/packages/82/86/fbcc4b552f6c1bdfdbbc5a68b0896a55ac3c6c0e8baf51394816bdc320bd/$MERCURIAL_WHEEL_FILENAME"
+$MERCURIAL_WHEEL_SHA256 = "ab578daec7c21786c668b0da2e71282a290d18010255719f78d0e55145020d46"
 
 $RUSTUP_INIT_URL = "https://static.rust-lang.org/rustup/archive/1.21.1/x86_64-pc-windows-gnu/rustup-init.exe"
 $RUSTUP_INIT_SHA256 = "d17df34ba974b9b19cf5c75883a95475aa22ddc364591d75d174090d55711c72"
@@ -85,7 +90,13 @@ function Invoke-Process($path, $arguments) {
     $p = Start-Process -FilePath $path -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
 
     if ($p.ExitCode -ne 0) {
-        throw "process exited non-0: $($p.ExitCode)"
+        # If the MSI is already installed, ignore the error
+        if ($p.ExitCode -eq 1638) {
+            Write-Output "program already installed; continuing..."
+        }
+        else {
+            throw "process exited non-0: $($p.ExitCode)"
+        }
     }
 }
 
@@ -132,6 +143,8 @@ function Install-Dependencies($prefix) {
     Secure-Download $PYTHON38_x64_URL ${prefix}\assets\python38-x64.exe $PYTHON38_x64_SHA256
     Secure-Download $PYTHON39_x86_URL ${prefix}\assets\python39-x86.exe $PYTHON39_x86_SHA256
     Secure-Download $PYTHON39_x64_URL ${prefix}\assets\python39-x64.exe $PYTHON39_x64_SHA256
+    Secure-Download $PYTHON310_x86_URL ${prefix}\assets\python310-x86.exe $PYTHON310_x86_SHA256
+    Secure-Download $PYTHON310_x64_URL ${prefix}\assets\python310-x64.exe $PYTHON310_x64_SHA256
     Secure-Download $PIP_URL ${pip} $PIP_SHA256
     Secure-Download $VS_BUILD_TOOLS_URL ${prefix}\assets\vs_buildtools.exe $VS_BUILD_TOOLS_SHA256
     Secure-Download $INNO_SETUP_URL ${prefix}\assets\InnoSetup.exe $INNO_SETUP_SHA256
@@ -143,9 +156,11 @@ function Install-Dependencies($prefix) {
     Install-Python3 "Python 3.7 32-bit" ${prefix}\assets\python37-x86.exe ${prefix}\python37-x86 ${pip}
     Install-Python3 "Python 3.7 64-bit" ${prefix}\assets\python37-x64.exe ${prefix}\python37-x64 ${pip}
     Install-Python3 "Python 3.8 32-bit" ${prefix}\assets\python38-x86.exe ${prefix}\python38-x86 ${pip}
-#    Install-Python3 "Python 3.8 64-bit" ${prefix}\assets\python38-x64.exe ${prefix}\python38-x64 ${pip}
+    Install-Python3 "Python 3.8 64-bit" ${prefix}\assets\python38-x64.exe ${prefix}\python38-x64 ${pip}
     Install-Python3 "Python 3.9 32-bit" ${prefix}\assets\python39-x86.exe ${prefix}\python39-x86 ${pip}
     Install-Python3 "Python 3.9 64-bit" ${prefix}\assets\python39-x64.exe ${prefix}\python39-x64 ${pip}
+    Install-Python3 "Python 3.10 32-bit" ${prefix}\assets\python310-x86.exe ${prefix}\python310-x86 ${pip}
+    Install-Python3 "Python 3.10 64-bit" ${prefix}\assets\python310-x64.exe ${prefix}\python310-x64 ${pip}
 
     Write-Output "installing Visual Studio 2017 Build Tools and SDKs"
     Invoke-Process ${prefix}\assets\vs_buildtools.exe "--quiet --wait --norestart --nocache --channelUri https://aka.ms/vs/15/release/channel --add Microsoft.VisualStudio.Workload.MSBuildTools --add Microsoft.VisualStudio.Component.Windows10SDK.17763 --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.Windows10SDK --add Microsoft.VisualStudio.Component.VC.140"

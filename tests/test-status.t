@@ -1,21 +1,12 @@
-#testcases dirstate-v1 dirstate-v1-tree dirstate-v2
-
-#if no-rust
-  $ hg init repo0 --config format.exp-dirstate-v2=1
-  abort: dirstate v2 format requested by config but not supported (requires Rust extensions)
-  [255]
-#endif
-
-#if dirstate-v1-tree
-#require rust
-  $ echo '[experimental]' >> $HGRCPATH
-  $ echo 'dirstate-tree.in-memory=1' >> $HGRCPATH
-#endif
+#testcases dirstate-v1 dirstate-v2
 
 #if dirstate-v2
-#require rust
-  $ echo '[format]' >> $HGRCPATH
-  $ echo 'exp-dirstate-v2=1' >> $HGRCPATH
+  $ cat >> $HGRCPATH << EOF
+  > [format]
+  > use-dirstate-v2=1
+  > [storage]
+  > dirstate-v2.slow-path=allow
+  > EOF
 #endif
 
   $ hg init repo1
@@ -227,6 +218,13 @@ hg status:
   ! deleted
   ? unknown
 
+hg status -n:
+  $ env RHG_ON_UNSUPPORTED=abort hg status -n
+  added
+  removed
+  deleted
+  unknown
+
 hg status modified added removed deleted unknown never-existed ignored:
 
   $ hg status modified added removed deleted unknown never-existed ignored
@@ -247,6 +245,11 @@ hg status -C:
   R removed
   ! deleted
   ? unknown
+
+hg status -0:
+
+  $ hg status -0 --config rhg.on-unsupported=abort
+  A added\x00A copied\x00R removed\x00! deleted\x00? unknown\x00 (no-eol) (esc)
 
 hg status -A:
 
@@ -317,9 +320,8 @@ hg status -A:
   ]
 
   $ hg status -A -Tpickle > pickle
-  >>> from __future__ import print_function
+  >>> import pickle
   >>> from mercurial import util
-  >>> pickle = util.pickle
   >>> data = sorted((x[b'status'].decode(), x[b'path'].decode()) for x in pickle.load(open("pickle", r"rb")))
   >>> for s, p in data: print("%s %s" % (s, p))
   ! deleted
@@ -640,8 +642,15 @@ using ui.statuscopies setting
   M a
     b
   R b
+  $ hg st --config ui.statuscopies=true --no-copies
+  M a
+  R b
   $ hg st --config ui.statuscopies=false
   M a
+  R b
+  $ hg st --config ui.statuscopies=false --copies
+  M a
+    b
   R b
   $ hg st --config ui.tweakdefaults=yes
   M a
@@ -749,7 +758,7 @@ When a directory containing a tracked file gets symlinked, as of 5.8
 if also listing unknowns.
 The tree-based dirstate and status algorithm fix this:
 
-#if symlink no-dirstate-v1
+#if symlink no-dirstate-v1 rust
 
   $ cd ..
   $ hg init issue6335
@@ -765,11 +774,11 @@ The tree-based dirstate and status algorithm fix this:
   ? bar/a
   ? foo
 
-  $ hg status -c  # incorrect output with `dirstate-v1`
+  $ hg status -c  # incorrect output without the Rust implementation
   $ hg status -cu
   ? bar/a
   ? foo
-  $ hg status -d  # incorrect output with `dirstate-v1`
+  $ hg status -d  # incorrect output without the Rust implementation
   ! foo/a
   $ hg status -du
   ! foo/a
@@ -845,7 +854,7 @@ entirely:
 
   $ chmod 0 subdir
   $ hg status --include subdir
-  subdir: Permission denied
+  subdir: $EACCES$
   R subdir/removed
   ! subdir/clean
   ! subdir/deleted
@@ -916,7 +925,7 @@ Check using include flag while listing ignored composes correctly (issue6514)
   I B.hs
   I ignored-folder/ctest.hs
 
-#if dirstate-v2
+#if rust dirstate-v2
 
 Check read_dir caching
 
@@ -940,9 +949,10 @@ It is still not set when there are unknown files
   $ hg debugdirstate --all --no-dates | grep '^ '
       0         -1 unset               subdir
 
-Now the directory is eligible for caching, so its mtime is save in the dirstate
+Now the directory is eligible for caching, so its mtime is saved in the dirstate
 
   $ rm subdir/unknown
+  $ sleep 0.1 # ensure the kernel’s internal clock for mtimes has ticked
   $ hg status
   $ hg debugdirstate --all --no-dates | grep '^ '
       0         -1 set                 subdir
@@ -971,4 +981,51 @@ Removing a node from the dirstate resets the cache for its parent directory
   $ hg status
   ? subdir/a
 
+Changing the hgignore rules makes us recompute the status (and rewrite the dirstate).
+
+  $ rm subdir/a
+  $ mkdir another-subdir
+  $ touch another-subdir/something-else
+
+  $ cat > "$TESTTMP"/extra-hgignore <<EOF
+  > something-else
+  > EOF
+
+  $ hg status --config ui.ignore.global="$TESTTMP"/extra-hgignore
+  $ hg debugdirstate --all --no-dates | grep '^ '
+      0         -1 set                 subdir
+
+  $ hg status
+  ? another-subdir/something-else
+
+One invocation of status is enough to populate the cache even if it's invalidated
+in the same run.
+
+  $ hg debugdirstate --all --no-dates | grep '^ '
+      0         -1 set                 subdir
+
 #endif
+
+
+Test copy source formatting.
+  $ cd ..
+  $ hg init copy-source-repo
+  $ cd copy-source-repo
+  $ mkdir -p foo/bar
+  $ cd foo/bar
+  $ touch file
+  $ hg addremove
+  adding foo/bar/file
+  $ hg commit -m 'add file'
+  $ hg mv file copy
+
+Copy source respects relative path setting.
+  $ hg st --config ui.statuscopies=true --config commands.status.relative=true
+  A copy
+    file
+  R file
+
+Copy source is not shown when --no-status is passed.
+  $ hg st --config ui.statuscopies=true --no-status
+  foo/bar/copy
+  foo/bar/file

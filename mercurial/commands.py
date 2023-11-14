@@ -5,9 +5,7 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
-import errno
 import os
 import re
 import sys
@@ -15,6 +13,7 @@ import sys
 from .i18n import _
 from .node import (
     hex,
+    nullid,
     nullrev,
     short,
     wdirrev,
@@ -30,7 +29,6 @@ from . import (
     copies,
     debugcommands as debugcommandsmod,
     destutil,
-    dirstateguard,
     discovery,
     encoding,
     error,
@@ -71,6 +69,7 @@ from . import (
 )
 from .utils import (
     dateutil,
+    procutil,
     stringutil,
     urlutil,
 )
@@ -254,10 +253,11 @@ def add(ui, repo, *pats, **opts):
     Returns 0 if all files are successfully added.
     """
 
-    m = scmutil.match(repo[None], pats, pycompat.byteskwargs(opts))
-    uipathfn = scmutil.getuipathfn(repo, legacyrelativevalue=True)
-    rejected = cmdutil.add(ui, repo, m, b"", uipathfn, False, **opts)
-    return rejected and 1 or 0
+    with repo.wlock(), repo.dirstate.changing_files(repo):
+        m = scmutil.match(repo[None], pats, pycompat.byteskwargs(opts))
+        uipathfn = scmutil.getuipathfn(repo, legacyrelativevalue=True)
+        rejected = cmdutil.add(ui, repo, m, b"", uipathfn, False, **opts)
+        return rejected and 1 or 0
 
 
 @command(
@@ -332,10 +332,11 @@ def addremove(ui, repo, *pats, **opts):
     opts = pycompat.byteskwargs(opts)
     if not opts.get(b'similarity'):
         opts[b'similarity'] = b'100'
-    matcher = scmutil.match(repo[None], pats, opts)
-    relative = scmutil.anypats(pats, opts)
-    uipathfn = scmutil.getuipathfn(repo, legacyrelativevalue=relative)
-    return scmutil.addremove(repo, matcher, b"", uipathfn, opts)
+    with repo.wlock(), repo.dirstate.changing_files(repo):
+        matcher = scmutil.match(repo[None], pats, opts)
+        relative = scmutil.anypats(pats, opts)
+        uipathfn = scmutil.getuipathfn(repo, legacyrelativevalue=relative)
+        return scmutil.addremove(repo, matcher, b"", uipathfn, opts)
 
 
 @command(
@@ -445,7 +446,7 @@ def annotate(ui, repo, *pats, **opts):
     rev = opts.get(b'rev')
     if rev:
         repo = scmutil.unhidehashlikerevs(repo, [rev], b'nowarn')
-    ctx = scmutil.revsingle(repo, rev)
+    ctx = logcmdutil.revsingle(repo, rev)
 
     ui.pager(b'annotate')
     rootfm = ui.formatter(b'annotate', opts)
@@ -526,7 +527,7 @@ def annotate(ui, repo, *pats, **opts):
     )
 
     def bad(x, y):
-        raise error.Abort(b"%s: %s" % (x, y))
+        raise error.InputError(b"%s: %s" % (x, y))
 
     m = scmutil.match(ctx, pats, opts, badfn=bad)
 
@@ -536,7 +537,7 @@ def annotate(ui, repo, *pats, **opts):
     )
     skiprevs = opts.get(b'skip')
     if skiprevs:
-        skiprevs = scmutil.revrange(repo, skiprevs)
+        skiprevs = logcmdutil.revrange(repo, skiprevs)
 
     uipathfn = scmutil.getuipathfn(repo, legacyrelativevalue=True)
     for abs in ctx.walk(m):
@@ -649,7 +650,7 @@ def archive(ui, repo, dest, **opts):
     rev = opts.get(b'rev')
     if rev:
         repo = scmutil.unhidehashlikerevs(repo, [rev], b'nowarn')
-    ctx = scmutil.revsingle(repo, rev)
+    ctx = logcmdutil.revsingle(repo, rev)
     if not ctx:
         raise error.InputError(
             _(b'no working directory: please specify a revision')
@@ -791,7 +792,7 @@ def _dobackout(ui, repo, node=None, rev=None, **opts):
 
     cmdutil.checkunfinished(repo)
     cmdutil.bailifchanged(repo)
-    ctx = scmutil.revsingle(repo, rev)
+    ctx = logcmdutil.revsingle(repo, rev)
     node = ctx.node()
 
     op1, op2 = repo.dirstate.parents()
@@ -824,7 +825,7 @@ def _dobackout(ui, repo, node=None, rev=None, **opts):
     bheads = repo.branchheads(branch)
     rctx = scmutil.revsingle(repo, hex(parent))
     if not opts.get(b'merge') and op1 != node:
-        with dirstateguard.dirstateguard(repo, b'backout'):
+        with repo.transaction(b"backout"):
             overrides = {(b'ui', b'forcemerge'): opts.get(b'tool', b'')}
             with ui.configoverride(overrides, b'backout'):
                 stats = mergemod.back_out(ctx, parent=repo[parent])
@@ -837,7 +838,7 @@ def _dobackout(ui, repo, node=None, rev=None, **opts):
             return 1
     else:
         hg.clean(repo, node, show_stats=False)
-        repo.dirstate.setbranch(branch)
+        repo.dirstate.setbranch(branch, repo.currenttransaction())
         cmdutil.revert(ui, repo, rctx)
 
     if opts.get(b'no_commit'):
@@ -1037,7 +1038,14 @@ def bisect(
     state = hbisect.load_state(repo)
 
     if rev:
-        nodes = [repo[i].node() for i in scmutil.revrange(repo, rev)]
+        revs = logcmdutil.revrange(repo, rev)
+        goodnodes = state[b'good']
+        badnodes = state[b'bad']
+        if goodnodes and badnodes:
+            candidates = repo.revs(b'(%ln)::(%ln)', goodnodes, badnodes)
+            candidates += repo.revs(b'(%ln)::(%ln)', badnodes, goodnodes)
+            revs = candidates & revs
+        nodes = [repo.changelog.node(i) for i in revs]
     else:
         nodes = [repo.lookup(b'.')]
 
@@ -1081,7 +1089,7 @@ def bisect(
                 raise error.StateError(_(b'current bisect revision is a merge'))
         if rev:
             if not nodes:
-                raise error.Abort(_(b'empty revision set'))
+                raise error.InputError(_(b'empty revision set'))
             node = repo[nodes[-1]].node()
         with hbisect.restore_state(repo, state, node):
             while changesets:
@@ -1348,7 +1356,7 @@ def branch(ui, repo, label=None, **opts):
     with repo.wlock():
         if opts.get(b'clean'):
             label = repo[b'.'].branch()
-            repo.dirstate.setbranch(label)
+            repo.dirstate.setbranch(label, repo.currenttransaction())
             ui.status(_(b'reset working directory to branch %s\n') % label)
         elif label:
 
@@ -1364,7 +1372,7 @@ def branch(ui, repo, label=None, **opts):
                         hint=_(b"use 'hg update' to switch to it"),
                     )
 
-            repo.dirstate.setbranch(label)
+            repo.dirstate.setbranch(label, repo.currenttransaction())
             ui.status(_(b'marked working directory as branch %s\n') % label)
 
             # find any open named branches aside from default
@@ -1424,7 +1432,7 @@ def branches(ui, repo, active=False, closed=False, **opts):
     revs = opts.get(b'rev')
     selectedbranches = None
     if revs:
-        revs = scmutil.revrange(repo, revs)
+        revs = logcmdutil.revrange(repo, revs)
         getbi = repo.revbranchcache().branchinfo
         selectedbranches = {getbi(r)[0] for r in revs}
 
@@ -1486,6 +1494,12 @@ def branches(ui, repo, active=False, closed=False, **opts):
 @command(
     b'bundle',
     [
+        (
+            b'',
+            b'exact',
+            None,
+            _(b'compute the base from the revision specified'),
+        ),
         (
             b'f',
             b'force',
@@ -1555,10 +1569,11 @@ def bundle(ui, repo, fname, *dests, **opts):
     Returns 0 on success, 1 if no changes found.
     """
     opts = pycompat.byteskwargs(opts)
+
     revs = None
     if b'rev' in opts:
         revstrings = opts[b'rev']
-        revs = scmutil.revrange(repo, revstrings)
+        revs = logcmdutil.revrange(repo, revstrings)
         if revstrings and not revs:
             raise error.InputError(_(b'no commits to bundle'))
 
@@ -1572,7 +1587,7 @@ def bundle(ui, repo, fname, *dests, **opts):
             pycompat.bytestr(e),
             hint=_(b"see 'hg help bundlespec' for supported values for --type"),
         )
-    cgversion = bundlespec.contentopts[b"cg.version"]
+    cgversion = bundlespec.params[b"cg.version"]
 
     # Packed bundles are a pseudo bundle format for now.
     if cgversion == b's1':
@@ -1588,9 +1603,21 @@ def bundle(ui, repo, fname, *dests, **opts):
             )
         if opts.get(b'base'):
             ui.warn(_(b"ignoring --base because --all was specified\n"))
+        if opts.get(b'exact'):
+            ui.warn(_(b"ignoring --exact because --all was specified\n"))
         base = [nullrev]
+    elif opts.get(b'exact'):
+        if dests:
+            raise error.InputError(
+                _(b"--exact is incompatible with specifying destinations")
+            )
+        if opts.get(b'base'):
+            ui.warn(_(b"ignoring --base because --exact was specified\n"))
+        base = repo.revs(b'parents(%ld) - %ld', revs, revs)
+        if not base:
+            base = [nullrev]
     else:
-        base = scmutil.revrange(repo, opts.get(b'base'))
+        base = logcmdutil.revrange(repo, opts.get(b'base'))
     if cgversion not in changegroup.supportedoutgoingversions(repo):
         raise error.Abort(
             _(b"repository does not support bundle version %s") % cgversion
@@ -1601,8 +1628,9 @@ def bundle(ui, repo, fname, *dests, **opts):
             raise error.InputError(
                 _(b"--base is incompatible with specifying destinations")
             )
-        common = [repo[rev].node() for rev in base]
-        heads = [repo[r].node() for r in revs] if revs else None
+        cl = repo.changelog
+        common = [cl.node(rev) for rev in base]
+        heads = [cl.node(r) for r in revs] if revs else None
         outgoing = discovery.outgoing(repo, common, heads)
         missing = outgoing.missing
         excluded = outgoing.excluded
@@ -1610,7 +1638,7 @@ def bundle(ui, repo, fname, *dests, **opts):
         missing = set()
         excluded = set()
         for path in urlutil.get_push_paths(repo, ui, dests):
-            other = hg.peer(repo, opts, path.rawloc)
+            other = hg.peer(repo, opts, path)
             if revs is not None:
                 hex_revs = [repo[r].hex() for r in revs]
             else:
@@ -1637,6 +1665,14 @@ def bundle(ui, repo, fname, *dests, **opts):
     if not missing:
         scmutil.nochangesfound(ui, repo, not base and excluded)
         return 1
+
+    # internal changeset are internal implementation details that should not
+    # leave the repository. Bundling with `hg bundle` create such risk.
+    bundled_internal = repo.revs(b"%ln and _internal()", missing)
+    if bundled_internal:
+        msg = _(b"cannot bundle internal changesets")
+        hint = _(b"%d internal changesets selected") % len(bundled_internal)
+        raise error.Abort(msg, hint=hint)
 
     if heads:
         outgoing = discovery.outgoing(
@@ -1681,14 +1717,15 @@ def bundle(ui, repo, fname, *dests, **opts):
     # Bundling of obsmarker and phases is optional as not all clients
     # support the necessary features.
     cfg = ui.configbool
-    contentopts = {
-        b'obsolescence': cfg(b'experimental', b'evolution.bundle-obsmarker'),
-        b'obsolescence-mandatory': cfg(
-            b'experimental', b'evolution.bundle-obsmarker:mandatory'
-        ),
-        b'phases': cfg(b'experimental', b'bundle-phases'),
-    }
-    bundlespec.contentopts.update(contentopts)
+    obsolescence_cfg = cfg(b'experimental', b'evolution.bundle-obsmarker')
+    bundlespec.set_param(b'obsolescence', obsolescence_cfg, overwrite=False)
+    obs_mand_cfg = cfg(b'experimental', b'evolution.bundle-obsmarker:mandatory')
+    bundlespec.set_param(
+        b'obsolescence-mandatory', obs_mand_cfg, overwrite=False
+    )
+    if not bundlespec.params.get(b'phases', False):
+        phases_cfg = cfg(b'experimental', b'bundle-phases')
+        bundlespec.set_param(b'phases', phases_cfg, overwrite=False)
 
     bundle2.writenewbundle(
         ui,
@@ -1697,7 +1734,7 @@ def bundle(ui, repo, fname, *dests, **opts):
         fname,
         bversion,
         outgoing,
-        bundlespec.contentopts,
+        bundlespec.params,
         compression=bcompression,
         compopts=compopts,
     )
@@ -1761,7 +1798,7 @@ def cat(ui, repo, file1, *pats, **opts):
     rev = opts.get(b'rev')
     if rev:
         repo = scmutil.unhidehashlikerevs(repo, [rev], b'nowarn')
-    ctx = scmutil.revsingle(repo, rev)
+    ctx = logcmdutil.revsingle(repo, rev)
     m = scmutil.match(ctx, (file1,) + pats, opts)
     fntemplate = opts.pop(b'output', b'')
     if cmdutil.isstdiofilename(fntemplate):
@@ -1983,6 +2020,7 @@ def clone(ui, source, dest=None, **opts):
         (b'', b'close-branch', None, _(b'mark a branch head as closed')),
         (b'', b'amend', None, _(b'amend the parent of the working directory')),
         (b's', b'secret', None, _(b'use the secret phase for committing')),
+        (b'', b'draft', None, _(b'use the draft phase for committing')),
         (b'e', b'edit', None, _(b'invoke editor on commit messages')),
         (
             b'',
@@ -2057,6 +2095,8 @@ def commit(ui, repo, *pats, **opts):
 
           hg commit --amend --date now
     """
+    cmdutil.check_at_most_one_arg(opts, 'draft', 'secret')
+    cmdutil.check_incompatible_arguments(opts, 'subrepos', ['amend'])
     with repo.wlock(), repo.lock():
         return _docommit(ui, repo, *pats, **opts)
 
@@ -2072,7 +2112,6 @@ def _docommit(ui, repo, *pats, **opts):
         return 1 if ret == 0 else ret
 
     if opts.get('subrepos'):
-        cmdutil.check_incompatible_arguments(opts, 'subrepos', ['amend'])
         # Let --subrepos on the command line override config setting.
         ui.setconfig(b'ui', b'commitsubrepos', True, b'commit')
 
@@ -2087,10 +2126,19 @@ def _docommit(ui, repo, *pats, **opts):
         extra[b'close'] = b'1'
 
         if repo[b'.'].closesbranch():
-            raise error.InputError(
-                _(b'current revision is already a branch closing head')
+            # Not ideal, but let us do an extra status early to prevent early
+            # bail out.
+            matcher = scmutil.match(
+                repo[None], pats, pycompat.byteskwargs(opts)
             )
-        elif not bheads:
+            s = repo.status(match=matcher)
+            if s.modified or s.added or s.removed:
+                bheads = repo.branchheads(branch, closed=True)
+            else:
+                msg = _(b'current revision is already a branch closing head')
+                raise error.InputError(msg)
+
+        if not bheads:
             raise error.InputError(
                 _(b'branch "%s" has no heads to close') % branch
             )
@@ -2140,6 +2188,8 @@ def _docommit(ui, repo, *pats, **opts):
             overrides = {}
             if opts.get(b'secret'):
                 overrides[(b'phases', b'new-commit')] = b'secret'
+            elif opts.get(b'draft'):
+                overrides[(b'phases', b'new-commit')] = b'draft'
 
             baseui = repo.baseui
             with baseui.configoverride(overrides, b'commit'):
@@ -2457,7 +2507,19 @@ def copy(ui, repo, *pats, **opts):
     Returns 0 on success, 1 if errors are encountered.
     """
     opts = pycompat.byteskwargs(opts)
-    with repo.wlock():
+
+    context = lambda repo: repo.dirstate.changing_files(repo)
+    rev = opts.get(b'at_rev')
+    ctx = None
+    if rev:
+        ctx = logcmdutil.revsingle(repo, rev)
+        if ctx.rev() is not None:
+
+            def context(repo):
+                return util.nullcontextmanager()
+
+            opts[b'at_rev'] = ctx.rev()
+    with repo.wlock(), context(repo):
         return cmdutil.copy(ui, repo, pats, opts)
 
 
@@ -2470,7 +2532,7 @@ def copy(ui, repo, *pats, **opts):
 )
 def debugcommands(ui, cmd=b'', *args):
     """list all available commands and options"""
-    for cmd, vals in sorted(pycompat.iteritems(table)):
+    for cmd, vals in sorted(table.items()):
         cmd = cmd.split(b'|')[0]
         opts = b', '.join([i[1] for i in vals[1]])
         ui.write(b'%s: %s\n' % (cmd, opts))
@@ -2537,7 +2599,8 @@ def diff(ui, repo, *pats, **opts):
 
        :hg:`diff` may generate unexpected results for merges, as it will
        default to comparing against the working directory's first
-       parent changeset if no revisions are specified.
+       parent changeset if no revisions are specified.  To diff against the
+       conflict regions, you can use `--config diff.merge=yes`.
 
     By default, the working directory files are compared to its first parent. To
     see the differences from another revision, use --from. To see the difference
@@ -2600,17 +2663,17 @@ def diff(ui, repo, *pats, **opts):
     cmdutil.check_incompatible_arguments(opts, b'to', [b'rev', b'change'])
     if change:
         repo = scmutil.unhidehashlikerevs(repo, [change], b'nowarn')
-        ctx2 = scmutil.revsingle(repo, change, None)
+        ctx2 = logcmdutil.revsingle(repo, change, None)
         ctx1 = logcmdutil.diff_parent(ctx2)
     elif from_rev or to_rev:
         repo = scmutil.unhidehashlikerevs(
             repo, [from_rev] + [to_rev], b'nowarn'
         )
-        ctx1 = scmutil.revsingle(repo, from_rev, None)
-        ctx2 = scmutil.revsingle(repo, to_rev, None)
+        ctx1 = logcmdutil.revsingle(repo, from_rev, None)
+        ctx2 = logcmdutil.revsingle(repo, to_rev, None)
     else:
         repo = scmutil.unhidehashlikerevs(repo, revs, b'nowarn')
-        ctx1, ctx2 = scmutil.revpair(repo, revs)
+        ctx1, ctx2 = logcmdutil.revpair(repo, revs)
 
     if reverse:
         ctxleft = ctx2
@@ -2753,7 +2816,7 @@ def export(ui, repo, *changesets, **opts):
             changesets = [b'.']
 
         repo = scmutil.unhidehashlikerevs(repo, changesets, b'nowarn')
-        revs = scmutil.revrange(repo, changesets)
+        revs = logcmdutil.revrange(repo, changesets)
 
     if not revs:
         raise error.InputError(_(b"export requires at least one changeset"))
@@ -2864,7 +2927,7 @@ def files(ui, repo, *pats, **opts):
     rev = opts.get(b'rev')
     if rev:
         repo = scmutil.unhidehashlikerevs(repo, [rev], b'nowarn')
-    ctx = scmutil.revsingle(repo, rev, None)
+    ctx = logcmdutil.revsingle(repo, rev, None)
 
     end = b'\n'
     if opts.get(b'print0'):
@@ -2925,19 +2988,20 @@ def forget(ui, repo, *pats, **opts):
     if not pats:
         raise error.InputError(_(b'no files specified'))
 
-    m = scmutil.match(repo[None], pats, opts)
-    dryrun, interactive = opts.get(b'dry_run'), opts.get(b'interactive')
-    uipathfn = scmutil.getuipathfn(repo, legacyrelativevalue=True)
-    rejected = cmdutil.forget(
-        ui,
-        repo,
-        m,
-        prefix=b"",
-        uipathfn=uipathfn,
-        explicitonly=False,
-        dryrun=dryrun,
-        interactive=interactive,
-    )[0]
+    with repo.wlock(), repo.dirstate.changing_files(repo):
+        m = scmutil.match(repo[None], pats, opts)
+        dryrun, interactive = opts.get(b'dry_run'), opts.get(b'interactive')
+        uipathfn = scmutil.getuipathfn(repo, legacyrelativevalue=True)
+        rejected = cmdutil.forget(
+            ui,
+            repo,
+            m,
+            prefix=b"",
+            uipathfn=uipathfn,
+            explicitonly=False,
+            dryrun=dryrun,
+            interactive=interactive,
+        )[0]
     return rejected and 1 or 0
 
 
@@ -3170,12 +3234,12 @@ def _dograft(ui, repo, *revs, **opts):
             raise error.InputError(_(b'no revisions specified'))
         cmdutil.checkunfinished(repo)
         cmdutil.bailifchanged(repo)
-        revs = scmutil.revrange(repo, revs)
+        revs = logcmdutil.revrange(repo, revs)
 
     skipped = set()
     basectx = None
     if opts.get('base'):
-        basectx = scmutil.revsingle(repo, opts['base'], None)
+        basectx = logcmdutil.revsingle(repo, opts['base'], None)
     if basectx is None:
         # check for merges
         for rev in repo.revs(b'%ld and merge()', revs):
@@ -3309,7 +3373,9 @@ def _dograft(ui, repo, *revs, **opts):
             overrides = {(b'ui', b'forcemerge'): opts.get('tool', b'')}
             base = ctx.p1() if basectx is None else basectx
             with ui.configoverride(overrides, b'graft'):
-                stats = mergemod.graft(repo, ctx, base, [b'local', b'graft'])
+                stats = mergemod.graft(
+                    repo, ctx, base, [b'local', b'graft', b'parent of graft']
+                )
             # report any conflicts
             if stats.unresolvedcount > 0:
                 # write out state for --continue
@@ -3473,22 +3539,20 @@ def grep(ui, repo, pattern, *pats, **opts):
 
     """
     cmdutil.check_incompatible_arguments(opts, 'all_files', ['all', 'diff'])
-    opts = pycompat.byteskwargs(opts)
-    diff = opts.get(b'all') or opts.get(b'diff')
-    follow = opts.get(b'follow')
-    if opts.get(b'all_files') is None and not diff:
-        opts[b'all_files'] = True
+
+    diff = opts.get('all') or opts.get('diff')
+    follow = opts.get('follow')
+    if opts.get('all_files') is None and not diff:
+        opts['all_files'] = True
     plaingrep = (
-        opts.get(b'all_files')
-        and not opts.get(b'rev')
-        and not opts.get(b'follow')
+        opts.get('all_files') and not opts.get('rev') and not opts.get('follow')
     )
-    all_files = opts.get(b'all_files')
+    all_files = opts.get('all_files')
     if plaingrep:
-        opts[b'rev'] = [b'wdir()']
+        opts['rev'] = [b'wdir()']
 
     reflags = re.M
-    if opts.get(b'ignore_case'):
+    if opts.get('ignore_case'):
         reflags |= re.I
     try:
         regexp = util.re.compile(pattern, reflags)
@@ -3499,7 +3563,7 @@ def grep(ui, repo, pattern, *pats, **opts):
         )
         return 1
     sep, eol = b':', b'\n'
-    if opts.get(b'print0'):
+    if opts.get('print0'):
         sep = eol = b'\0'
 
     searcher = grepmod.grepsearcher(
@@ -3547,7 +3611,7 @@ def grep(ui, repo, pattern, *pats, **opts):
                     b'linenumber',
                     b'%d',
                     l.linenum,
-                    opts.get(b'line_number'),
+                    opts.get('line_number'),
                     b'',
                 ),
             ]
@@ -3569,14 +3633,14 @@ def grep(ui, repo, pattern, *pats, **opts):
                         b'user',
                         b'%s',
                         formatuser(ctx.user()),
-                        opts.get(b'user'),
+                        opts.get('user'),
                         b'',
                     ),
                     (
                         b'date',
                         b'%s',
                         fm.formatdate(ctx.date(), datefmt),
-                        opts.get(b'date'),
+                        opts.get('date'),
                         b'',
                     ),
                 ]
@@ -3587,15 +3651,15 @@ def grep(ui, repo, pattern, *pats, **opts):
                 field = fieldnamemap.get(name, name)
                 label = extra_label + (b'grep.%s' % name)
                 fm.condwrite(cond, field, fmt, data, label=label)
-            if not opts.get(b'files_with_matches'):
+            if not opts.get('files_with_matches'):
                 fm.plain(sep, label=b'grep.sep')
-                if not opts.get(b'text') and binary():
+                if not opts.get('text') and binary():
                     fm.plain(_(b" Binary file matches"))
                 else:
                     displaymatches(fm.nested(b'texts', tmpl=b'{text}'), l)
             fm.plain(eol)
             found = True
-            if opts.get(b'files_with_matches'):
+            if opts.get('files_with_matches'):
                 break
         return found
 
@@ -3621,9 +3685,9 @@ def grep(ui, repo, pattern, *pats, **opts):
     wopts = logcmdutil.walkopts(
         pats=pats,
         opts=opts,
-        revspec=opts[b'rev'],
-        include_pats=opts[b'include'],
-        exclude_pats=opts[b'exclude'],
+        revspec=opts['rev'],
+        include_pats=opts['include'],
+        exclude_pats=opts['exclude'],
         follow=follow,
         force_changelog_traversal=all_files,
         filter_revisions_by_pats=not all_files,
@@ -3631,7 +3695,7 @@ def grep(ui, repo, pattern, *pats, **opts):
     revs, makefilematcher = logcmdutil.makewalker(repo, wopts)
 
     ui.pager(b'grep')
-    fm = ui.formatter(b'grep', opts)
+    fm = ui.formatter(b'grep', pycompat.byteskwargs(opts))
     for fn, ctx, pstates, states in searcher.searchfiles(revs, makefilematcher):
         r = display(fm, fn, ctx, pstates, states)
         found = found or r
@@ -3696,7 +3760,7 @@ def heads(ui, repo, *branchrevs, **opts):
     rev = opts.get(b'rev')
     if rev:
         repo = scmutil.unhidehashlikerevs(repo, [rev], b'nowarn')
-        start = scmutil.revsingle(repo, rev, None).node()
+        start = logcmdutil.revsingle(repo, rev, None).node()
 
     if opts.get(b'topo'):
         heads = [repo[h] for h in repo.heads(start)]
@@ -3708,7 +3772,7 @@ def heads(ui, repo, *branchrevs, **opts):
 
     if branchrevs:
         branches = {
-            repo[r].branch() for r in scmutil.revrange(repo, branchrevs)
+            repo[r].branch() for r in logcmdutil.revrange(repo, branchrevs)
         }
         heads = [h for h in heads if h.branch() in branches]
 
@@ -3874,12 +3938,11 @@ def identify(
     peer = None
     try:
         if source:
-            source, branches = urlutil.get_unique_pull_path(
-                b'identify', repo, ui, source
-            )
+            path = urlutil.get_unique_pull_path_obj(b'identify', ui, source)
             # only pass ui when no repo
-            peer = hg.peer(repo or ui, opts, source)
+            peer = hg.peer(repo or ui, opts, path)
             repo = peer.local()
+            branches = (path.branch, [])
             revs, checkout = hg.addbranchrevs(repo, peer, branches, None)
 
         fm = ui.formatter(b'identify', opts)
@@ -3909,9 +3972,7 @@ def identify(
                     hexremoterev = hex(remoterev)
                     bms = [
                         bm
-                        for bm, bmr in pycompat.iteritems(
-                            peer.listkeys(b'bookmarks')
-                        )
+                        for bm, bmr in peer.listkeys(b'bookmarks').items()
                         if bmr == hexremoterev
                     ]
 
@@ -3932,7 +3993,7 @@ def identify(
         else:
             if rev:
                 repo = scmutil.unhidehashlikerevs(repo, [rev], b'nowarn')
-            ctx = scmutil.revsingle(repo, rev, None)
+            ctx = logcmdutil.revsingle(repo, rev, None)
 
             if ctx.rev() is None:
                 ctx = repo[None]
@@ -4194,12 +4255,10 @@ def import_(ui, repo, patch1=None, *patches, **opts):
         if not opts.get(b'no_commit'):
             lock = repo.lock
             tr = lambda: repo.transaction(b'import')
-            dsguard = util.nullcontextmanager
         else:
             lock = util.nullcontextmanager
             tr = util.nullcontextmanager
-            dsguard = lambda: dirstateguard.dirstateguard(repo, b'import')
-        with lock(), tr(), dsguard():
+        with lock(), tr():
             parents = repo[None].parents()
             for patchurl in patches:
                 if patchurl == b'-':
@@ -4346,18 +4405,21 @@ def incoming(ui, repo, source=b"default", **opts):
     cmdutil.check_incompatible_arguments(opts, b'subrepos', [b'bundle'])
 
     if opts.get(b'bookmarks'):
-        srcs = urlutil.get_pull_paths(repo, ui, [source], opts.get(b'branch'))
-        for source, branches in srcs:
-            other = hg.peer(repo, opts, source)
+        srcs = urlutil.get_pull_paths(repo, ui, [source])
+        for path in srcs:
+            # XXX the "branches" options are not used. Should it be used?
+            other = hg.peer(repo, opts, path)
             try:
                 if b'bookmarks' not in other.listkeys(b'namespaces'):
                     ui.warn(_(b"remote doesn't support bookmarks\n"))
                     return 0
                 ui.pager(b'incoming')
                 ui.status(
-                    _(b'comparing with %s\n') % urlutil.hidepassword(source)
+                    _(b'comparing with %s\n') % urlutil.hidepassword(path.loc)
                 )
-                return bookmarks.incoming(ui, repo, other)
+                return bookmarks.incoming(
+                    ui, repo, other, mode=path.bookmarks_mode
+                )
             finally:
                 other.close()
 
@@ -4386,7 +4448,7 @@ def init(ui, dest=b".", **opts):
     Returns 0 on success.
     """
     opts = pycompat.byteskwargs(opts)
-    path = urlutil.get_clone_path(ui, dest)[1]
+    path = urlutil.get_clone_path_obj(ui, dest)
     peer = hg.peer(ui, opts, path, create=True)
     peer.close()
 
@@ -4445,7 +4507,7 @@ def locate(ui, repo, *pats, **opts):
         end = b'\0'
     else:
         end = b'\n'
-    ctx = scmutil.revsingle(repo, opts.get(b'rev'), None)
+    ctx = logcmdutil.revsingle(repo, opts.get(b'rev'), None)
 
     ret = 1
     m = scmutil.match(
@@ -4790,7 +4852,7 @@ def manifest(ui, repo, node=None, rev=None, **opts):
     mode = {b'l': b'644', b'x': b'755', b'': b'644', b't': b'755'}
     if node:
         repo = scmutil.unhidehashlikerevs(repo, [node], b'nowarn')
-    ctx = scmutil.revsingle(repo, node)
+    ctx = logcmdutil.revsingle(repo, node)
     mf = ctx.manifest()
     ui.pager(b'manifest')
     for f in ctx:
@@ -4877,7 +4939,7 @@ def merge(ui, repo, node=None, **opts):
         node = opts.get(b'rev')
 
     if node:
-        ctx = scmutil.revsingle(repo, node)
+        ctx = logcmdutil.revsingle(repo, node)
     else:
         if ui.configbool(b'commands', b'merge.require-rev'):
             raise error.InputError(
@@ -4909,7 +4971,7 @@ def merge(ui, repo, node=None, **opts):
     overrides = {(b'ui', b'forcemerge'): opts.get(b'tool', b'')}
     with ui.configoverride(overrides, b'merge'):
         force = opts.get(b'force')
-        labels = [b'working copy', b'merge rev']
+        labels = [b'working copy', b'merge rev', b'common ancestor']
         return hg.merge(ctx, force=force, labels=labels)
 
 
@@ -4998,14 +5060,13 @@ def outgoing(ui, repo, *dests, **opts):
     opts = pycompat.byteskwargs(opts)
     if opts.get(b'bookmarks'):
         for path in urlutil.get_push_paths(repo, ui, dests):
-            dest = path.pushloc or path.loc
-            other = hg.peer(repo, opts, dest)
+            other = hg.peer(repo, opts, path)
             try:
                 if b'bookmarks' not in other.listkeys(b'namespaces'):
                     ui.warn(_(b"remote doesn't support bookmarks\n"))
                     return 0
                 ui.status(
-                    _(b'comparing with %s\n') % urlutil.hidepassword(dest)
+                    _(b'comparing with %s\n') % urlutil.hidepassword(path.loc)
                 )
                 ui.pager(b'outgoing')
                 return bookmarks.outgoing(ui, repo, other)
@@ -5056,7 +5117,7 @@ def parents(ui, repo, file_=None, **opts):
     rev = opts.get(b'rev')
     if rev:
         repo = scmutil.unhidehashlikerevs(repo, [rev], b'nowarn')
-    ctx = scmutil.revsingle(repo, rev, None)
+    ctx = logcmdutil.revsingle(repo, rev, None)
 
     if file_:
         m = scmutil.match(ctx, (file_,), opts)
@@ -5161,11 +5222,8 @@ def paths(ui, repo, search=None, **opts):
             assert subopt not in (b'name', b'url')
             if showsubopts:
                 fm.plain(b'%s:%s = ' % (name, subopt))
-            if isinstance(value, bool):
-                if value:
-                    value = b'yes'
-                else:
-                    value = b'no'
+            display = urlutil.path_suboptions_display[subopt]
+            value = display(value)
             fm.condwrite(showsubopts, subopt, b'%s\n', value)
 
     fm.end()
@@ -5219,12 +5277,12 @@ def phase(ui, repo, *revs, **opts):
     # look for specified revision
     revs = list(revs)
     revs.extend(opts[b'rev'])
-    if not revs:
+    if revs:
+        revs = logcmdutil.revrange(repo, revs)
+    else:
         # display both parents as the second parent phase can influence
         # the phase of a merge commit
         revs = [c.rev() for c in repo[None].parents()]
-
-    revs = scmutil.revrange(repo, revs)
 
     ret = 0
     if targetphase is None:
@@ -5345,6 +5403,12 @@ def postincoming(ui, repo, modheads, optupdate, checkout, brev):
             _(b'a specific branch you would like to pull'),
             _(b'BRANCH'),
         ),
+        (
+            b'',
+            b'remote-hidden',
+            False,
+            _(b"include changesets hidden on the remote (EXPERIMENTAL)"),
+        ),
     ]
     + remoteopts,
     _(b'[-u] [-f] [-r REV]... [-e CMD] [--remotecmd CMD] [SOURCE]...'),
@@ -5382,6 +5446,14 @@ def pull(ui, repo, *sources, **opts):
     Specifying bookmark as ``.`` is equivalent to specifying the active
     bookmark's name.
 
+    .. container:: verbose
+
+        One can use the `--remote-hidden` flag to pull changesets
+        hidden on the remote. This flag is "best effort", and will only
+        work if the server supports the feature and is configured to
+        allow the user to access hidden changesets. This option is
+        experimental and backwards compatibility is not garanteed.
+
     Returns 0 on success, 1 if an update had unresolved files.
     """
 
@@ -5393,15 +5465,19 @@ def pull(ui, repo, *sources, **opts):
         hint = _(b'use hg pull followed by hg update DEST')
         raise error.InputError(msg, hint=hint)
 
-    sources = urlutil.get_pull_paths(repo, ui, sources, opts.get(b'branch'))
-    for source, branches in sources:
-        ui.status(_(b'pulling from %s\n') % urlutil.hidepassword(source))
+    for path in urlutil.get_pull_paths(repo, ui, sources):
+        ui.status(_(b'pulling from %s\n') % urlutil.hidepassword(path.loc))
         ui.flush()
-        other = hg.peer(repo, opts, source)
+        other = hg.peer(repo, opts, path, remotehidden=opts[b'remote_hidden'])
         update_conflict = None
         try:
+            branches = (path.branch, opts.get(b'branch', []))
             revs, checkout = hg.addbranchrevs(
-                repo, other, branches, opts.get(b'rev')
+                repo,
+                other,
+                branches,
+                opts.get(b'rev'),
+                remotehidden=opts[b'remote_hidden'],
             )
 
             pullopargs = {}
@@ -5451,6 +5527,7 @@ def pull(ui, repo, *sources, **opts):
                 modheads = exchange.pull(
                     repo,
                     other,
+                    path=path,
                     heads=nodes,
                     force=opts.get(b'force'),
                     bookmarks=opts.get(b'bookmark', ()),
@@ -5474,8 +5551,12 @@ def pull(ui, repo, *sources, **opts):
                     elif opts.get(b'branch'):
                         brev = opts[b'branch'][0]
                     else:
-                        brev = branches[0]
-                repo._subtoppath = source
+                        brev = path.branch
+
+                # XXX path: we are losing the `path` object here. Keeping it
+                # would be valuable. For example as a "variant" as we do
+                # for pushes.
+                repo._subtoppath = path.loc
                 try:
                     update_conflict = postincoming(
                         ui, repo, modheads, opts.get(b'update'), checkout, brev
@@ -5725,7 +5806,7 @@ def push(ui, repo, *dests, **opts):
     some_pushed = False
     result = 0
     for path in urlutil.get_push_paths(repo, ui, dests):
-        dest = path.pushloc or path.loc
+        dest = path.loc
         branches = (path.branch, opts.get(b'branch') or [])
         ui.status(_(b'pushing to %s\n') % urlutil.hidepassword(dest))
         revs, checkout = hg.addbranchrevs(
@@ -5735,7 +5816,7 @@ def push(ui, repo, *dests, **opts):
 
         try:
             if revs:
-                revs = [repo[r].node() for r in scmutil.revrange(repo, revs)]
+                revs = [repo[r].node() for r in logcmdutil.revrange(repo, revs)]
                 if not revs:
                     raise error.InputError(
                         _(b"specified revisions evaluate to an empty set"),
@@ -5899,12 +5980,13 @@ def remove(ui, repo, *pats, **opts):
     if not pats and not after:
         raise error.InputError(_(b'no files specified'))
 
-    m = scmutil.match(repo[None], pats, opts)
-    subrepos = opts.get(b'subrepos')
-    uipathfn = scmutil.getuipathfn(repo, legacyrelativevalue=True)
-    return cmdutil.remove(
-        ui, repo, m, b"", uipathfn, after, force, subrepos, dryrun=dryrun
-    )
+    with repo.wlock(), repo.dirstate.changing_files(repo):
+        m = scmutil.match(repo[None], pats, opts)
+        subrepos = opts.get(b'subrepos')
+        uipathfn = scmutil.getuipathfn(repo, legacyrelativevalue=True)
+        return cmdutil.remove(
+            ui, repo, m, b"", uipathfn, after, force, subrepos, dryrun=dryrun
+        )
 
 
 @command(
@@ -5953,7 +6035,18 @@ def rename(ui, repo, *pats, **opts):
     Returns 0 on success, 1 if errors are encountered.
     """
     opts = pycompat.byteskwargs(opts)
-    with repo.wlock():
+    context = lambda repo: repo.dirstate.changing_files(repo)
+    rev = opts.get(b'at_rev')
+    ctx = None
+    if rev:
+        ctx = logcmdutil.revsingle(repo, rev)
+        if ctx.rev() is not None:
+
+            def context(repo):
+                return util.nullcontextmanager()
+
+            opts[b'at_rev'] = ctx.rev()
+    with repo.wlock(), context(repo):
         return cmdutil.copy(ui, repo, pats, opts, rename=True)
 
 
@@ -6124,7 +6217,6 @@ def resolve(ui, repo, *pats, **opts):
         ret = 0
         didwork = False
 
-        tocomplete = []
         hasconflictmarkers = []
         if mark:
             markcheck = ui.config(b'commands', b'resolve.mark-check')
@@ -6169,32 +6261,26 @@ def resolve(ui, repo, *pats, **opts):
                 a = repo.wjoin(f)
                 try:
                     util.copyfile(a, a + b".resolve")
-                except (IOError, OSError) as inst:
-                    if inst.errno != errno.ENOENT:
-                        raise
+                except FileNotFoundError:
+                    pass
 
                 try:
                     # preresolve file
                     overrides = {(b'ui', b'forcemerge'): opts.get(b'tool', b'')}
                     with ui.configoverride(overrides, b'resolve'):
-                        complete, r = ms.preresolve(f, wctx)
-                    if not complete:
-                        tocomplete.append(f)
-                    elif r:
+                        r = ms.resolve(f, wctx)
+                    if r:
                         ret = 1
                 finally:
                     ms.commit()
 
-                # replace filemerge's .orig file with our resolve file, but only
-                # for merges that are complete
-                if complete:
-                    try:
-                        util.rename(
-                            a + b".resolve", scmutil.backuppath(ui, repo, f)
-                        )
-                    except OSError as inst:
-                        if inst.errno != errno.ENOENT:
-                            raise
+                # replace filemerge's .orig file with our resolve file
+                try:
+                    util.rename(
+                        a + b".resolve", scmutil.backuppath(ui, repo, f)
+                    )
+                except FileNotFoundError:
+                    pass
 
         if hasconflictmarkers:
             ui.warn(
@@ -6212,25 +6298,6 @@ def resolve(ui, repo, *pats, **opts):
                     hint=_(b'use --all to mark anyway'),
                 )
 
-        for f in tocomplete:
-            try:
-                # resolve file
-                overrides = {(b'ui', b'forcemerge'): opts.get(b'tool', b'')}
-                with ui.configoverride(overrides, b'resolve'):
-                    r = ms.resolve(f, wctx)
-                if r:
-                    ret = 1
-            finally:
-                ms.commit()
-
-            # replace filemerge's .orig file with our resolve file
-            a = repo.wjoin(f)
-            try:
-                util.rename(a + b".resolve", scmutil.backuppath(ui, repo, f))
-            except OSError as inst:
-                if inst.errno != errno.ENOENT:
-                    raise
-
         ms.commit()
         branchmerge = repo.dirstate.p2() != repo.nullid
         # resolve is not doing a parent change here, however, `record updates`
@@ -6245,7 +6312,7 @@ def resolve(ui, repo, *pats, **opts):
         #
         # All this should eventually happens, but in the mean time, we use this
         # context manager slightly out of the context it should be.
-        with repo.dirstate.parentchange():
+        with repo.dirstate.changing_parents(repo):
             mergestatemod.recordupdates(repo, ms.actions(), branchmerge, None)
 
         if not didwork and pats:
@@ -6347,7 +6414,7 @@ def revert(ui, repo, *pats, **opts):
     rev = opts.get(b'rev')
     if rev:
         repo = scmutil.unhidehashlikerevs(repo, [rev], b'nowarn')
-    ctx = scmutil.revsingle(repo, rev)
+    ctx = logcmdutil.revsingle(repo, rev)
 
     if not (
         pats
@@ -6558,7 +6625,7 @@ def root(ui, repo, **opts):
         ),
         (b't', b'templates', b'', _(b'web templates to use'), _(b'TEMPLATE')),
         (b'', b'style', b'', _(b'template style to use'), _(b'STYLE')),
-        (b'6', b'ipv6', None, _(b'use IPv6 in addition to IPv4')),
+        (b'6', b'ipv6', None, _(b'use IPv6 instead of IPv4')),
         (b'', b'certificate', b'', _(b'SSL certificate file'), _(b'FILE')),
         (b'', b'print-url', None, _(b'start and print only the URL')),
     ]
@@ -6603,7 +6670,25 @@ def serve(ui, repo, **opts):
             raise error.RepoError(
                 _(b"there is no Mercurial repository here (.hg not found)")
             )
-        s = wireprotoserver.sshserver(ui, repo)
+        accesshidden = False
+        if repo.filtername is None:
+            allow = ui.configlist(
+                b'experimental', b'server.allow-hidden-access'
+            )
+            user = procutil.getuser()
+            if allow and scmutil.ismember(ui, user, allow):
+                accesshidden = True
+            else:
+                msg = (
+                    _(
+                        b'ignoring request to access hidden changeset by '
+                        b'unauthorized user: %s\n'
+                    )
+                    % user
+                )
+                ui.warn(msg)
+
+        s = wireprotoserver.sshserver(ui, repo, accesshidden=accesshidden)
         s.serve_forever()
         return
 
@@ -6891,9 +6976,9 @@ def status(ui, repo, *pats, **opts):
 
     cmdutil.check_at_most_one_arg(opts, 'rev', 'change')
     opts = pycompat.byteskwargs(opts)
-    revs = opts.get(b'rev')
-    change = opts.get(b'change')
-    terse = opts.get(b'terse')
+    revs = opts.get(b'rev', [])
+    change = opts.get(b'change', b'')
+    terse = opts.get(b'terse', _NOTTERSE)
     if terse is _NOTTERSE:
         if revs:
             terse = b''
@@ -6905,11 +6990,11 @@ def status(ui, repo, *pats, **opts):
         raise error.InputError(msg)
     elif change:
         repo = scmutil.unhidehashlikerevs(repo, [change], b'nowarn')
-        ctx2 = scmutil.revsingle(repo, change, None)
+        ctx2 = logcmdutil.revsingle(repo, change, None)
         ctx1 = ctx2.p1()
     else:
         repo = scmutil.unhidehashlikerevs(repo, revs, b'nowarn')
-        ctx1, ctx2 = scmutil.revpair(repo, revs)
+        ctx1, ctx2 = logcmdutil.revpair(repo, revs)
 
     forcerelativevalue = None
     if ui.hasconfig(b'commands', b'status.relative'):
@@ -6967,11 +7052,13 @@ def status(ui, repo, *pats, **opts):
     )
 
     copy = {}
-    if (
-        opts.get(b'all')
-        or opts.get(b'copies')
-        or ui.configbool(b'ui', b'statuscopies')
-    ) and not opts.get(b'no_status'):
+    show_copies = ui.configbool(b'ui', b'statuscopies')
+    if opts.get(b'copies') is not None:
+        show_copies = opts.get(b'copies')
+    show_copies = (show_copies or opts.get(b'all')) and not opts.get(
+        b'no_status'
+    )
+    if show_copies:
         copy = copies.pathcopies(ctx1, ctx2, m)
 
     morestatus = None
@@ -7106,7 +7193,7 @@ def summary(ui, repo, **opts):
 
     c = repo.dirstate.copies()
     copied, renamed = [], []
-    for d, s in pycompat.iteritems(c):
+    for d, s in c.items():
         if s in status.removed:
             status.removed.remove(s)
             renamed.append(d)
@@ -7235,23 +7322,22 @@ def summary(ui, repo, **opts):
         # XXX We should actually skip this if no default is specified, instead
         # of passing "default" which will resolve as "./default/" if no default
         # path is defined.
-        source, branches = urlutil.get_unique_pull_path(
-            b'summary', repo, ui, b'default'
-        )
-        sbranch = branches[0]
+        path = urlutil.get_unique_pull_path_obj(b'summary', ui, b'default')
+        sbranch = path.branch
         try:
-            other = hg.peer(repo, {}, source)
+            other = hg.peer(repo, {}, path)
         except error.RepoError:
             if opts.get(b'remote'):
                 raise
-            return source, sbranch, None, None, None
+            return path.loc, sbranch, None, None, None
+        branches = (path.branch, [])
         revs, checkout = hg.addbranchrevs(repo, other, branches, None)
         if revs:
             revs = [other.lookup(rev) for rev in revs]
-        ui.debug(b'comparing with %s\n' % urlutil.hidepassword(source))
+        ui.debug(b'comparing with %s\n' % urlutil.hidepassword(path.loc))
         with repo.ui.silent():
             commoninc = discovery.findcommonincoming(repo, other, heads=revs)
-        return source, sbranch, other, commoninc, commoninc[1]
+        return path.loc, sbranch, other, commoninc, commoninc[1]
 
     if needsincoming:
         source, sbranch, sother, commoninc, incoming = getincoming()
@@ -7267,9 +7353,10 @@ def summary(ui, repo, **opts):
             d = b'default-push'
         elif b'default' in ui.paths:
             d = b'default'
+        path = None
         if d is not None:
             path = urlutil.get_unique_push_path(b'summary', repo, ui, d)
-            dest = path.pushloc or path.loc
+            dest = path.loc
             dbranch = path.branch
         else:
             dest = b'default'
@@ -7277,7 +7364,7 @@ def summary(ui, repo, **opts):
         revs, checkout = hg.addbranchrevs(repo, repo, (dbranch, []), None)
         if source != dest:
             try:
-                dother = hg.peer(repo, {}, dest)
+                dother = hg.peer(repo, {}, path if path is not None else dest)
             except error.RepoError:
                 if opts.get(b'remote'):
                     raise
@@ -7453,7 +7540,13 @@ def tag(ui, repo, name1, *names, **opts):
                         b'(use -f to force)'
                     )
                 )
-        node = scmutil.revsingle(repo, rev_).node()
+        node = logcmdutil.revsingle(repo, rev_).node()
+
+        # don't allow tagging the null rev or the working directory
+        if node is None:
+            raise error.InputError(_(b"cannot tag working directory"))
+        elif not opts.get(b'remove') and node == nullid:
+            raise error.InputError(_(b"cannot tag null revision"))
 
         if not message:
             # we don't translate commit messages
@@ -7473,13 +7566,6 @@ def tag(ui, repo, name1, *names, **opts):
         editor = cmdutil.getcommiteditor(
             editform=editform, **pycompat.strkwargs(opts)
         )
-
-        # don't allow tagging the null rev
-        if (
-            not opts.get(b'remove')
-            and scmutil.revsingle(repo, rev_).rev() == nullrev
-        ):
-            raise error.InputError(_(b"cannot tag null revision"))
 
         tagsmod.tag(
             repo,
@@ -7826,9 +7912,9 @@ def update(ui, repo, node=None, **opts):
         raise error.InputError(_(b"you can't specify a revision and a date"))
 
     updatecheck = None
-    if check:
+    if check or merge is not None and not merge:
         updatecheck = b'abort'
-    elif merge:
+    elif merge or check is not None and not check:
         updatecheck = b'none'
 
     with repo.wlock():
@@ -7840,7 +7926,7 @@ def update(ui, repo, node=None, **opts):
         brev = rev
         if rev:
             repo = scmutil.unhidehashlikerevs(repo, [rev], b'nowarn')
-        ctx = scmutil.revsingle(repo, rev, default=None)
+        ctx = logcmdutil.revsingle(repo, rev, default=None)
         rev = ctx.rev()
         hidden = ctx.hidden()
         overrides = {(b'ui', b'forcemerge'): opts.get('tool', b'')}
@@ -7922,7 +8008,7 @@ def version_(ui, **opts):
     )
     license = _(
         b"(see https://mercurial-scm.org for more information)\n"
-        b"\nCopyright (C) 2005-2021 Olivia Mackall and others\n"
+        b"\nCopyright (C) 2005-2023 Olivia Mackall and others\n"
         b"This is free software; see the source for copying conditions. "
         b"There is NO\nwarranty; "
         b"not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n"

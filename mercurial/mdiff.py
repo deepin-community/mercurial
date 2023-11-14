@@ -5,7 +5,6 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
 import re
 import struct
@@ -38,7 +37,7 @@ splitnewlines = bdiff.splitnewlines
 
 
 # TODO: this looks like it could be an attrs, which might help pytype
-class diffopts(object):
+class diffopts:
     """context is the number of context lines
     text treats all files as text
     showfunc enables diff -p output
@@ -84,7 +83,7 @@ class diffopts(object):
         try:
             self.context = int(self.context)
         except ValueError:
-            raise error.Abort(
+            raise error.InputError(
                 _(b'diff context lines count must be an integer, not %r')
                 % pycompat.bytestr(self.context)
             )
@@ -94,6 +93,13 @@ class diffopts(object):
         opts = pycompat.strkwargs(opts)
         opts.update(kwargs)
         return diffopts(**opts)
+
+    def __bytes__(self):
+        return b", ".join(
+            b"%s: %r" % (k, getattr(self, k)) for k in self.defaults
+        )
+
+    __str__ = encoding.strmethod(__bytes__)
 
 
 defaultopts = diffopts()
@@ -207,7 +213,7 @@ def chooseblocksfunc(opts=None):
     if (
         opts is None
         or not opts.xdiff
-        or not util.safehasattr(bdiff, b'xdiffblocks')
+        or not util.safehasattr(bdiff, 'xdiffblocks')
     ):
         return bdiff.blocks
     else:
@@ -379,7 +385,7 @@ def _unidiff(t1, t2, opts=defaultopts):
             # walk backwards from the start of the context up to the start of
             # the previous hunk context until we find a line starting with an
             # alphanumeric char.
-            for i in pycompat.xrange(astart - 1, lastpos - 1, -1):
+            for i in range(astart - 1, lastpos - 1, -1):
                 if l1[i][0:1].isalnum():
                     func = b' ' + l1[i].rstrip()
                     # split long function name if ASCII. otherwise we have no
@@ -403,7 +409,7 @@ def _unidiff(t1, t2, opts=defaultopts):
         hunklines = (
             [b"@@ -%d,%d +%d,%d @@%s\n" % (hunkrange + (func,))]
             + delta
-            + [b' ' + l1[x] for x in pycompat.xrange(a2, aend)]
+            + [b' ' + l1[x] for x in range(a2, aend)]
         )
         # If either file ends without a newline and the last line of
         # that file is part of a hunk, a marker is printed. If the
@@ -412,7 +418,7 @@ def _unidiff(t1, t2, opts=defaultopts):
         # which the hunk can end in a shared line without a newline.
         skip = False
         if not t1.endswith(b'\n') and astart + alen == len(l1) + 1:
-            for i in pycompat.xrange(len(hunklines) - 1, -1, -1):
+            for i in range(len(hunklines) - 1, -1, -1):
                 if hunklines[i].startswith((b'-', b' ')):
                     if hunklines[i].startswith(b' '):
                         skip = True
@@ -420,7 +426,7 @@ def _unidiff(t1, t2, opts=defaultopts):
                     hunklines.insert(i + 1, diffhelper.MISSING_NEWLINE_MARKER)
                     break
         if not skip and not t2.endswith(b'\n') and bstart + blen == len(l2) + 1:
-            for i in pycompat.xrange(len(hunklines) - 1, -1, -1):
+            for i in range(len(hunklines) - 1, -1, -1):
                 if hunklines[i].startswith(b'+'):
                     hunklines[i] += b'\n'
                     hunklines.insert(i + 1, diffhelper.MISSING_NEWLINE_MARKER)

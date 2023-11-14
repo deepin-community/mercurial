@@ -2,7 +2,6 @@
 
 # Filter output by pyflakes to control which warnings we check
 
-from __future__ import absolute_import, print_function
 
 import re
 import sys
@@ -25,10 +24,9 @@ for line in sys.stdin:
             break  # pattern matches
     if keep:
         fn = line.split(':', 1)[0]
-        f = open(fn)
-        data = f.read()
-        f.close()
-        if 'no-' 'check-code' in data:
+        with open(fn, 'rb') as f:
+            data = f.read()
+        if b'no-' b'check-code' in data:
             continue
         lines.append(line)
 

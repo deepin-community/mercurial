@@ -1,5 +1,3 @@
-from __future__ import absolute_import, print_function
-
 import sys
 
 from mercurial import (
@@ -16,7 +14,7 @@ from mercurial.utils import stringutil
 stringio = util.stringio
 
 
-class proto(object):
+class proto:
     def __init__(self, args):
         self.args = args
         self.name = 'dummyproto'
@@ -75,12 +73,10 @@ class clientpeer(wireprotov1peer.wirepeer):
 
     @wireprotov1peer.batchable
     def greet(self, name):
-        f = wireprotov1peer.future()
-        yield {b'name': mangle(name)}, f
-        yield unmangle(f.value)
+        return {b'name': mangle(name)}, unmangle
 
 
-class serverrepo(object):
+class serverrepo:
     def __init__(self, ui):
         self.ui = ui
 

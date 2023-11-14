@@ -2,31 +2,18 @@
 name = "hg-cpython"
 version = "0.1.0"
 authors = ["Georges Racinet <gracinet@anybox.fr>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name='rusthg'
 crate-type = ["cdylib"]
 
-[features]
-default = ["python27"]
-
-# Features to build an extension module:
-python27 = ["cpython/python27-sys", "cpython/extension-module-2-7"]
-python3 = ["cpython/python3-sys", "cpython/extension-module"]
-
-# Enable one of these features to build a test executable linked to libpython:
-# e.g. cargo test --no-default-features --features python27-bin
-python27-bin = ["cpython/python27-sys"]
-python3-bin = ["cpython/python3-sys"]
-
 [dependencies]
-crossbeam-channel = "0.4"
+cpython = { version = "0.7.1", features = ["extension-module"] }
+crossbeam-channel = "0.5.6"
 hg-core = { path = "../hg-core"}
-libc = '*'
-log = "0.4.8"
-env_logger = "0.7.1"
-
-[dependencies.cpython]
-version = "0.6.0"
-default-features = false
+libc = "0.2.137"
+log = "0.4.17"
+env_logger = "0.9.3"
+stable_deref_trait = "1.2.0"
+vcsgraph = "0.2.0"

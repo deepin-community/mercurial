@@ -55,7 +55,7 @@ create full repo
 
   $ hg update -r 'desc("outside 4a")'
   1 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ hg merge -r 'desc("outside 4b")' 2>&1 | egrep -v '(warning:|incomplete!)'
+  $ hg merge -r 'desc("outside 4b")' 2>&1 | grep -E -v '(warning:|incomplete!)'
   merging outside/f
   0 files updated, 0 files merged, 0 files removed, 1 files unresolved
   use 'hg resolve' to retry unresolved file merges or 'hg merge --abort' to abandon
@@ -67,7 +67,7 @@ create full repo
   $ echo 6 > outside/f
   $ hg commit -Aqm 'outside 6'
 
-  $ hg merge -r 'desc("outside 4c")' 2>&1 | egrep -v '(warning:|incomplete!)'
+  $ hg merge -r 'desc("outside 4c")' 2>&1 | grep -E -v '(warning:|incomplete!)'
   merging outside/f
   0 files updated, 0 files merged, 0 files removed, 1 files unresolved
   use 'hg resolve' to retry unresolved file merges or 'hg merge --abort' to abandon
@@ -79,7 +79,7 @@ create full repo
   $ echo 8 > outside/f
   $ hg commit -Aqm 'outside 8'
 
-  $ hg merge -r 'desc("outside 4d")' 2>&1 | egrep -v '(warning:|incomplete!)'
+  $ hg merge -r 'desc("outside 4d")' 2>&1 | grep -E -v '(warning:|incomplete!)'
   merging outside/f
   0 files updated, 0 files merged, 0 files removed, 1 files unresolved
   use 'hg resolve' to retry unresolved file merges or 'hg merge --abort' to abandon
@@ -179,7 +179,7 @@ has been emitted, just in a different order.
   
 
   $ hg log -T '{if(ellipsis,"...")}{node|short} {p1node|short} {p2node|short} {desc}\n' | sort
-  ...2a20009de83e 000000000000 3ac1f5779de3 outside 10
+  ...2a20009de83e 3ac1f5779de3 000000000000 outside 10
   ...3ac1f5779de3 bb96a08b062a 465567bdfb2d merge a/b/c/d 9
   ...8d874d57adea 7ef88b4dd4fa 000000000000 outside 12
   ...b844052e7b3b 000000000000 000000000000 outside 2c
@@ -279,7 +279,7 @@ Incremental test case: show a pull can pull in a conflicted merge even if elided
   $ cd ../pullmaster
   $ hg update -r 'desc("outside 4a")'
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ hg merge -r 'desc("outside 4b")' 2>&1 | egrep -v '(warning:|incomplete!)'
+  $ hg merge -r 'desc("outside 4b")' 2>&1 | grep -E -v '(warning:|incomplete!)'
   merging inside/f
   merging outside/f
   0 files updated, 0 files merged, 0 files removed, 2 files unresolved
@@ -293,7 +293,7 @@ Incremental test case: show a pull can pull in a conflicted merge even if elided
 
   $ hg update -r 'desc("outside 4c")'
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ hg merge -r 'desc("outside 4d")' 2>&1 | egrep -v '(warning:|incomplete!)'
+  $ hg merge -r 'desc("outside 4d")' 2>&1 | grep -E -v '(warning:|incomplete!)'
   merging inside/f
   merging outside/f
   0 files updated, 0 files merged, 0 files removed, 2 files unresolved

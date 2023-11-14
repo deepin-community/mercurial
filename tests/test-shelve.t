@@ -1,4 +1,14 @@
 #testcases stripbased phasebased
+#testcases dirstate-v1 dirstate-v2
+
+#if dirstate-v2
+  $ cat >> $HGRCPATH << EOF
+  > [format]
+  > use-dirstate-v2=1
+  > [storage]
+  > dirstate-v2.slow-path=allow
+  > EOF
+#endif
 
   $ cat <<EOF >> $HGRCPATH
   > [extensions]
@@ -14,7 +24,7 @@
 
   $ cat <<EOF >> $HGRCPATH
   > [format]
-  > internal-phase = yes
+  > use-internal-phase = yes
   > EOF
 
 #endif
@@ -243,12 +253,12 @@ apply it and make sure our state is as expected
 (this also tests that same timestamp prevents backups from being
 removed, even though there are more than 'maxbackups' backups)
 
-  $ f -t .hg/shelve-backup/default.patch
-  .hg/shelve-backup/default.patch: file
-  $ touch -t 200001010000 .hg/shelve-backup/default.patch
-  $ f -t .hg/shelve-backup/default-1.patch
-  .hg/shelve-backup/default-1.patch: file
-  $ touch -t 200001010000 .hg/shelve-backup/default-1.patch
+  $ f -t .hg/shelve-backup/default.shelve
+  .hg/shelve-backup/default.shelve: file
+  $ touch -t 200001010000 .hg/shelve-backup/default.shelve
+  $ f -t .hg/shelve-backup/default-1.shelve
+  .hg/shelve-backup/default-1.shelve: file
+  $ touch -t 200001010000 .hg/shelve-backup/default-1.shelve
 
   $ hg unshelve
   unshelving change 'default-01'
@@ -419,11 +429,11 @@ ensure that we have a merge with unresolved conflicts
   +++ b/a/a
   @@ -1,2 +1,6 @@
    a
-  +<<<<<<< working-copy: 2377350b6337 - shelve: pending changes temporary commit
+  +<<<<<<< working-copy:   2377350b6337 - shelve: pending changes temporary commit
    c
   +=======
   +a
-  +>>>>>>> shelve:       203c9f771d2b - shelve: changes to: [mq]: second.patch
+  +>>>>>>> shelved change: 203c9f771d2b - shelve: changes to: [mq]: second.patch
   diff --git a/b/b b/b.rename/b
   rename from b/b
   rename to b.rename/b
@@ -976,7 +986,7 @@ Test shelve --keep
 Test shelve --delete
 
   $ hg shelve --list
-  default         (*s ago)    changes to: create conflict (glob)
+  default         (*s ago) * changes to: create conflict (glob)
   $ hg shelve --delete doesnotexist
   abort: shelved change 'doesnotexist' not found
   [10]
@@ -1209,7 +1219,7 @@ Abort unshelve while merging (issue5123)
   $ hg add e
   $ hg ci -m e
   $ hg shelve --patch
-  default         (*s ago)    changes to: b (glob)
+  default         (*s ago) * changes to: b (glob)
   
   diff --git a/c b/c
   new file mode 100644
@@ -1258,7 +1268,7 @@ Abort unshelve while merging (issue5123)
   e
 -- shelve should not contain `c` now
   $ hg shelve --patch
-  default         (*s ago)    changes to: b (glob)
+  default         (*s ago) * changes to: b (glob)
   
   diff --git a/d b/d
   new file mode 100644
@@ -1357,7 +1367,7 @@ Abort unshelve while merging (issue5123)
   A
   B
   $ hg shelve --patch
-  default         (*s ago)    changes to: add B to foo (glob)
+  default         (*s ago) * changes to: add B to foo (glob)
   
   diff --git a/foo b/foo
   --- a/foo
@@ -1385,8 +1395,8 @@ Abort unshelve while merging (issue5123)
   unshelving change 'default-01'
   rebasing shelved changes
   merging bar1
-  merging bar2
   warning: conflicts while merging bar1! (edit, then use 'hg resolve --mark')
+  merging bar2
   warning: conflicts while merging bar2! (edit, then use 'hg resolve --mark')
   unresolved conflicts (see 'hg resolve', then 'hg unshelve --continue')
   [240]
@@ -1534,4 +1544,117 @@ produced by `hg shelve`.
   $ hg update -q --clean .
   $ hg patch -p1 test_patch.patch
   applying test_patch.patch
+
+  $ hg strip -q -r .
 #endif
+
+Check the comment of the last commit for consistency
+
+  $ hg log -r . --template '{desc}\n'
+  add C to bars
+
+-- if phasebased, shelve works without patch and bundle
+
+  $ hg update -q --clean .
+  $ rm -r .hg/shelve*
+  $ echo import antigravity >> somefile.py
+  $ hg add somefile.py
+  $ hg shelve -q
+#if phasebased
+  $ rm .hg/shelved/default.hg
+  $ rm .hg/shelved/default.patch
+#endif
+
+shelve --list --patch should work even with no patch file.
+
+  $ hg shelve --list --patch
+  default         (*s ago) * changes to: add C to bars (glob)
+  
+  diff --git a/somefile.py b/somefile.py
+  new file mode 100644
+  --- /dev/null
+  +++ b/somefile.py
+  @@ -0,0 +1,1 @@
+  +import antigravity
+
+  $ hg unshelve
+  unshelving change 'default'
+
+#if phasebased
+  $ ls .hg/shelve-backup
+  default.shelve
+#endif
+
+#if stripbased
+  $ ls .hg/shelve-backup
+  default.hg
+  default.patch
+  default.shelve
+#endif
+
+
+-- allow for phase-based shelves to be disabled
+
+  $ hg update -q --clean .
+  $ hg strip -q --hidden -r 0
+  $ rm -r .hg/shelve*
+
+#if phasebased
+  $ cp $HGRCPATH $TESTTMP/hgrc-saved
+  $ cat <<EOF >> $HGRCPATH
+  > [shelve]
+  > store = strip
+  > EOF
+#endif
+
+  $ echo import this >> somefile.py
+  $ hg add somefile.py
+  $ hg shelve -q
+  $ hg log --hidden
+  $ ls .hg/shelved
+  default.hg
+  default.patch
+  default.shelve
+  $ hg unshelve -q
+
+Override the disabling, re-enabling phase-based shelves
+
+  $ hg shelve --config shelve.store=internal -q
+
+#if phasebased
+  $ hg log --hidden --template '{user}\n'
+  shelve@localhost
+#endif
+
+#if stripbased
+  $ hg log --hidden --template '{user}\n'
+#endif
+
+clean up
+
+#if phasebased
+  $ mv $TESTTMP/hgrc-saved $HGRCPATH
+#endif
+
+changed files should be reachable in all shelves
+
+create an extension that emits changed files
+
+  $ cat > shelve-changed-files.py << EOF
+  > """Command to emit changed files for a shelf"""
+  > 
+  > from mercurial import registrar, shelve
+  > 
+  > cmdtable = {}
+  > command = registrar.command(cmdtable)
+  > 
+  > 
+  > @command(b'shelve-changed-files')
+  > def shelve_changed_files(ui, repo, name):
+  >     shelf = shelve.ShelfDir(repo).get(name)
+  >     for file in shelf.changed_files(ui, repo):
+  >         ui.write(file + b'\n')
+  > EOF
+
+  $ hg --config extensions.shelve-changed-files=shelve-changed-files.py shelve-changed-files default
+  somefile.py

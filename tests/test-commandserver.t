@@ -23,7 +23,6 @@ typical client does not want echo-back messages, so test without it:
   $ hg init repo
   $ cd repo
 
-  >>> from __future__ import absolute_import
   >>> import os
   >>> import sys
   >>> from hgclient import bprint, check, readchannel, runcommand
@@ -101,7 +100,7 @@ typical client does not want echo-back messages, so test without it:
   000000000000 tip
   *** runcommand id -runknown
   abort: unknown revision 'unknown'
-   [255]
+   [10]
 
   >>> from hgclient import bprint, check, readchannel
   >>> @check
@@ -159,7 +158,7 @@ check strict parsing of early options:
   ...                         b'default'])
   *** runcommand log -b --config=alias.log=!echo pwned default
   abort: unknown revision '--config=alias.log=!echo pwned'
-   [255]
+   [10]
 
 check that "histedit --commands=-" can read rules from the input channel:
 
@@ -218,7 +217,7 @@ check that local configs for the cached repo aren't inherited when -R is used:
   devel.all-warnings=true
   devel.default-date=0 0
   extensions.fsmonitor= (fsmonitor !)
-  format.exp-dirstate-v2=1 (dirstate-v2 !)
+  format.use-dirstate-v2=1 (dirstate-v2 !)
   largefiles.usercache=$TESTTMP/.cache/largefiles
   lfs.usercache=$TESTTMP/.cache/lfs
   ui.slash=True
@@ -226,6 +225,7 @@ check that local configs for the cached repo aren't inherited when -R is used:
   ui.detailed-exit-code=True
   ui.merge=internal:merge
   ui.mergemarkers=detailed
+  ui.ssh=* (glob)
   ui.timeout.warn=15
   ui.foo=bar
   ui.nontty=true
@@ -239,6 +239,7 @@ check that local configs for the cached repo aren't inherited when -R is used:
   ui.detailed-exit-code=True
   ui.merge=internal:merge
   ui.mergemarkers=detailed
+  ui.ssh=* (glob)
   ui.timeout.warn=15
   ui.nontty=true
 #endif
@@ -540,6 +541,7 @@ changelog and manifest would have invalid node:
   checking manifests
   crosschecking files in changesets and manifests
   checking files
+  checking dirstate
   checked 2 changesets with 2 changes to 1 files
   $ hg revert --no-backup -aq
 
@@ -824,6 +826,7 @@ structured message channel:
   message: '\xa6Ditem@Cpos\xf6EtopicMcrosscheckingEtotal\xf6DtypeHprogressDunit@'
   message: '\xa2DdataOchecking files\nDtypeFstatus'
   message: '\xa6Ditem@Cpos\xf6EtopicHcheckingEtotal\xf6DtypeHprogressDunit@'
+  message: '\xa2DdataRchecking dirstate\nDtypeFstatus'
   message: '\xa2DdataX/checked 0 changesets with 0 changes to 0 files\nDtypeFstatus'
 
   >>> from hgclient import checkwith, readchannel, runcommand, stringio

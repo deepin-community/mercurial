@@ -129,10 +129,10 @@ delete a remote bookmark
   bundle2-output: bundle parameter: 
   bundle2-output: start of parts
   bundle2-output: bundle part: "replycaps"
-  bundle2-output-part: "replycaps" 224 bytes payload
+  bundle2-output-part: "replycaps" 227 bytes payload
   bundle2-output: part 0: "REPLYCAPS"
   bundle2-output: header chunk size: 16
-  bundle2-output: payload chunk size: 224
+  bundle2-output: payload chunk size: 227
   bundle2-output: closing payload chunk
   bundle2-output: bundle part: "check:bookmarks"
   bundle2-output-part: "check:bookmarks" 23 bytes payload
@@ -162,9 +162,9 @@ delete a remote bookmark
   bundle2-input: part parameters: 0
   bundle2-input: found a handler for part replycaps
   bundle2-input-part: "replycaps" supported
-  bundle2-input: payload chunk size: 224
+  bundle2-input: payload chunk size: 227
   bundle2-input: payload chunk size: 0
-  bundle2-input-part: total payload size 224
+  bundle2-input-part: total payload size 227
   bundle2-input: part header size: 22
   bundle2-input: part type: "CHECK:BOOKMARKS"
   bundle2-input: part id: "1"
@@ -241,10 +241,10 @@ delete a remote bookmark
   bundle2-output: bundle parameter: 
   bundle2-output: start of parts
   bundle2-output: bundle part: "replycaps"
-  bundle2-output-part: "replycaps" 224 bytes payload
+  bundle2-output-part: "replycaps" 227 bytes payload
   bundle2-output: part 0: "REPLYCAPS"
   bundle2-output: header chunk size: 16
-  bundle2-output: payload chunk size: 224
+  bundle2-output: payload chunk size: 227
   bundle2-output: closing payload chunk
   bundle2-output: bundle part: "check:bookmarks"
   bundle2-output-part: "check:bookmarks" 23 bytes payload
@@ -275,9 +275,9 @@ delete a remote bookmark
   bundle2-input: part parameters: 0
   bundle2-input: found a handler for part replycaps
   bundle2-input-part: "replycaps" supported
-  bundle2-input: payload chunk size: 224
+  bundle2-input: payload chunk size: 227
   bundle2-input: payload chunk size: 0
-  bundle2-input-part: total payload size 224
+  bundle2-input-part: total payload size 227
   bundle2-input: part header size: 22
   bundle2-input: part type: "CHECK:BOOKMARKS"
   bundle2-input: part id: "1"
@@ -357,7 +357,7 @@ demand that one of the bookmarks is activated
   (leaving bookmark V)
   $ hg push -B . ../a
   abort: no active bookmark
-  [255]
+  [10]
   $ hg update -r V
   0 files updated, 0 files merged, 1 files removed, 0 files unresolved
   (activating bookmark V)
@@ -489,6 +489,65 @@ divergent bookmarks
    * X                         1:0d2164f0ce0d
      Y                         0:4e3505fd9583
      Z                         1:0d2164f0ce0d
+
+mirroring bookmarks
+
+  $ hg book
+     @                         1:9b140be10808
+     @foo                      2:0d2164f0ce0d
+     X                         1:9b140be10808
+     X@foo                     2:0d2164f0ce0d
+     Y                         0:4e3505fd9583
+     Z                         2:0d2164f0ce0d
+     foo                       -1:000000000000
+   * foobar                    1:9b140be10808
+  $ cp .hg/bookmarks .hg/bookmarks.bak
+  $ hg book -d X
+  $ hg incoming --bookmark  -v ../a
+  comparing with ../a
+  searching for changed bookmarks
+     @                         0d2164f0ce0d diverged
+     X                         0d2164f0ce0d added
+  $ hg incoming --bookmark  -v ../a --config 'paths.*:bookmarks.mode=babar'
+  (paths.*:bookmarks.mode has unknown value: "babar")
+  comparing with ../a
+  searching for changed bookmarks
+     @                         0d2164f0ce0d diverged
+     X                         0d2164f0ce0d added
+  $ hg incoming --bookmark  -v ../a --config 'paths.*:bookmarks.mode=mirror'
+  comparing with ../a
+  searching for changed bookmarks
+     @                         0d2164f0ce0d changed
+     @foo                      000000000000 removed
+     X                         0d2164f0ce0d added
+     X@foo                     000000000000 removed
+     foo                       000000000000 removed
+     foobar                    000000000000 removed
+  $ hg incoming --bookmark  -v ../a --config 'paths.*:bookmarks.mode=ignore'
+  comparing with ../a
+  bookmarks exchange disabled with this path
+  $ hg pull ../a --config 'paths.*:bookmarks.mode=ignore'
+  pulling from ../a
+  searching for changes
+  no changes found
+  $ hg book
+     @                         1:9b140be10808
+     @foo                      2:0d2164f0ce0d
+     X@foo                     2:0d2164f0ce0d
+     Y                         0:4e3505fd9583
+     Z                         2:0d2164f0ce0d
+     foo                       -1:000000000000
+   * foobar                    1:9b140be10808
+  $ hg pull ../a --config 'paths.*:bookmarks.mode=mirror'
+  pulling from ../a
+  searching for changes
+  no changes found
+  $ hg book
+     @                         2:0d2164f0ce0d
+     X                         2:0d2164f0ce0d
+     Y                         0:4e3505fd9583
+     Z                         2:0d2164f0ce0d
+  $ mv .hg/bookmarks.bak .hg/bookmarks
 
 explicit pull should overwrite the local version (issue4439)
 
@@ -656,14 +715,15 @@ Update a bookmark right after the initial lookup -r (issue4700)
   $ cat <<EOF > ../lookuphook.py
   > """small extensions adding a hook after wireprotocol lookup to test race"""
   > import functools
-  > from mercurial import wireprotov1server, wireprotov2server
+  > from mercurial import wireprotov1server
   > 
   > def wrappedlookup(orig, repo, *args, **kwargs):
   >     ret = orig(repo, *args, **kwargs)
   >     repo.hook(b'lookup')
   >     return ret
-  > for table in [wireprotov1server.commands, wireprotov2server.COMMANDS]:
-  >   table[b'lookup'].func = functools.partial(wrappedlookup, table[b'lookup'].func)
+  > 
+  > table = wireprotov1server.commands
+  > table[b'lookup'].func = functools.partial(wrappedlookup, table[b'lookup'].func)
   > EOF
   $ cat <<EOF > ../pull-race/.hg/hgrc
   > [extensions]
@@ -1142,8 +1202,6 @@ Check hook preventing push (issue4455)
   > local=../issue4455-dest/
   > ssh=ssh://user@dummy/issue4455-dest
   > http=http://localhost:$HGPORT/
-  > [ui]
-  > ssh="$PYTHON" "$TESTDIR/dummyssh"
   > EOF
   $ cat >> ../issue4455-dest/.hg/hgrc << EOF
   > [hooks]
@@ -1270,7 +1328,6 @@ Test that pre-pushkey compat for bookmark works as expected (issue5777)
 
   $ cat << EOF >> $HGRCPATH
   > [ui]
-  > ssh="$PYTHON" "$TESTDIR/dummyssh"
   > [server]
   > bookmarks-pushkey-compat = yes
   > EOF

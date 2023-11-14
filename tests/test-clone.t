@@ -1,13 +1,3 @@
-#testcases sshv1 sshv2
-
-#if sshv2
-  $ cat >> $HGRCPATH << EOF
-  > [experimental]
-  > sshpeer.advertise-v2 = true
-  > sshserver.support-v2 = true
-  > EOF
-#endif
-
 Prepare repo a:
 
   $ hg init a
@@ -69,12 +59,7 @@ Ensure branchcache got copied over:
 
   $ cat a
   a
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 11 changesets with 11 changes to 2 files
+  $ hg verify -q
 
 Invalid dest '' must abort:
 
@@ -132,12 +117,7 @@ Ensure branchcache got copied over:
 
   $ cat a 2>/dev/null || echo "a not present"
   a not present
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 11 changesets with 11 changes to 2 files
+  $ hg verify -q
 
 Default destination:
 
@@ -177,12 +157,7 @@ Use --pull:
   new changesets acb14030fe0a:a7949464abda
   updating to branch default
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ hg -R g verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 11 changesets with 11 changes to 2 files
+  $ hg -R g verify -q
 
 Invalid dest '' with --pull must abort (issue2528):
 
@@ -658,7 +633,7 @@ Inaccessible source
   $ mkdir a
   $ chmod 000 a
   $ hg clone a b
-  abort: Permission denied: *$TESTTMP/fail/a/.hg* (glob)
+  abort: $EACCES$: *$TESTTMP/fail/a/.hg* (glob)
   [255]
 
 Inaccessible destination
@@ -666,7 +641,7 @@ Inaccessible destination
   $ hg init b
   $ cd b
   $ hg clone . ../a
-  abort: Permission denied: *../a* (glob)
+  abort: $EACCES$: *../a* (glob)
   [255]
   $ cd ..
   $ chmod 700 a
@@ -739,7 +714,7 @@ Test clone from the repository in (emulated) revlog format 0 (issue4203):
   $ hg -R src commit -m '#0'
   $ hg -R src log -q
   0:e1bab28bca43
-  $ hg -R src debugrevlog -c | egrep 'format|flags'
+  $ hg -R src debugrevlog -c | grep -E 'format|flags'
   format : 0
   flags  : (none)
   $ hg root -R src -T json | sed 's|\\\\|\\|g'
@@ -1125,7 +1100,7 @@ Test that auto sharing doesn't cause failure of "hg clone local remote"
   $ hg id -R remote -r 0
   abort: repository remote not found
   [255]
-  $ hg --config share.pool=share -q clone -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" a ssh://user@dummy/remote
+  $ hg --config share.pool=share -q clone a ssh://user@dummy/remote
   $ hg -R remote id -r 0
   acb14030fe0a
 
@@ -1206,14 +1181,12 @@ SEC: check for unsafe ssh url
 #if windows
   $ hg clone "ssh://%26touch%20owned%20/" --debug
   running sh -c "read l; read l; read l" "&touch owned " "hg -R . serve --stdio"
-  sending upgrade request: * proto=exp-ssh-v2-0003 (glob) (sshv2 !)
   sending hello command
   sending between command
   abort: no suitable response from remote hg
   [255]
   $ hg clone "ssh://example.com:%26touch%20owned%20/" --debug
   running sh -c "read l; read l; read l" -p "&touch owned " example.com "hg -R . serve --stdio"
-  sending upgrade request: * proto=exp-ssh-v2-0003 (glob) (sshv2 !)
   sending hello command
   sending between command
   abort: no suitable response from remote hg
@@ -1221,14 +1194,12 @@ SEC: check for unsafe ssh url
 #else
   $ hg clone "ssh://%3btouch%20owned%20/" --debug
   running sh -c "read l; read l; read l" ';touch owned ' 'hg -R . serve --stdio'
-  sending upgrade request: * proto=exp-ssh-v2-0003 (glob) (sshv2 !)
   sending hello command
   sending between command
   abort: no suitable response from remote hg
   [255]
   $ hg clone "ssh://example.com:%3btouch%20owned%20/" --debug
   running sh -c "read l; read l; read l" -p ';touch owned ' example.com 'hg -R . serve --stdio'
-  sending upgrade request: * proto=exp-ssh-v2-0003 (glob) (sshv2 !)
   sending hello command
   sending between command
   abort: no suitable response from remote hg
@@ -1237,7 +1208,6 @@ SEC: check for unsafe ssh url
 
   $ hg clone "ssh://v-alid.example.com/" --debug
   running sh -c "read l; read l; read l" v-alid\.example\.com ['"]hg -R \. serve --stdio['"] (re)
-  sending upgrade request: * proto=exp-ssh-v2-0003 (glob) (sshv2 !)
   sending hello command
   sending between command
   abort: no suitable response from remote hg

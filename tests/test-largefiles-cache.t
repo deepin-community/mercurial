@@ -96,7 +96,6 @@ Portable way to print file permissions:
 
   $ cat > ls-l.py <<EOF
   > #!$PYTHON
-  > from __future__ import absolute_import, print_function
   > import os
   > import sys
   > path = sys.argv[1]
@@ -185,8 +184,9 @@ conditional above.
 
   $ find share_dst/.hg/largefiles/* | sort
   share_dst/.hg/largefiles/dirstate
+  share_dst/.hg/largefiles/undo.backup.dirstate.bck
 
-  $ find src/.hg/largefiles/* | egrep "(dirstate|$hash)" | sort
+  $ find src/.hg/largefiles/* | grep -E "(dirstate|$hash)" | sort
   src/.hg/largefiles/dirstate
   src/.hg/largefiles/e2fb5f2139d086ded2cb600d5a91a196e76bf020
 

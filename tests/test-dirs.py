@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 import unittest
 
 import silenttestrunner
@@ -13,13 +11,13 @@ class dirstests(unittest.TestCase):
             (b'a/a/a', [b'a', b'a/a', b'']),
             (b'alpha/beta/gamma', [b'', b'alpha', b'alpha/beta']),
         ]:
-            d = pathutil.dirs({})
+            d = pathutil.dirs([])
             d.addpath(case)
             self.assertEqual(sorted(d), sorted(want))
 
     def testinvalid(self):
         with self.assertRaises(ValueError):
-            d = pathutil.dirs({})
+            d = pathutil.dirs([])
             d.addpath(b'a//b')
 
 

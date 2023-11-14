@@ -5,7 +5,6 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import, print_function
 
 import calendar
 import datetime
@@ -84,10 +83,14 @@ def makedate(timestamp=None):
         raise error.InputError(
             _(b"negative timestamp: %d") % timestamp, hint=hint
         )
-    delta = datetime.datetime.utcfromtimestamp(
+    tz = round(
         timestamp
-    ) - datetime.datetime.fromtimestamp(timestamp)
-    tz = delta.days * 86400 + delta.seconds
+        - datetime.datetime.fromtimestamp(
+            timestamp,
+        )
+        .replace(tzinfo=datetime.timezone.utc)
+        .timestamp()
+    )
     return timestamp, tz
 
 

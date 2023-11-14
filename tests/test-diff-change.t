@@ -119,7 +119,7 @@ as pairs even if x == y, but not for "f(x:y)" nor "x::y" (issue3474, issue4774)
   +wdir
   $ hg diff -r "2 and 1"
   abort: empty revision range
-  [255]
+  [10]
 
   $ cd ..
 
@@ -284,7 +284,7 @@ With diff.merge, it's a diff against the conflicted content.
    7
   -<<<<<<< local: fd1f17c90d7c - test: new file
    z
-  -||||||| base
+  -||||||| base:  ae119d680c82 - test: lots of text
   -8
   -=======
   -y

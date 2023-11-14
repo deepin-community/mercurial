@@ -48,6 +48,18 @@ A set of extension and shell functions ensures this scheduling.
   >     if watchpath is not None:
   >         ui.status(b'waiting on: %s\n' % watchpath)
   >         limit = 100
+  >         test_default_timeout = os.environ.get('HGTEST_TIMEOUT_DEFAULT')
+  >         test_timeout = os.environ.get('HGTEST_TIMEOUT')
+  >         if test_default_timeout is not None:
+  >            test_default_timeout = int(test_default_timeout)
+  >         if test_timeout is not None:
+  >            test_timeout = int(test_timeout)
+  >         if (
+  >             test_default_timeout is not None
+  >             and test_timeout is not None
+  >             and test_default_timeout < test_timeout
+  >         ):
+  >             limit = int(limit * (test_timeout / test_default_timeout))
   >         while 0 < limit and not os.path.exists(watchpath):
   >             limit -= 1
   >             time.sleep(0.1)
@@ -58,9 +70,8 @@ A set of extension and shell functions ensures this scheduling.
   >             def delete():
   >                 try:
   >                     os.unlink(watchpath)
-  >                 except OSError as exc:
-  >                     if exc.errno != errno.ENOENT:
-  >                         raise
+  >                 except FileNotFoundError:
+  >                     pass
   >             ui.atexit(delete)
   >     return orig(pushop)
   > 
@@ -102,7 +113,6 @@ A set of extension and shell functions ensures this scheduling.
 
   $ cat >> $HGRCPATH << EOF
   > [ui]
-  > ssh = "$PYTHON" "$TESTDIR/dummyssh"
   > # simplify output
   > logtemplate = {node|short} {desc} ({branch})
   > [phases]

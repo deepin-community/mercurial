@@ -25,15 +25,16 @@
   searching for changes
   no changes found
   $ cd shallow
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   exp-remotefilelog-repo-req-1
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
   treemanifest
@@ -69,15 +70,16 @@
   searching for changes
   no changes found
   $ cd shallow2
-  $ cat .hg/requires
+  $ hg debugrequires
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   exp-remotefilelog-repo-req-1
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
   treemanifest
@@ -113,15 +115,16 @@
   1 files updated, 0 files merged, 0 files removed, 0 files unresolved
 
   $ ls shallow3/.hg/store/data
-  $ cat shallow3/.hg/requires
+  $ hg debugrequires -R shallow3/
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   exp-remotefilelog-repo-req-1
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
   treemanifest

@@ -4,7 +4,7 @@
   $ SVNREPOURL="`"$PYTHON" $TESTDIR/svnurlof.py \"$SVNREPOPATH\"`"
 
   $ filter_svn_output () {
-  >     egrep -v 'Committing|Transmitting|Updating|(^$)' || true
+  >     grep -E -v 'Committing|Transmitting|Updating|(^$)' || true
   > }
 
 create subversion repo
@@ -249,7 +249,7 @@ debugsub in clone
 
 verify subrepo is contained within the repo directory
 
-  $ "$PYTHON" -c "from __future__ import print_function; import os.path; print(os.path.exists('s'))"
+  $ "$PYTHON" -c "import os.path; print(os.path.exists('s'))"
   True
 
 update to nullrev (must delete the subrepo)
@@ -591,7 +591,7 @@ well.
   $ cd "$WCROOT"
   $ svn up > /dev/null
   $ mkdir trunk/subdir branches
-  $ echo a > trunk/subdir/a
+  $ echo foo > trunk/subdir/a
   $ svn add trunk/subdir branches
   A         trunk/subdir
   A         trunk/subdir/a
