@@ -1,15 +1,12 @@
-#testcases dirstate-v1 dirstate-v1-tree dirstate-v2
-
-#if dirstate-v1-tree
-#require rust
-  $ echo '[experimental]' >> $HGRCPATH
-  $ echo 'dirstate-tree.in-memory=1' >> $HGRCPATH
-#endif
+#testcases dirstate-v1 dirstate-v2
 
 #if dirstate-v2
-#require rust
-  $ echo '[format]' >> $HGRCPATH
-  $ echo 'exp-dirstate-v2=1' >> $HGRCPATH
+  $ cat >> $HGRCPATH << EOF
+  > [format]
+  > use-dirstate-v2=1
+  > [storage]
+  > dirstate-v2.slow-path=allow
+  > EOF
 #endif
 
 init
@@ -32,7 +29,7 @@ purge without the extension
   $ hg st
   $ touch foo
   $ hg purge
-  permanently delete 1 unkown files? (yN) n
+  permanently delete 1 unknown files? (yN) n
   abort: removal cancelled
   [250]
   $ hg st
@@ -96,7 +93,7 @@ delete an untracked file
   untracked_file
   untracked_file_readonly
   $ hg purge --confirm
-  permanently delete 2 unkown files? (yN) n
+  permanently delete 2 unknown files? (yN) n
   abort: removal cancelled
   [250]
   $ hg purge -v
@@ -159,7 +156,7 @@ delete only part of the tree
   $ hg purge -p ../untracked_directory
   untracked_directory/nested_directory
   $ hg purge --confirm
-  permanently delete 1 unkown files? (yN) n
+  permanently delete 1 unknown files? (yN) n
   abort: removal cancelled
   [250]
   $ hg purge -v ../untracked_directory
@@ -206,7 +203,7 @@ skip ignored files if -i or --all not specified
   ignored
   untracked_file
   $ hg purge --confirm --all
-  permanently delete 1 unkown and 1 ignored files? (yN) n
+  permanently delete 1 unknown and 1 ignored files? (yN) n
   abort: removal cancelled
   [250]
   $ hg purge -v --all
@@ -352,5 +349,10 @@ remove both files and dirs
   $ ls -A
   .hg
   .hgignore
+
+Test some --confirm case that ended crashing
+
+  $ hg purge --confirm
+  $ hg purge --confirm --all --files
 
   $ cd ..

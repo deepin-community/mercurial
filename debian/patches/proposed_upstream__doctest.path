@@ -14,35 +14,25 @@ Differential Revision: https://phab.mercurial-scm.org/D8571
  tests/test-doctest.py | 23 ++++++++++++-----------
  1 file changed, 12 insertions(+), 11 deletions(-)
 
---- mercurial.orig/tests/test-doctest.py
-+++ mercurial/tests/test-doctest.py
-@@ -6,7 +6,6 @@ from __future__ import print_function
+--- a/tests/test-doctest.py
++++ b/tests/test-doctest.py
+@@ -4,7 +4,6 @@
  import doctest
  import os
  import re
 -import subprocess
  import sys
  
- ispy3 = sys.version_info[0] >= 3
-@@ -70,16 +69,18 @@ testmod_arg_overrides = {
+ if 'TERM' in os.environ:
+@@ -64,19 +63,17 @@ testmod_arg_overrides = {
  
  fileset = 'set:(**.py)'
  
 -cwd = os.path.dirname(os.environ["TESTDIR"])
--
++cwd = os.path.dirname(os.environb[b"TESTDIR"])
+ 
 -if not os.path.isdir(os.path.join(cwd, ".hg")):
 -    sys.exit(0)
--
--files = subprocess.check_output(
--    "hg files --print0 \"%s\"" % fileset,
--    shell=True,
--    cwd=cwd,
--).split(b'\0')
-+if ispy3:
-+    cwd = os.path.dirname(os.environb[b"TESTDIR"])
-+else:
-+    cwd = os.path.dirname(os.environ["TESTDIR"])
-+
 +files = []
 +for dirpath, dirnames, filenames in os.walk(cwd):
 +    excludeddirindexes = reversed([i for i, dir in enumerate(dirnames) if dir == b'build' or dir.startswith(b'.')])
@@ -51,5 +41,15 @@ Differential Revision: https://phab.mercurial-scm.org/D8571
 +    # include all .py files, removing the cwd + dirsep prefix
 +    files.extend(os.path.join(dirpath, f)[len(cwd) + 1:] for f in filenames if f.endswith(b'.py'))
  
- if sys.version_info[0] >= 3:
-     cwd = os.fsencode(cwd)
+-files = subprocess.check_output(
+-    "hg files --print0 \"%s\"" % fileset,
+-    shell=True,
+-    cwd=cwd,
+-).split(b'\0')
+-
+-if sys.version_info[0] >= 3:
+-    cwd = os.fsencode(cwd)
++cwd = os.fsencode(cwd)
+ 
+ mods_tested = set()
+ for f in files:

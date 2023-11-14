@@ -10,7 +10,6 @@
 #   $ HGREPOFEATURES="simplestore" ./run-tests.py \
 #       --extra-config-opt extensions.simplestore=`pwd`/simplestorerepo.py
 
-from __future__ import absolute_import
 
 import stat
 
@@ -71,7 +70,7 @@ class simplestoreerror(error.StorageError):
 
 @interfaceutil.implementer(repository.irevisiondelta)
 @attr.s(slots=True)
-class simplestorerevisiondelta(object):
+class simplestorerevisiondelta:
     node = attr.ib()
     p1node = attr.ib()
     p2node = attr.ib()
@@ -85,14 +84,14 @@ class simplestorerevisiondelta(object):
 
 @interfaceutil.implementer(repository.iverifyproblem)
 @attr.s(frozen=True)
-class simplefilestoreproblem(object):
+class simplefilestoreproblem:
     warning = attr.ib(default=None)
     error = attr.ib(default=None)
     node = attr.ib(default=None)
 
 
 @interfaceutil.implementer(repository.ifilestorage)
-class filestorage(object):
+class filestorage:
     """Implements storage for a tracked path.
 
     Data is stored in the VFS in a directory corresponding to the tracked
@@ -665,20 +664,24 @@ def issimplestorefile(f, kind, st):
 
 
 class simplestore(store.encodedstore):
-    def datafiles(self):
-        for x in super(simplestore, self).datafiles():
+    def data_entries(self, undecodable=None):
+        for x in super(simplestore, self).data_entries():
             yield x
 
         # Supplement with non-revlog files.
         extrafiles = self._walk('data', True, filefilter=issimplestorefile)
 
-        for unencoded, encoded, size in extrafiles:
+        for f1, size in extrafiles:
             try:
-                unencoded = store.decodefilename(unencoded)
+                f2 = store.decodefilename(f1)
             except KeyError:
-                unencoded = None
+                if undecodable is None:
+                    raise error.StorageError(b'undecodable revlog name %s' % f1)
+                else:
+                    undecodable.append(f1)
+                    continue
 
-            yield unencoded, encoded, size
+            yield f2, size
 
 
 def reposetup(ui, repo):

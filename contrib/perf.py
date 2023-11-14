@@ -54,7 +54,6 @@ Configurations
 # - make perf command for recent feature work correctly with early
 #   Mercurial
 
-from __future__ import absolute_import
 import contextlib
 import functools
 import gc
@@ -236,6 +235,7 @@ revlogopts = getattr(
 
 cmdtable = {}
 
+
 # for "historical portability":
 # define parsealiases locally, because cmdutil.parsealiases has been
 # available since 1.5 (or 6252852b4332)
@@ -370,7 +370,7 @@ def getlen(ui):
     return len
 
 
-class noop(object):
+class noop:
     """dummy context manager"""
 
     def __enter__(self):
@@ -414,7 +414,7 @@ def gettimer(ui, opts=None):
         # available since 2.2 (or ae5f92e154d3)
         from mercurial import node
 
-        class defaultformatter(object):
+        class defaultformatter:
             """Minimized composition of baseformatter and plainformatter"""
 
             def __init__(self, ui, topic, opts):
@@ -532,10 +532,16 @@ DEFAULTLIMITS = (
 )
 
 
+@contextlib.contextmanager
+def noop_context():
+    yield
+
+
 def _timer(
     fm,
     func,
     setup=None,
+    context=noop_context,
     title=None,
     displayall=False,
     limits=DEFAULTLIMITS,
@@ -551,14 +557,16 @@ def _timer(
     for i in range(prerun):
         if setup is not None:
             setup()
-        func()
+        with context():
+            func()
     keepgoing = True
     while keepgoing:
         if setup is not None:
             setup()
-        with profiler:
-            with timeone() as item:
-                r = func()
+        with context():
+            with profiler:
+                with timeone() as item:
+                    r = func()
         profiler = NOOPCTX
         count += 1
         results.append(item[0])
@@ -574,7 +582,6 @@ def _timer(
 
 
 def formatone(fm, timings, title=None, result=None, displayall=False):
-
     count = len(timings)
 
     fm.startitem()
@@ -653,7 +660,7 @@ def safeattrsetter(obj, name, ignoremissing=False):
 
     origvalue = getattr(obj, _sysstr(name))
 
-    class attrutil(object):
+    class attrutil:
         def set(self, newvalue):
             setattr(obj, _sysstr(name), newvalue)
 
@@ -816,7 +823,12 @@ def perfstatus(ui, repo, **opts):
             )
             sum(map(bool, s))
 
-        timer(status_dirstate)
+        if util.safehasattr(dirstate, 'running_status'):
+            with dirstate.running_status(repo):
+                timer(status_dirstate)
+                dirstate.invalidate()
+        else:
+            timer(status_dirstate)
     else:
         timer(lambda: sum(map(len, repo.status(unknown=opts[b'unknown']))))
     fm.end()
@@ -890,7 +902,7 @@ def perftags(ui, repo, **opts):
         repocleartagscache()
 
     def t():
-        return len(repo.tags())
+        len(repo.tags())
 
     timer(t, setup=s)
     fm.end()
@@ -926,6 +938,71 @@ def perfancestorset(ui, repo, revset, **opts):
     fm.end()
 
 
+@command(
+    b'perf::delta-find',
+    revlogopts + formatteropts,
+    b'-c|-m|FILE REV',
+)
+def perf_delta_find(ui, repo, arg_1, arg_2=None, **opts):
+    """benchmark the process of finding a valid delta for a revlog revision
+
+    When a revlog receives a new revision (e.g. from a commit, or from an
+    incoming bundle), it searches for a suitable delta-base to produce a delta.
+    This perf command measures how much time we spend in this process. It
+    operates on an already stored revision.
+
+    See `hg help debug-delta-find` for another related command.
+    """
+    from mercurial import revlogutils
+    import mercurial.revlogutils.deltas as deltautil
+
+    opts = _byteskwargs(opts)
+    if arg_2 is None:
+        file_ = None
+        rev = arg_1
+    else:
+        file_ = arg_1
+        rev = arg_2
+
+    repo = repo.unfiltered()
+
+    timer, fm = gettimer(ui, opts)
+
+    rev = int(rev)
+
+    revlog = cmdutil.openrevlog(repo, b'perf::delta-find', file_, opts)
+
+    deltacomputer = deltautil.deltacomputer(revlog)
+
+    node = revlog.node(rev)
+    p1r, p2r = revlog.parentrevs(rev)
+    p1 = revlog.node(p1r)
+    p2 = revlog.node(p2r)
+    full_text = revlog.revision(rev)
+    textlen = len(full_text)
+    cachedelta = None
+    flags = revlog.flags(rev)
+
+    revinfo = revlogutils.revisioninfo(
+        node,
+        p1,
+        p2,
+        [full_text],  # btext
+        textlen,
+        cachedelta,
+        flags,
+    )
+
+    # Note: we should probably purge the potential caches (like the full
+    # manifest cache) between runs.
+    def find_one():
+        with revlog._datafp() as fh:
+            deltacomputer.finddeltainfo(revinfo, fh, target_rev=rev)
+
+    timer(find_one)
+    fm.end()
+
+
 @command(b'perf::discovery|perfdiscovery', formatteropts, b'PATH')
 def perfdiscovery(ui, repo, path, **opts):
     """benchmark discovery between local repo and the peer at given path"""
@@ -933,11 +1010,16 @@ def perfdiscovery(ui, repo, path, **opts):
     timer, fm = gettimer(ui, opts)
 
     try:
-        from mercurial.utils.urlutil import get_unique_pull_path
+        from mercurial.utils.urlutil import get_unique_pull_path_obj
 
-        path = get_unique_pull_path(b'perfdiscovery', repo, ui, path)[0]
+        path = get_unique_pull_path_obj(b'perfdiscovery', ui, path)
     except ImportError:
-        path = ui.expandpath(path)
+        try:
+            from mercurial.utils.urlutil import get_unique_pull_path
+
+            path = get_unique_pull_path(b'perfdiscovery', repo, ui, path)[0]
+        except ImportError:
+            path = ui.expandpath(path)
 
     def s():
         repos[1] = hg.peer(ui, opts, path)
@@ -972,6 +1054,111 @@ def perfbookmarks(ui, repo, **opts):
         repo._bookmarks
 
     timer(d, setup=s)
+    fm.end()
+
+
+@command(
+    b'perf::bundle',
+    [
+        (
+            b'r',
+            b'rev',
+            [],
+            b'changesets to bundle',
+            b'REV',
+        ),
+        (
+            b't',
+            b'type',
+            b'none',
+            b'bundlespec to use (see `hg help bundlespec`)',
+            b'TYPE',
+        ),
+    ]
+    + formatteropts,
+    b'REVS',
+)
+def perfbundle(ui, repo, *revs, **opts):
+    """benchmark the creation of a bundle from a repository
+
+    For now, this only supports "none" compression.
+    """
+    try:
+        from mercurial import bundlecaches
+
+        parsebundlespec = bundlecaches.parsebundlespec
+    except ImportError:
+        from mercurial import exchange
+
+        parsebundlespec = exchange.parsebundlespec
+
+    from mercurial import discovery
+    from mercurial import bundle2
+
+    opts = _byteskwargs(opts)
+    timer, fm = gettimer(ui, opts)
+
+    cl = repo.changelog
+    revs = list(revs)
+    revs.extend(opts.get(b'rev', ()))
+    revs = scmutil.revrange(repo, revs)
+    if not revs:
+        raise error.Abort(b"not revision specified")
+    # make it a consistent set (ie: without topological gaps)
+    old_len = len(revs)
+    revs = list(repo.revs(b"%ld::%ld", revs, revs))
+    if old_len != len(revs):
+        new_count = len(revs) - old_len
+        msg = b"add %d new revisions to make it a consistent set\n"
+        ui.write_err(msg % new_count)
+
+    targets = [cl.node(r) for r in repo.revs(b"heads(::%ld)", revs)]
+    bases = [cl.node(r) for r in repo.revs(b"heads(::%ld - %ld)", revs, revs)]
+    outgoing = discovery.outgoing(repo, bases, targets)
+
+    bundle_spec = opts.get(b'type')
+
+    bundle_spec = parsebundlespec(repo, bundle_spec, strict=False)
+
+    cgversion = bundle_spec.params.get(b"cg.version")
+    if cgversion is None:
+        if bundle_spec.version == b'v1':
+            cgversion = b'01'
+        if bundle_spec.version == b'v2':
+            cgversion = b'02'
+    if cgversion not in changegroup.supportedoutgoingversions(repo):
+        err = b"repository does not support bundle version %s"
+        raise error.Abort(err % cgversion)
+
+    if cgversion == b'01':  # bundle1
+        bversion = b'HG10' + bundle_spec.wirecompression
+        bcompression = None
+    elif cgversion in (b'02', b'03'):
+        bversion = b'HG20'
+        bcompression = bundle_spec.wirecompression
+    else:
+        err = b'perf::bundle: unexpected changegroup version %s'
+        raise error.ProgrammingError(err % cgversion)
+
+    if bcompression is None:
+        bcompression = b'UN'
+
+    if bcompression != b'UN':
+        err = b'perf::bundle: compression currently unsupported: %s'
+        raise error.ProgrammingError(err % bcompression)
+
+    def do_bundle():
+        bundle2.writenewbundle(
+            ui,
+            repo,
+            b'perf::bundle',
+            os.devnull,
+            bversion,
+            outgoing,
+            bundle_spec.params,
+        )
+
+    timer(do_bundle)
     fm.end()
 
 
@@ -1300,7 +1487,8 @@ def perfdirstatewrite(ui, repo, **opts):
     def d():
         ds.write(repo.currenttransaction())
 
-    timer(d, setup=setup)
+    with repo.wlock():
+        timer(d, setup=setup)
     fm.end()
 
 
@@ -1444,7 +1632,11 @@ def perfphasesremote(ui, repo, dest=None, **opts):
             b'default repository not configured!',
             hint=b"see 'hg help config.paths'",
         )
-    dest = path.pushloc or path.loc
+    if util.safehasattr(path, 'main_path'):
+        path = path.get_push_variant()
+        dest = path.loc
+    else:
+        dest = path.pushloc or path.loc
     ui.statusnoi18n(b'analysing phase of %s\n' % util.hidepassword(dest))
     other = hg.peer(repo, opts, dest)
 
@@ -1713,6 +1905,201 @@ def perfstartup(ui, repo, **opts):
             os.system("%s version -q > NUL" % sys.argv[0])
 
     timer(d)
+    fm.end()
+
+
+def _find_stream_generator(version):
+    """find the proper generator function for this stream version"""
+    import mercurial.streamclone
+
+    available = {}
+
+    # try to fetch a v1 generator
+    generatev1 = getattr(mercurial.streamclone, "generatev1", None)
+    if generatev1 is not None:
+
+        def generate(repo):
+            entries, bytes, data = generatev2(repo, None, None, True)
+            return data
+
+        available[b'v1'] = generatev1
+    # try to fetch a v2 generator
+    generatev2 = getattr(mercurial.streamclone, "generatev2", None)
+    if generatev2 is not None:
+
+        def generate(repo):
+            entries, bytes, data = generatev2(repo, None, None, True)
+            return data
+
+        available[b'v2'] = generate
+    # try to fetch a v3 generator
+    generatev3 = getattr(mercurial.streamclone, "generatev3", None)
+    if generatev3 is not None:
+
+        def generate(repo):
+            entries, bytes, data = generatev3(repo, None, None, True)
+            return data
+
+        available[b'v3-exp'] = generate
+
+    # resolve the request
+    if version == b"latest":
+        # latest is the highest non experimental version
+        latest_key = max(v for v in available if b'-exp' not in v)
+        return available[latest_key]
+    elif version in available:
+        return available[version]
+    else:
+        msg = b"unkown or unavailable version: %s"
+        msg %= version
+        hint = b"available versions: %s"
+        hint %= b', '.join(sorted(available))
+        raise error.Abort(msg, hint=hint)
+
+
+@command(
+    b'perf::stream-locked-section',
+    [
+        (
+            b'',
+            b'stream-version',
+            b'latest',
+            b'stream version to use ("v1", "v2", "v3" or "latest", (the default))',
+        ),
+    ]
+    + formatteropts,
+)
+def perf_stream_clone_scan(ui, repo, stream_version, **opts):
+    """benchmark the initial, repo-locked, section of a stream-clone"""
+
+    opts = _byteskwargs(opts)
+    timer, fm = gettimer(ui, opts)
+
+    # deletion of the generator may trigger some cleanup that we do not want to
+    # measure
+    result_holder = [None]
+
+    def setupone():
+        result_holder[0] = None
+
+    generate = _find_stream_generator(stream_version)
+
+    def runone():
+        # the lock is held for the duration the initialisation
+        result_holder[0] = generate(repo)
+
+    timer(runone, setup=setupone, title=b"load")
+    fm.end()
+
+
+@command(
+    b'perf::stream-generate',
+    [
+        (
+            b'',
+            b'stream-version',
+            b'latest',
+            b'stream version to us ("v1", "v2" or "latest", (the default))',
+        ),
+    ]
+    + formatteropts,
+)
+def perf_stream_clone_generate(ui, repo, stream_version, **opts):
+    """benchmark the full generation of a stream clone"""
+
+    opts = _byteskwargs(opts)
+    timer, fm = gettimer(ui, opts)
+
+    # deletion of the generator may trigger some cleanup that we do not want to
+    # measure
+
+    generate = _find_stream_generator(stream_version)
+
+    def runone():
+        # the lock is held for the duration the initialisation
+        for chunk in generate(repo):
+            pass
+
+    timer(runone, title=b"generate")
+    fm.end()
+
+
+@command(
+    b'perf::stream-consume',
+    formatteropts,
+)
+def perf_stream_clone_consume(ui, repo, filename, **opts):
+    """benchmark the full application of a stream clone
+
+    This include the creation of the repository
+    """
+    # try except to appease check code
+    msg = b"mercurial too old, missing necessary module: %s"
+    try:
+        from mercurial import bundle2
+    except ImportError as exc:
+        msg %= _bytestr(exc)
+        raise error.Abort(msg)
+    try:
+        from mercurial import exchange
+    except ImportError as exc:
+        msg %= _bytestr(exc)
+        raise error.Abort(msg)
+    try:
+        from mercurial import hg
+    except ImportError as exc:
+        msg %= _bytestr(exc)
+        raise error.Abort(msg)
+    try:
+        from mercurial import localrepo
+    except ImportError as exc:
+        msg %= _bytestr(exc)
+        raise error.Abort(msg)
+
+    opts = _byteskwargs(opts)
+    timer, fm = gettimer(ui, opts)
+
+    # deletion of the generator may trigger some cleanup that we do not want to
+    # measure
+    if not (os.path.isfile(filename) and os.access(filename, os.R_OK)):
+        raise error.Abort("not a readable file: %s" % filename)
+
+    run_variables = [None, None]
+
+    @contextlib.contextmanager
+    def context():
+        with open(filename, mode='rb') as bundle:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_dir = fsencode(tmp_dir)
+                run_variables[0] = bundle
+                run_variables[1] = tmp_dir
+                yield
+                run_variables[0] = None
+                run_variables[1] = None
+
+    def runone():
+        bundle = run_variables[0]
+        tmp_dir = run_variables[1]
+        # only pass ui when no srcrepo
+        localrepo.createrepository(
+            repo.ui, tmp_dir, requirements=repo.requirements
+        )
+        target = hg.repository(repo.ui, tmp_dir)
+        gen = exchange.readbundle(target.ui, bundle, bundle.name)
+        # stream v1
+        if util.safehasattr(gen, 'apply'):
+            gen.apply(target)
+        else:
+            with target.transaction(b"perf::stream-consume") as tr:
+                bundle2.applybundle(
+                    target,
+                    gen,
+                    tr,
+                    source=b'unbundle',
+                    url=filename,
+                )
+
+    timer(runone, context=context, title=b"consume")
     fm.end()
 
 
@@ -2499,6 +2886,87 @@ def perfbdiff(ui, repo, file_, rev=None, count=None, threads=0, **opts):
 
 
 @command(
+    b'perf::unbundle',
+    formatteropts,
+    b'BUNDLE_FILE',
+)
+def perf_unbundle(ui, repo, fname, **opts):
+    """benchmark application of a bundle in a repository.
+
+    This does not include the final transaction processing"""
+
+    from mercurial import exchange
+    from mercurial import bundle2
+    from mercurial import transaction
+
+    opts = _byteskwargs(opts)
+
+    ###  some compatibility hotfix
+    #
+    # the data attribute is dropped in 63edc384d3b7 a changeset introducing a
+    # critical regression that break transaction rollback for files that are
+    # de-inlined.
+    method = transaction.transaction._addentry
+    pre_63edc384d3b7 = "data" in getargspec(method).args
+    # the `detailed_exit_code` attribute is introduced in 33c0c25d0b0f
+    # a changeset that is a close descendant of 18415fc918a1, the changeset
+    # that conclude the fix run for the bug introduced in 63edc384d3b7.
+    args = getargspec(error.Abort.__init__).args
+    post_18415fc918a1 = "detailed_exit_code" in args
+
+    old_max_inline = None
+    try:
+        if not (pre_63edc384d3b7 or post_18415fc918a1):
+            # disable inlining
+            old_max_inline = mercurial.revlog._maxinline
+            # large enough to never happen
+            mercurial.revlog._maxinline = 2 ** 50
+
+        with repo.lock():
+            bundle = [None, None]
+            orig_quiet = repo.ui.quiet
+            try:
+                repo.ui.quiet = True
+                with open(fname, mode="rb") as f:
+
+                    def noop_report(*args, **kwargs):
+                        pass
+
+                    def setup():
+                        gen, tr = bundle
+                        if tr is not None:
+                            tr.abort()
+                        bundle[:] = [None, None]
+                        f.seek(0)
+                        bundle[0] = exchange.readbundle(ui, f, fname)
+                        bundle[1] = repo.transaction(b'perf::unbundle')
+                        # silence the transaction
+                        bundle[1]._report = noop_report
+
+                    def apply():
+                        gen, tr = bundle
+                        bundle2.applybundle(
+                            repo,
+                            gen,
+                            tr,
+                            source=b'perf::unbundle',
+                            url=fname,
+                        )
+
+                    timer, fm = gettimer(ui, opts)
+                    timer(apply, setup=setup)
+                    fm.end()
+            finally:
+                repo.ui.quiet == orig_quiet
+                gen, tr = bundle
+                if tr is not None:
+                    tr.abort()
+    finally:
+        if old_max_inline is not None:
+            mercurial.revlog._maxinline = old_max_inline
+
+
+@command(
     b'perf::unidiff|perfunidiff',
     revlogopts
     + formatteropts
@@ -2943,7 +3411,7 @@ def perfrevlogwrite(ui, repo, file_=None, startrev=1000, stoprev=-1, **opts):
     fm.end()
 
 
-class _faketr(object):
+class _faketr:
     def add(s, x, y, z=None):
         return None
 

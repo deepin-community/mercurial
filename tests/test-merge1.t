@@ -1,5 +1,4 @@
   $ cat <<EOF > merge
-  > from __future__ import print_function
   > import sys, os
   > 
   > try:
@@ -349,8 +348,11 @@ Test that updated files are treated as "modified", when
 aren't changed), even if none of mode, size and timestamp of them
 isn't changed on the filesystem (see also issue4583).
 
+This test is now "best effort" as the mechanism to prevent such race are
+getting better, it get more complicated to test a specific scenario that would
+trigger it. If you see flakyness here, there is a race.
+
   $ cat > $TESTTMP/abort.py <<EOF
-  > from __future__ import absolute_import
   > # emulate aborting before "recordupdates()". in this case, files
   > # are changed without updating dirstate
   > from mercurial import (
@@ -365,13 +367,6 @@ isn't changed on the filesystem (see also issue4583).
   >     extensions.wrapfunction(merge, "applyupdates", applyupdates)
   > EOF
 
-  $ cat >> .hg/hgrc <<EOF
-  > [fakedirstatewritetime]
-  > # emulate invoking dirstate.write() via repo.status()
-  > # at 2000-01-01 00:00
-  > fakenow = 200001010000
-  > EOF
-
 (file gotten from other revision)
 
   $ hg update -q -C 2
@@ -381,12 +376,8 @@ isn't changed on the filesystem (see also issue4583).
   $ hg update -q -C 3
   $ cat b
   This is file b1
-  $ touch -t 200001010000 b
-  $ hg debugrebuildstate
-
   $ cat >> .hg/hgrc <<EOF
   > [extensions]
-  > fakedirstatewritetime = $TESTDIR/fakedirstatewritetime.py
   > abort = $TESTTMP/abort.py
   > EOF
   $ hg merge 5
@@ -394,13 +385,11 @@ isn't changed on the filesystem (see also issue4583).
   [255]
   $ cat >> .hg/hgrc <<EOF
   > [extensions]
-  > fakedirstatewritetime = !
   > abort = !
   > EOF
 
   $ cat b
   THIS IS FILE B5
-  $ touch -t 200001010000 b
   $ hg status -A b
   M b
 
@@ -413,12 +402,10 @@ isn't changed on the filesystem (see also issue4583).
 
   $ cat b
   this is file b6
-  $ touch -t 200001010000 b
-  $ hg debugrebuildstate
+  $ hg status
 
   $ cat >> .hg/hgrc <<EOF
   > [extensions]
-  > fakedirstatewritetime = $TESTDIR/fakedirstatewritetime.py
   > abort = $TESTTMP/abort.py
   > EOF
   $ hg merge --tool internal:other 5
@@ -426,13 +413,11 @@ isn't changed on the filesystem (see also issue4583).
   [255]
   $ cat >> .hg/hgrc <<EOF
   > [extensions]
-  > fakedirstatewritetime = !
   > abort = !
   > EOF
 
   $ cat b
   THIS IS FILE B5
-  $ touch -t 200001010000 b
   $ hg status -A b
   M b
 

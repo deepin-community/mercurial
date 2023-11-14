@@ -17,9 +17,16 @@
   >   try:
   >     for file in pats:
   >       if opts.get('normal_lookup'):
-  >         repo.dirstate._normallookup(file)
+  >         with repo.dirstate.changing_parents(repo):
+  >             repo.dirstate.update_file(
+  >                 file,
+  >                 p1_tracked=True,
+  >                 wc_tracked=True,
+  >                 possibly_dirty=True,
+  >             )
   >       else:
-  >         repo.dirstate._drop(file)
+  >         repo.dirstate._map.reset_state(file)
+  >         repo.dirstate._dirty = True
   > 
   >     repo.dirstate.write(repo.currenttransaction())
   >   finally:
@@ -72,6 +79,7 @@ but in the dirstate
   $ touch foo bar qux
   $ hg add qux
   $ hg remove bar
+  $ sleep 1 # remove potential ambiguity in mtime
   $ hg status -A
   A qux
   R bar
@@ -99,6 +107,7 @@ dirstate
   $ hg manifest
   bar
   foo
+  $ sleep 1 # remove potential ambiguity in mtime
   $ hg status -A
   A qux
   R bar

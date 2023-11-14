@@ -10,7 +10,6 @@
 
 use crate::errors::HgError;
 use bytes_cast::BytesCast;
-use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
 /// The length in bytes of a `Node`
@@ -53,10 +52,19 @@ type NodeData = [u8; NODE_BYTES_LENGTH];
 /// the size or return an error at runtime.
 ///
 /// [`nybbles_len`]: #method.nybbles_len
-#[derive(Copy, Clone, Debug, PartialEq, BytesCast, derive_more::From)]
+#[derive(Copy, Clone, PartialEq, BytesCast, derive_more::From)]
 #[repr(transparent)]
 pub struct Node {
     data: NodeData,
+}
+
+impl fmt::Debug for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = format!("{:x?}", self.data);
+        // We're using debug_tuple because it makes the output a little
+        // more compact without losing data.
+        f.debug_tuple("Node").field(&n).finish()
+    }
 }
 
 /// The node value for NULL_REVISION
@@ -173,6 +181,12 @@ impl Node {
             nybbles_len: SHORT_PREFIX_DEFAULT_NYBBLES_LENGTH,
             data: self.data,
         }
+    }
+
+    pub fn pad_to_256_bits(&self) -> [u8; 32] {
+        let mut bits = [0; 32];
+        bits[..NODE_BYTES_LENGTH].copy_from_slice(&self.data);
+        bits
     }
 }
 
@@ -300,7 +314,7 @@ impl From<Node> for NodePrefix {
 
 impl PartialEq<Node> for NodePrefix {
     fn eq(&self, other: &Node) -> bool {
-        Self::from(*other) == *self
+        self.data == other.data && self.nybbles_len() == other.nybbles_len()
     }
 }
 

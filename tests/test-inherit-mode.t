@@ -10,7 +10,6 @@ just in case somebody has a strange $TMPDIR
   $ cd dir
 
   $ cat >printmodes.py <<EOF
-  > from __future__ import absolute_import, print_function
   > import os
   > import sys
   > 
@@ -31,7 +30,6 @@ just in case somebody has a strange $TMPDIR
   > EOF
 
   $ cat >mode.py <<EOF
-  > from __future__ import absolute_import, print_function
   > import os
   > import sys
   > print('%05o' % os.lstat(sys.argv[1]).st_mode)
@@ -54,6 +52,7 @@ store is setgid
   00770 ./.hg/cache/
   00600 ./.hg/requires
   00770 ./.hg/store/
+  00600 ./.hg/store/requires
   00770 ./.hg/wcache/
 
   $ mkdir dir
@@ -69,6 +68,7 @@ new directories are setgid
   $ "$PYTHON" ../printmodes.py .
   00700 ./.hg/
   00600 ./.hg/00changelog.i
+  00660 ./.hg/branch
   00770 ./.hg/cache/
   00660 ./.hg/cache/branch2-served
   00660 ./.hg/cache/rbc-names-v1
@@ -92,14 +92,11 @@ new directories are setgid
   00660 ./.hg/store/data/foo/index (reposimplestore !)
   00660 ./.hg/store/fncache (repofncache !)
   00660 ./.hg/store/phaseroots
+  00600 ./.hg/store/requires
   00660 ./.hg/store/undo
   00660 ./.hg/store/undo.backupfiles
-  00660 ./.hg/store/undo.phaseroots
-  00660 ./.hg/undo.backup.dirstate
-  00660 ./.hg/undo.bookmarks
-  00660 ./.hg/undo.branch
+  00660 ./.hg/undo.backup.branch.bck
   00660 ./.hg/undo.desc
-  00660 ./.hg/undo.dirstate
   00770 ./.hg/wcache/
   00711 ./.hg/wcache/checkisexec
   007.. ./.hg/wcache/checklink (re)
@@ -121,6 +118,7 @@ group can write everything
   00770 ../push/.hg/cache/
   00660 ../push/.hg/requires
   00770 ../push/.hg/store/
+  00660 ../push/.hg/store/requires
   00770 ../push/.hg/wcache/
 
   $ umask 077
@@ -132,11 +130,11 @@ group can still write everything
   $ "$PYTHON" ../printmodes.py ../push
   00770 ../push/.hg/
   00660 ../push/.hg/00changelog.i
+  00660 ../push/.hg/branch
   00770 ../push/.hg/cache/
   00660 ../push/.hg/cache/branch2-base
   00660 ../push/.hg/cache/rbc-names-v1
   00660 ../push/.hg/cache/rbc-revs-v1
-  00660 ../push/.hg/dirstate
   00660 ../push/.hg/requires
   00770 ../push/.hg/store/
   00660 ../push/.hg/store/00changelog.i
@@ -152,13 +150,11 @@ group can still write everything
   00660 ../push/.hg/store/data/foo/b80de5d138758541c5f05265ad144ab9fa86d1db (reposimplestore !)
   00660 ../push/.hg/store/data/foo/index (reposimplestore !)
   00660 ../push/.hg/store/fncache (repofncache !)
+  00660 ../push/.hg/store/requires
   00660 ../push/.hg/store/undo
   00660 ../push/.hg/store/undo.backupfiles
-  00660 ../push/.hg/store/undo.phaseroots
-  00660 ../push/.hg/undo.bookmarks
-  00660 ../push/.hg/undo.branch
+  00660 ../push/.hg/undo.backup.branch.bck
   00660 ../push/.hg/undo.desc
-  00660 ../push/.hg/undo.dirstate
   00770 ../push/.hg/wcache/
 
 

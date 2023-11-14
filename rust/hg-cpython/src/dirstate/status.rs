@@ -10,10 +10,14 @@
 //! `rustext.dirstate.status`.
 
 use crate::{dirstate::DirstateMap, exceptions::FallbackError};
-use cpython::exc::OSError;
 use cpython::{
     exc::ValueError, ObjectProtocol, PyBytes, PyErr, PyList, PyObject,
     PyResult, PyTuple, Python, PythonObject, ToPyObject,
+};
+use hg::dirstate::status::StatusPath;
+use hg::matchers::{
+    DifferenceMatcher, IntersectionMatcher, Matcher, NeverMatcher,
+    UnionMatcher,
 };
 use hg::{
     matchers::{AlwaysMatcher, FileMatcher, IncludeMatcher},
@@ -27,15 +31,19 @@ use hg::{
 };
 use std::borrow::Borrow;
 
+fn collect_status_path_list(py: Python, paths: &[StatusPath<'_>]) -> PyList {
+    collect_pybytes_list(py, paths.iter().map(|item| &*item.path))
+}
+
 /// This will be useless once trait impls for collection are added to `PyBytes`
 /// upstream.
 fn collect_pybytes_list(
     py: Python,
-    collection: &[impl AsRef<HgPath>],
+    iter: impl Iterator<Item = impl AsRef<HgPath>>,
 ) -> PyList {
     let list = PyList::new(py, &[]);
 
-    for path in collection.iter() {
+    for path in iter {
         list.append(
             py,
             PyBytes::new(py, path.as_ref().as_bytes()).into_object(),
@@ -64,12 +72,11 @@ fn collect_bad_matches(
     for (path, bad_match) in collection.iter() {
         let message = match bad_match {
             BadMatch::OsError(code) => get_error_message(*code)?,
-            BadMatch::BadType(bad_type) => format!(
-                "unsupported file type (type is {})",
-                bad_type.to_string()
-            )
-            .to_py_object(py)
-            .into_object(),
+            BadMatch::BadType(bad_type) => {
+                format!("unsupported file type (type is {})", bad_type)
+                    .to_py_object(py)
+                    .into_object()
+            }
         };
         list.append(
             py,
@@ -90,7 +97,6 @@ fn handle_fallback(py: Python, err: StatusError) -> PyErr {
 
             PyErr::new::<FallbackError, _>(py, &as_string)
         }
-        StatusError::IO(e) => PyErr::new::<OSError, _>(py, e.to_string()),
         e => PyErr::new::<ValueError, _>(py, e.to_string()),
     }
 }
@@ -102,7 +108,6 @@ pub fn status_wrapper(
     root_dir: PyObject,
     ignore_files: PyList,
     check_exec: bool,
-    last_normal_time: i64,
     list_clean: bool,
     list_ignored: bool,
     list_unknown: bool,
@@ -122,27 +127,40 @@ pub fn status_wrapper(
         })
         .collect();
     let ignore_files = ignore_files?;
+    // The caller may call `copymap.items()` separately
+    let list_copies = false;
 
+    let after_status = |res: Result<(DirstateStatus<'_>, _), StatusError>| {
+        let (status_res, warnings) =
+            res.map_err(|e| handle_fallback(py, e))?;
+        build_response(py, status_res, warnings)
+    };
+
+    let matcher = extract_matcher(py, matcher)?;
+    dmap.with_status(
+        &*matcher,
+        root_dir.to_path_buf(),
+        ignore_files,
+        StatusOptions {
+            check_exec,
+            list_clean,
+            list_ignored,
+            list_unknown,
+            list_copies,
+            collect_traversed_dirs,
+        },
+        after_status,
+    )
+}
+
+/// Transform a Python matcher into a Rust matcher.
+fn extract_matcher(
+    py: Python,
+    matcher: PyObject,
+) -> PyResult<Box<dyn Matcher + Sync>> {
     match matcher.get_type(py).name(py).borrow() {
-        "alwaysmatcher" => {
-            let matcher = AlwaysMatcher;
-            let (status_res, warnings) = dmap
-                .status(
-                    &matcher,
-                    root_dir.to_path_buf(),
-                    ignore_files,
-                    StatusOptions {
-                        check_exec,
-                        last_normal_time,
-                        list_clean,
-                        list_ignored,
-                        list_unknown,
-                        collect_traversed_dirs,
-                    },
-                )
-                .map_err(|e| handle_fallback(py, e))?;
-            build_response(py, status_res, warnings)
-        }
+        "alwaysmatcher" => Ok(Box::new(AlwaysMatcher)),
+        "nevermatcher" => Ok(Box::new(NeverMatcher)),
         "exactmatcher" => {
             let files = matcher.call_method(
                 py,
@@ -161,24 +179,9 @@ pub fn status_wrapper(
                 .collect();
 
             let files = files?;
-            let matcher = FileMatcher::new(files.as_ref())
+            let file_matcher = FileMatcher::new(files)
                 .map_err(|e| PyErr::new::<ValueError, _>(py, e.to_string()))?;
-            let (status_res, warnings) = dmap
-                .status(
-                    &matcher,
-                    root_dir.to_path_buf(),
-                    ignore_files,
-                    StatusOptions {
-                        check_exec,
-                        last_normal_time,
-                        list_clean,
-                        list_ignored,
-                        list_unknown,
-                        collect_traversed_dirs,
-                    },
-                )
-                .map_err(|e| handle_fallback(py, e))?;
-            build_response(py, status_res, warnings)
+            Ok(Box::new(file_matcher))
         }
         "includematcher" => {
             // Get the patterns from Python even though most of them are
@@ -215,25 +218,30 @@ pub fn status_wrapper(
             let matcher = IncludeMatcher::new(ignore_patterns)
                 .map_err(|e| handle_fallback(py, e.into()))?;
 
-            let (status_res, warnings) = dmap
-                .status(
-                    &matcher,
-                    root_dir.to_path_buf(),
-                    ignore_files,
-                    StatusOptions {
-                        check_exec,
-                        last_normal_time,
-                        list_clean,
-                        list_ignored,
-                        list_unknown,
-                        collect_traversed_dirs,
-                    },
-                )
-                .map_err(|e| handle_fallback(py, e))?;
-
-            build_response(py, status_res, warnings)
+            Ok(Box::new(matcher))
         }
-        e => Err(PyErr::new::<ValueError, _>(
+        "unionmatcher" => {
+            let matchers: PyResult<Vec<_>> = matcher
+                .getattr(py, "_matchers")?
+                .iter(py)?
+                .map(|py_matcher| extract_matcher(py, py_matcher?))
+                .collect();
+
+            Ok(Box::new(UnionMatcher::new(matchers?)))
+        }
+        "intersectionmatcher" => {
+            let m1 = extract_matcher(py, matcher.getattr(py, "_m1")?)?;
+            let m2 = extract_matcher(py, matcher.getattr(py, "_m2")?)?;
+
+            Ok(Box::new(IntersectionMatcher::new(m1, m2)))
+        }
+        "differencematcher" => {
+            let m1 = extract_matcher(py, matcher.getattr(py, "_m1")?)?;
+            let m2 = extract_matcher(py, matcher.getattr(py, "_m2")?)?;
+
+            Ok(Box::new(DifferenceMatcher::new(m1, m2)))
+        }
+        e => Err(PyErr::new::<FallbackError, _>(
             py,
             format!("Unsupported matcher {}", e),
         )),
@@ -245,16 +253,16 @@ fn build_response(
     status_res: DirstateStatus,
     warnings: Vec<PatternFileWarning>,
 ) -> PyResult<PyTuple> {
-    let modified = collect_pybytes_list(py, status_res.modified.as_ref());
-    let added = collect_pybytes_list(py, status_res.added.as_ref());
-    let removed = collect_pybytes_list(py, status_res.removed.as_ref());
-    let deleted = collect_pybytes_list(py, status_res.deleted.as_ref());
-    let clean = collect_pybytes_list(py, status_res.clean.as_ref());
-    let ignored = collect_pybytes_list(py, status_res.ignored.as_ref());
-    let unknown = collect_pybytes_list(py, status_res.unknown.as_ref());
-    let unsure = collect_pybytes_list(py, status_res.unsure.as_ref());
-    let bad = collect_bad_matches(py, status_res.bad.as_ref())?;
-    let traversed = collect_pybytes_list(py, status_res.traversed.as_ref());
+    let modified = collect_status_path_list(py, &status_res.modified);
+    let added = collect_status_path_list(py, &status_res.added);
+    let removed = collect_status_path_list(py, &status_res.removed);
+    let deleted = collect_status_path_list(py, &status_res.deleted);
+    let clean = collect_status_path_list(py, &status_res.clean);
+    let ignored = collect_status_path_list(py, &status_res.ignored);
+    let unknown = collect_status_path_list(py, &status_res.unknown);
+    let unsure = collect_status_path_list(py, &status_res.unsure);
+    let bad = collect_bad_matches(py, &status_res.bad)?;
+    let traversed = collect_pybytes_list(py, status_res.traversed.iter());
     let dirty = status_res.dirty.to_py_object(py);
     let py_warnings = PyList::new(py, &[]);
     for warning in warnings.iter() {

@@ -5,7 +5,6 @@
 
 '''close arbitrary heads without checking them out first'''
 
-from __future__ import absolute_import
 
 from mercurial.i18n import _
 from mercurial import (
@@ -13,9 +12,9 @@ from mercurial import (
     cmdutil,
     context,
     error,
+    logcmdutil,
     pycompat,
     registrar,
-    scmutil,
 )
 
 cmdtable = {}
@@ -68,7 +67,7 @@ def close_branch(ui, repo, *revs, **opts):
     opts = pycompat.byteskwargs(opts)
 
     revs += tuple(opts.get(b'rev', []))
-    revs = scmutil.revrange(repo, revs)
+    revs = logcmdutil.revrange(repo, revs)
 
     if not revs:
         raise error.Abort(_(b'no revisions specified'))

@@ -18,6 +18,11 @@
 //! >>> ancestor.__doc__
 //! 'Generic DAG ancestor algorithms - Rust implementation'
 //! ```
+#![allow(clippy::too_many_arguments)] // rust-cpython macros
+#![allow(clippy::zero_ptr)] // rust-cpython macros
+#![allow(clippy::needless_update)] // rust-cpython macros
+#![allow(clippy::manual_strip)] // rust-cpython macros
+#![allow(clippy::type_complexity)] // rust-cpython macros
 
 /// This crate uses nested private macros, `extern crate` is still needed in
 /// 2018 edition.
@@ -35,7 +40,7 @@ pub mod debug;
 pub mod dirstate;
 pub mod discovery;
 pub mod exceptions;
-pub mod parsers;
+mod pybytes_deref;
 pub mod revlog;
 pub mod utils;
 
@@ -58,16 +63,11 @@ py_module_initializer!(rustext, initrustext, PyInit_rustext, |py, m| {
     m.add(py, "discovery", discovery::init_module(py, &dotted_name)?)?;
     m.add(py, "dirstate", dirstate::init_module(py, &dotted_name)?)?;
     m.add(py, "revlog", revlog::init_module(py, &dotted_name)?)?;
-    m.add(
-        py,
-        "parsers",
-        parsers::init_parsers_module(py, &dotted_name)?,
-    )?;
     m.add(py, "GraphError", py.get_type::<exceptions::GraphError>())?;
     Ok(())
 });
 
-#[cfg(not(any(feature = "python27-bin", feature = "python3-bin")))]
+#[cfg(not(feature = "python3-bin"))]
 #[test]
 #[ignore]
 fn libpython_must_be_linked_to_run_tests() {

@@ -5,13 +5,13 @@ Log on empty repository: checking consistency
   $ hg log
   $ hg log -r 1
   abort: unknown revision '1'
-  [255]
+  [10]
   $ hg log -r -1:0
   abort: unknown revision '-1'
-  [255]
+  [10]
   $ hg log -r 'branch(name)'
   abort: unknown revision 'name'
-  [255]
+  [10]
   $ hg log -r null -q
   -1:000000000000
 
@@ -122,13 +122,13 @@ log -f empty path (or repo root) shouldn't crash
 
   $ hg log -qfl1 '' inexistent
   abort: cannot follow file not in parent revision: "inexistent"
-  [255]
+  [20]
   $ hg log -qfl1 . inexistent
   abort: cannot follow file not in parent revision: "inexistent"
-  [255]
+  [20]
   $ hg log -qfl1 "`pwd`" inexistent
   abort: cannot follow file not in parent revision: "inexistent"
-  [255]
+  [20]
 
   $ hg log -qfl1 '' e
   4:7e4639b4691b
@@ -145,7 +145,7 @@ log -f empty path (or repo root) shouldn't crash
 
   $ hg log -f dir
   abort: cannot follow file not in parent revision: "dir"
-  [255]
+  [20]
 
 -f, directory
 
@@ -552,7 +552,7 @@ follow files from the specified revisions with missing patterns
 
   $ hg log -T '{rev}\n' -fr4 e x
   abort: cannot follow file not in any of the specified revisions: "x"
-  [255]
+  [20]
 
 follow files from the specified revisions with directory patterns
 (BROKEN: should follow copies from dir/b@2)
@@ -1104,7 +1104,7 @@ log -r <some unknown node id>
 
   $ hg log -r 1000000000000000000000000000000000000000
   abort: unknown revision '1000000000000000000000000000000000000000'
-  [255]
+  [10]
 
 log -k r1
 
@@ -1417,7 +1417,7 @@ are specified (issue5100):
 
   $ hg log -b 're:.*'
   abort: unknown revision 're:.*'
-  [255]
+  [10]
   $ hg log -k 're:.*'
   $ hg log -u 're:.*'
 
@@ -1544,7 +1544,7 @@ log -b dummy
 
   $ hg log -b dummy
   abort: unknown revision 'dummy'
-  [255]
+  [10]
 
 
 log -b .
@@ -2061,7 +2061,7 @@ enable obsolete to test hidden feature
   $ hg log -r a
   abort: hidden revision 'a' is pruned
   (use --hidden to access hidden revisions)
-  [255]
+  [10]
 
 test that parent prevent a changeset to be hidden
 
@@ -2125,7 +2125,7 @@ test hidden revision 0 (issue5385)
   $ hg log -T'{rev}:{node}\n' -r:0
   abort: hidden revision '0' is pruned
   (use --hidden to access hidden revisions)
-  [255]
+  [10]
   $ hg log -T'{rev}:{node}\n' -f
   3:d7d28b288a6b83d5d2cf49f10c5974deed3a1d2e
   2:94375ec45bddd2a824535fc04855bd058c926ec0
@@ -2157,6 +2157,8 @@ test -u/-k for problematic encoding
   ... '''.encode('utf-8')) and None
   $ sh < setup.sh
 
+#if no-rhg
+
 test in problematic encoding
   >>> with open('test.sh', 'wb') as f:
   ...     f.write(u'''
@@ -2178,6 +2180,8 @@ test in problematic encoding
   ====
   3
   1
+
+#endif
 
   $ cd ..
 
@@ -2422,7 +2426,7 @@ follow files from wdir
 
   $ hg log -T '== {rev} ==\n' -fr'wdir()' --git --stat notfound
   abort: cannot follow file not in any of the specified revisions: "notfound"
-  [255]
+  [20]
 
 follow files from wdir and non-wdir revision:
 
@@ -2435,15 +2439,15 @@ follow added/removed files from wdir parent
 
   $ hg log -T '{rev}\n' -f d1/f2
   abort: cannot follow nonexistent file: "d1/f2"
-  [255]
+  [20]
 
   $ hg log -T '{rev}\n' -f f1-copy
   abort: cannot follow nonexistent file: "f1-copy"
-  [255]
+  [20]
 
   $ hg log -T '{rev}\n' -f .d6/f1
   abort: cannot follow file not in parent revision: ".d6/f1"
-  [255]
+  [20]
 
   $ hg revert -aqC
 
@@ -2451,7 +2455,6 @@ Check that adding an arbitrary name shows up in log automatically
 
   $ cat > ../names.py <<EOF
   > """A small extension to test adding arbitrary names to a repo"""
-  > from __future__ import absolute_import
   > from mercurial import namespaces
   > 
   > def reposetup(ui, repo):
@@ -2516,10 +2519,9 @@ New namespace is registered per repo instance, but the template keyword
 is global. So we shouldn't expect the namespace always exists. Using
 ssh:// makes sure a bundle repository is created from scratch. (issue6301)
 
-  $ hg clone -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" \
-  >          -qr0 "ssh://user@dummy/`pwd`/a" a-clone
+  $ hg clone -qr0 "ssh://user@dummy/`pwd`/a" a-clone
   $ hg incoming --config extensions.names=names.py -R a-clone \
-  >             -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" -T '{bars}\n' -l1
+  > -T '{bars}\n' -l1
   comparing with ssh://user@dummy/$TESTTMP/a
   searching for changes
   

@@ -26,15 +26,6 @@ pub struct AncestorsIterator<G: Graph> {
     stoprev: Revision,
 }
 
-/// Lazy ancestors set, backed by AncestorsIterator
-pub struct LazyAncestors<G: Graph + Clone> {
-    graph: G,
-    containsiter: AncestorsIterator<G>,
-    initrevs: Vec<Revision>,
-    stoprev: Revision,
-    inclusive: bool,
-}
-
 pub struct MissingAncestors<G: Graph> {
     graph: G,
     bases: HashSet<Revision>,
@@ -165,49 +156,6 @@ impl<G: Graph> Iterator for AncestorsIterator<G> {
     }
 }
 
-impl<G: Graph + Clone> LazyAncestors<G> {
-    pub fn new(
-        graph: G,
-        initrevs: impl IntoIterator<Item = Revision>,
-        stoprev: Revision,
-        inclusive: bool,
-    ) -> Result<Self, GraphError> {
-        let v: Vec<Revision> = initrevs.into_iter().collect();
-        Ok(LazyAncestors {
-            graph: graph.clone(),
-            containsiter: AncestorsIterator::new(
-                graph,
-                v.iter().cloned(),
-                stoprev,
-                inclusive,
-            )?,
-            initrevs: v,
-            stoprev,
-            inclusive,
-        })
-    }
-
-    pub fn contains(&mut self, rev: Revision) -> Result<bool, GraphError> {
-        self.containsiter.contains(rev)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.containsiter.is_empty()
-    }
-
-    pub fn iter(&self) -> AncestorsIterator<G> {
-        // the arguments being the same as for self.containsiter, we know
-        // for sure that AncestorsIterator constructor can't fail
-        AncestorsIterator::new(
-            self.graph.clone(),
-            self.initrevs.iter().cloned(),
-            self.stoprev,
-            self.inclusive,
-        )
-        .unwrap()
-    }
-}
-
 impl<G: Graph> MissingAncestors<G> {
     pub fn new(graph: G, bases: impl IntoIterator<Item = Revision>) -> Self {
         let mut created = MissingAncestors {
@@ -227,7 +175,7 @@ impl<G: Graph> MissingAncestors<G> {
     ///
     /// This is useful in unit tests, but also setdiscovery.py does
     /// read the bases attribute of a ancestor.missingancestors instance.
-    pub fn get_bases<'a>(&'a self) -> &'a HashSet<Revision> {
+    pub fn get_bases(&self) -> &HashSet<Revision> {
         &self.bases
     }
 
@@ -340,7 +288,7 @@ impl<G: Graph> MissingAncestors<G> {
             .collect();
         let revs_visit = &mut revs;
         let mut both_visit: HashSet<Revision> =
-            revs_visit.intersection(&bases_visit).cloned().collect();
+            revs_visit.intersection(bases_visit).cloned().collect();
         if revs_visit.is_empty() {
             return Ok(Vec::new());
         }
@@ -409,7 +357,6 @@ mod tests {
 
     use super::*;
     use crate::testing::{SampleGraph, VecGraph};
-    use std::iter::FromIterator;
 
     fn list_ancestors<G: Graph>(
         graph: G,
@@ -550,57 +497,24 @@ mod tests {
     }
 
     #[test]
-    fn test_lazy_iter_contains() {
-        let mut lazy =
-            LazyAncestors::new(SampleGraph, vec![11, 13], 0, false).unwrap();
-
-        let revs: Vec<Revision> = lazy.iter().map(|r| r.unwrap()).collect();
-        // compare with iterator tests on the same initial revisions
-        assert_eq!(revs, vec![8, 7, 4, 3, 2, 1, 0]);
-
-        // contains() results are correct, unaffected by the fact that
-        // we consumed entirely an iterator out of lazy
-        assert_eq!(lazy.contains(2), Ok(true));
-        assert_eq!(lazy.contains(9), Ok(false));
-    }
-
-    #[test]
-    fn test_lazy_contains_iter() {
-        let mut lazy =
-            LazyAncestors::new(SampleGraph, vec![11, 13], 0, false).unwrap(); // reminder: [8, 7, 4, 3, 2, 1, 0]
-
-        assert_eq!(lazy.contains(2), Ok(true));
-        assert_eq!(lazy.contains(6), Ok(false));
-
-        // after consumption of 2 by the inner iterator, results stay
-        // consistent
-        assert_eq!(lazy.contains(2), Ok(true));
-        assert_eq!(lazy.contains(5), Ok(false));
-
-        // iter() still gives us a fresh iterator
-        let revs: Vec<Revision> = lazy.iter().map(|r| r.unwrap()).collect();
-        assert_eq!(revs, vec![8, 7, 4, 3, 2, 1, 0]);
-    }
-
-    #[test]
     /// Test constructor, add/get bases and heads
     fn test_missing_bases() -> Result<(), GraphError> {
         let mut missing_ancestors =
             MissingAncestors::new(SampleGraph, [5, 3, 1, 3].iter().cloned());
         let mut as_vec: Vec<Revision> =
             missing_ancestors.get_bases().iter().cloned().collect();
-        as_vec.sort();
+        as_vec.sort_unstable();
         assert_eq!(as_vec, [1, 3, 5]);
         assert_eq!(missing_ancestors.max_base, 5);
 
         missing_ancestors.add_bases([3, 7, 8].iter().cloned());
         as_vec = missing_ancestors.get_bases().iter().cloned().collect();
-        as_vec.sort();
+        as_vec.sort_unstable();
         assert_eq!(as_vec, [1, 3, 5, 7, 8]);
         assert_eq!(missing_ancestors.max_base, 8);
 
         as_vec = missing_ancestors.bases_heads()?.iter().cloned().collect();
-        as_vec.sort();
+        as_vec.sort_unstable();
         assert_eq!(as_vec, [3, 5, 7, 8]);
         Ok(())
     }
@@ -617,7 +531,7 @@ mod tests {
             .remove_ancestors_from(&mut revset)
             .unwrap();
         let mut as_vec: Vec<Revision> = revset.into_iter().collect();
-        as_vec.sort();
+        as_vec.sort_unstable();
         assert_eq!(as_vec.as_slice(), expected);
     }
 
@@ -658,6 +572,7 @@ mod tests {
     /// the one in test-ancestor.py. An early version of Rust MissingAncestors
     /// failed this, yet none of the integration tests of the whole suite
     /// catched it.
+    #[allow(clippy::unnecessary_cast)]
     #[test]
     fn test_remove_ancestors_from_case1() {
         let graph: VecGraph = vec![

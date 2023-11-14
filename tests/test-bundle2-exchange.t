@@ -1,13 +1,3 @@
-#testcases sshv1 sshv2
-
-#if sshv2
-  $ cat >> $HGRCPATH << EOF
-  > [experimental]
-  > sshpeer.advertise-v2 = true
-  > sshserver.support-v2 = true
-  > EOF
-#endif
-
 Test exchange of common information using bundle2
 
 
@@ -28,8 +18,6 @@ enable obsolescence
   > evolution.createmarkers=True
   > evolution.exchange=True
   > bundle2-output-capture=True
-  > [ui]
-  > ssh="$PYTHON" "$TESTDIR/dummyssh"
   > [command-templates]
   > log={rev}:{node|short} {phase} {author} {bookmarks} {desc|firstline}
   > [web]
@@ -751,12 +739,10 @@ Check output capture control.
   $ hg -R main push ssh://user@dummy/other -r e7ec4e813ba6
   pushing to ssh://user@dummy/other
   searching for changes
-  remote: Fail early! (no-py3 chg !)
   remote: adding changesets
   remote: adding manifests
   remote: adding file changes
-  remote: Fail early! (py3 !)
-  remote: Fail early! (no-py3 no-chg !)
+  remote: Fail early!
   remote: transaction abort!
   remote: Cleaning up the mess...
   remote: rollback completed
@@ -922,10 +908,6 @@ Check abort from mandatory pushkey
 
 Test lazily acquiring the lock during unbundle
   $ cp $TESTTMP/hgrc.orig $HGRCPATH
-  $ cat >> $HGRCPATH <<EOF
-  > [ui]
-  > ssh="$PYTHON" "$TESTDIR/dummyssh"
-  > EOF
 
   $ cat >> $TESTTMP/locktester.py <<EOF
   > import os

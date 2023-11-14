@@ -84,10 +84,11 @@ Help text for fix.
   
   rewrite file content in changesets or working directory
   
-      Runs any configured tools to fix the content of files. Only affects files
-      with changes, unless file arguments are provided. Only affects changed
-      lines of files, unless the --whole flag is used. Some tools may always
-      affect the whole file regardless of --whole.
+      Runs any configured tools to fix the content of files. (See 'hg help -e
+      fix' for details about configuring tools.) Only affects files with
+      changes, unless file arguments are provided. Only affects changed lines of
+      files, unless the --whole flag is used. Some tools may always affect the
+      whole file regardless of --whole.
   
       If --working-dir is used, files with uncommitted changes in the working
       copy will be fixed. Note that no backup are made.
@@ -124,6 +125,13 @@ Help text for fix.
   
   Provides a command that runs configured tools on the contents of modified
   files, writing back any fixes to the working copy or replacing changesets.
+  
+  Fixer tools are run in the repository's root directory. This allows them to
+  read configuration files from the working copy, or even write to the working
+  copy. The working copy is not updated to match the revision being fixed. In
+  fact, several revisions may be fixed in parallel. Writes to the working copy
+  are not amended into the revision being fixed; fixer tools MUST always read
+  content to be fixed from stdin, and write fixed file content back to stdout.
   
   Here is an example configuration that causes 'hg fix' to apply automatic
   formatting fixes to modified lines in C++ code:
@@ -230,13 +238,6 @@ Help text for fix.
       mapping fixer tool names to lists of metadata values returned from
       executions that modified a file. This aggregates the same metadata
       previously passed to the "postfixfile" hook.
-  
-  Fixer tools are run in the repository's root directory. This allows them to
-  read configuration files from the working copy, or even write to the working
-  copy. The working copy is not updated to match the revision being fixed. In
-  fact, several revisions may be fixed in parallel. Writes to the working copy
-  are not amended into the revision being fixed; fixer tools should always write
-  fixed file content back to stdout as documented above.
   
   list of commands:
   
@@ -1153,6 +1154,7 @@ useful for anyone trying to set up a new config.
   $ hg commit -Aqm "foo"
   $ printf "Foo\nbar\nBaz\n" > foo.changed
   $ hg --debug fix --working-dir
+  fixing: f65cf3136d41+ - uppercase-changed-lines - foo.changed
   subprocess: * $TESTTMP/uppercase.py 1-1 3-3 (glob)
 
   $ cd ..
@@ -1169,8 +1171,9 @@ obsolete revision.
   $ hg commit -Aqm "foo"
   $ hg ci --amend -m rewritten
   $ hg --hidden fix -r 0
-  abort: fixing obsolete revision could cause divergence
-  [255]
+  abort: cannot fix b87e30dbf19b, as that creates content-divergence with 2e007a78dfb8
+  (add --verbose for details or see 'hg help evolution.instability')
+  [10]
 
   $ hg --hidden fix -r 0 --config experimental.evolution.allowdivergence=true
   2 new content-divergent changesets
@@ -1752,3 +1755,101 @@ middle of fix.
   r0.whole:
   hello
   
+
+We should execute the fixer tools as few times as possible, because they might
+be slow or expensive to execute. The inputs to each execution are effectively
+the file path, file content, and line ranges. So, we should be able to re-use
+results whenever those inputs are repeated. That saves a lot of work when
+fixing chains of commits that all have the same file revision for a path being
+fixed.
+
+  $ hg init numberofinvocations
+  $ cd numberofinvocations
+
+  $ printf "bar1" > bar.log
+  $ printf "baz1" > baz.log
+  $ printf "foo1" > foo.log
+  $ printf "qux1" > qux.log
+  $ hg commit -Aqm "commit1"
+
+  $ printf "bar2" > bar.log
+  $ printf "baz2" > baz.log
+  $ printf "foo2" > foo.log
+  $ hg commit -Aqm "commit2"
+
+  $ printf "bar3" > bar.log
+  $ printf "baz3" > baz.log
+  $ hg commit -Aqm "commit3"
+
+  $ printf "bar4" > bar.log
+
+  $ LOGFILE=$TESTTMP/log
+  $ LOGGER=$TESTTMP/log.py
+  $ cat >> $LOGGER <<EOF
+  > # Appends the input file's name to the log file.
+  > import sys
+  > with open(r'$LOGFILE', 'a') as f:
+  >     f.write(sys.argv[1] + '\n')
+  > sys.stdout.write(sys.stdin.read())
+  > EOF
+
+  $ hg fix --working-dir -r "all()" \
+  >        --config "fix.log:command=\"$PYTHON\" \"$LOGGER\" {rootpath}" \
+  >        --config "fix.log:pattern=glob:**.log"
+
+  $ cat $LOGFILE | sort | uniq -c
+  \s*4 bar.log (re)
+  \s*4 baz.log (re)
+  \s*3 foo.log (re)
+  \s*2 qux.log (re)
+
+  $ cd ..
+
+For tools that support line ranges, it's wrong to blindly re-use fixed file
+content for the same file revision if it appears twice with different baserevs,
+because the line ranges could be different. Since computing line ranges is
+ambiguous, this isn't a matter of correctness, but it affects the usability of
+this extension. It could maybe be simpler if baserevs were computed on a
+per-file basis to make this situation impossible to construct.
+
+In the following example, we construct two subgraphs with the same file
+revisions, and fix different sub-subgraphs to get different baserevs and
+different changed line ranges. The key precondition is that revisions 1 and 4
+have the same file revision, and the key result is that their successors don't
+have the same file content, because we want to fix different areas of that same
+file revision's content.
+
+  $ hg init differentlineranges
+  $ cd differentlineranges
+
+  $ printf "a\nb\n" > file.changed
+  $ hg commit -Aqm "0 ab"
+  $ printf "a\nx\n" > file.changed
+  $ hg commit -Aqm "1 ax"
+  $ hg remove file.changed
+  $ hg commit -Aqm "2 removed"
+  $ hg revert file.changed -r 0
+  $ hg commit -Aqm "3 ab (reverted)"
+  $ hg revert file.changed -r 1
+  $ hg commit -Aqm "4 ax (reverted)"
+
+  $ hg manifest --debug --template "{hash}\n" -r 0; \
+  > hg manifest --debug --template "{hash}\n" -r 3
+  418f692145676128d2fb518b027ddbac624be76e
+  418f692145676128d2fb518b027ddbac624be76e
+  $ hg manifest --debug --template "{hash}\n" -r 1; \
+  > hg manifest --debug --template "{hash}\n" -r 4
+  09b8b3ce5a507caaa282f7262679e6d04091426c
+  09b8b3ce5a507caaa282f7262679e6d04091426c
+
+  $ hg fix --working-dir -r 1+3+4
+  3 new orphan changesets
+
+  $ hg cat file.changed -r "successors(1)" --hidden
+  a
+  X
+  $ hg cat file.changed -r "successors(4)" --hidden
+  A
+  X
+
+  $ cd ..

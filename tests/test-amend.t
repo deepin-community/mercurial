@@ -560,6 +560,12 @@ Close branch
   close=1
   phase=secret
 
+`hg amend --draft` sets phase to draft
+
+  $ hg amend --draft -m declassified
+  $ hg log --limit 1 -T 'phase={phase}\n'
+  phase=draft
+
   $ cd ..
 
 Corner case of amend from issue6157:
@@ -609,3 +615,20 @@ Modifying a file while the editor is open can cause dirstate corruption
   >   hg status
   > fi
   OK.
+
+Amending a commit that has copies but not specifying those copies shouldn't
+cause them to be lost
+
+  $ cd $TESTTMP
+  $ hg init dont-lose-copies; cd dont-lose-copies
+  $ echo r0 > r0; hg commit -qAm "r0"
+  $ hg cp r0 r0_copied; hg commit -qm "copy r0"
+  $ echo hi > new_file_amend_me
+  $ hg status --change . --copies
+  A r0_copied
+    r0
+  $ hg amend -qA new_file_amend_me
+  $ hg status --change . --copies
+  A new_file_amend_me
+  A r0_copied
+    r0

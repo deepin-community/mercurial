@@ -1,4 +1,5 @@
-  $ hg init
+  $ hg init repo
+  $ cd repo
 
 no bookmarks
 
@@ -245,4 +246,4 @@ display how "{activebookmark}" template is unsuitable for the task
   $ hg bookmarks --inactive
   $ hg bookmarks -ql .
   abort: no active bookmark
-  [255]
+  [10]

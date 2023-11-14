@@ -13,23 +13,24 @@ the instability.
 New repo should not use SQLite by default
 
   $ hg init empty-no-sqlite
-  $ cat empty-no-sqlite/.hg/requires
+  $ hg debugrequires -R empty-no-sqlite
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
 
 storage.new-repo-backend=sqlite is recognized
 
   $ hg --config storage.new-repo-backend=sqlite init empty-sqlite
-  $ cat empty-sqlite/.hg/requires
+  $ hg debugrequires -R empty-sqlite
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   exp-sqlite-001
   exp-sqlite-comp-001=zstd (zstd !)
   exp-sqlite-comp-001=$BUNDLE2_COMPRESSIONS$ (no-zstd !)
@@ -38,6 +39,7 @@ storage.new-repo-backend=sqlite is recognized
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
 
@@ -49,9 +51,9 @@ storage.new-repo-backend=sqlite is recognized
 Can force compression to zlib
 
   $ hg --config storage.sqlite.compression=zlib init empty-zlib
-  $ cat empty-zlib/.hg/requires
+  $ hg debugrequires -R empty-zlib
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   exp-sqlite-001
   exp-sqlite-comp-001=$BUNDLE2_COMPRESSIONS$
   fncache
@@ -59,15 +61,16 @@ Can force compression to zlib
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
 
 Can force compression to none
 
   $ hg --config storage.sqlite.compression=none init empty-none
-  $ cat empty-none/.hg/requires
+  $ hg debugrequires -R empty-none
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   exp-sqlite-001
   exp-sqlite-comp-001=none
   fncache
@@ -75,6 +78,7 @@ Can force compression to none
   persistent-nodemap (rust !)
   revlog-compression-zstd (zstd !)
   revlogv1
+  share-safe
   sparserevlog
   store
 

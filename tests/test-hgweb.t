@@ -329,7 +329,7 @@ stop and restart
 
 Test the access/error files are opened in append mode
 
-  $ "$PYTHON" -c "from __future__ import print_function; print(len(open('access.log', 'rb').readlines()), 'log lines written')"
+  $ "$PYTHON" -c "print(len(open('access.log', 'rb').readlines()), 'log lines written')"
   14 log lines written
 
 static file
@@ -783,19 +783,19 @@ phase changes are refreshed (issue4061)
 
 access bookmarks
 
-  $ get-with-headers.py localhost:$HGPORT 'rev/@?style=paper' | egrep '^200|changeset 0:'
+  $ get-with-headers.py localhost:$HGPORT 'rev/@?style=paper' | grep -E '^200|changeset 0:'
   200 Script output follows
    changeset 0:<a href="/rev/2ef0ac749a14?style=paper">2ef0ac749a14</a>
 
-  $ get-with-headers.py localhost:$HGPORT 'rev/%40?style=paper' | egrep '^200|changeset 0:'
+  $ get-with-headers.py localhost:$HGPORT 'rev/%40?style=paper' | grep -E '^200|changeset 0:'
   200 Script output follows
    changeset 0:<a href="/rev/2ef0ac749a14?style=paper">2ef0ac749a14</a>
 
-  $ get-with-headers.py localhost:$HGPORT 'rev/a%20b%20c?style=paper' | egrep '^200|changeset 0:'
+  $ get-with-headers.py localhost:$HGPORT 'rev/a%20b%20c?style=paper' | grep -E '^200|changeset 0:'
   200 Script output follows
    changeset 0:<a href="/rev/2ef0ac749a14?style=paper">2ef0ac749a14</a>
 
-  $ get-with-headers.py localhost:$HGPORT 'rev/d%252Fe%252Ff?style=paper' | egrep '^200|changeset 0:'
+  $ get-with-headers.py localhost:$HGPORT 'rev/d%252Fe%252Ff?style=paper' | grep -E '^200|changeset 0:'
   200 Script output follows
    changeset 0:<a href="/rev/2ef0ac749a14?style=paper">2ef0ac749a14</a>
 

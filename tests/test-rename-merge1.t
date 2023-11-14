@@ -1,4 +1,5 @@
-  $ hg init
+  $ hg init repo
+  $ cd repo
 
   $ echo "[merge]" >> .hg/hgrc
   $ echo "followcopies = 1" >> .hg/hgrc
@@ -44,7 +45,7 @@
   getting b2
    preserving a for resolve of b
   removing a
-   b: remote moved from a -> m (premerge)
+   b: remote moved from a -> m
   picked tool ':merge' for b (binary False symlink False changedelete False)
   merging a and b to b
   my b@044f8520aeeb+ other b@85c198ef2f6c ancestor a@af1939970a1c
@@ -65,7 +66,7 @@
   $ hg ci -m "merge"
 
   $ hg debugindex b
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       1 57eacc201a7f 000000000000 000000000000
        1       3 4727ba907962 000000000000 57eacc201a7f
 
@@ -218,7 +219,7 @@ modify x and rename y to z on the other side.
    ancestor: 5151c134577e, local: 07fcbc9a74ed+, remote: f21419739508
   starting 4 threads for background file closing (?)
    preserving z for resolve of z
-   z: both renamed from y -> m (premerge)
+   z: both renamed from y -> m
   picked tool ':merge3' for z (binary False symlink False changedelete False)
   merging z
   my z@07fcbc9a74ed+ other z@f21419739508 ancestor y@5151c134577e

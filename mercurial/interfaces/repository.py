@@ -6,7 +6,6 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
 from ..i18n import _
 from .. import error
@@ -104,6 +103,7 @@ class ipeerconnection(interfaceutil.Interface):
     """
 
     ui = interfaceutil.Attribute("""ui.ui instance""")
+    path = interfaceutil.Attribute("""a urlutil.path instance or None""")
 
     def url():
         """Returns a URL string representing this peer.
@@ -122,12 +122,6 @@ class ipeerconnection(interfaceutil.Interface):
 
         If the peer represents a local repository, returns an object that
         can be used to interface with it. Otherwise returns ``None``.
-        """
-
-    def peer():
-        """Returns an object conforming to this interface.
-
-        Most implementations will ``return self``.
         """
 
     def canpush():
@@ -180,6 +174,12 @@ class ipeercommands(interfaceutil.Interface):
         """Obtain capabilities of the peer.
 
         Returns a set of string capabilities.
+        """
+
+    def get_cached_bundle_inline(path):
+        """Retrieve a clonebundle across the wire.
+
+        Returns a chunkbuffer
         """
 
     def clonebundles():
@@ -389,10 +389,14 @@ class ipeerv2(ipeerconnection, ipeercapabilities, ipeerrequests):
 
 
 @interfaceutil.implementer(ipeerbase)
-class peer(object):
+class peer:
     """Base class for peer repositories."""
 
     limitedarguments = False
+
+    def __init__(self, ui, path=None, remotehidden=False):
+        self.ui = ui
+        self.path = path
 
     def capable(self, name):
         caps = self.capabilities()
@@ -1278,7 +1282,7 @@ class imanifeststorage(interfaceutil.Interface):
     def linkrev(rev):
         """Obtain the changeset revision number a revision is linked to."""
 
-    def revision(node, _df=None, raw=False):
+    def revision(node, _df=None):
         """Obtain fulltext data for a node."""
 
     def rawdata(node, _df=None):
@@ -1406,6 +1410,14 @@ class imanifeststorage(interfaceutil.Interface):
         This one behaves the same way, except for manifest data.
         """
 
+    def get_revlog():
+        """return an actual revlog instance if any
+
+        This exist because a lot of code leverage the fact the underlying
+        storage is a revlog for optimization, so giving simple way to access
+        the revlog instance helps such code.
+        """
+
 
 class imanifestlog(interfaceutil.Interface):
     """Interface representing a collection of manifest snapshots.
@@ -1495,13 +1507,6 @@ class ilocalrepositorymain(interfaceutil.Interface):
         """null revision for the hash function used by the repository."""
     )
 
-    supportedformats = interfaceutil.Attribute(
-        """Set of requirements that apply to stream clone.
-
-        This is actually a class attribute and is shared among all instances.
-        """
-    )
-
     supported = interfaceutil.Attribute(
         """Set of requirements that this repo is capable of opening."""
     )
@@ -1531,6 +1536,10 @@ class ilocalrepositorymain(interfaceutil.Interface):
 
     filtername = interfaceutil.Attribute(
         """Name of the repoview that is active on this repo."""
+    )
+
+    vfs_map = interfaceutil.Attribute(
+        """a bytes-key → vfs mapping used by transaction and others"""
     )
 
     wvfs = interfaceutil.Attribute(
@@ -1621,7 +1630,7 @@ class ilocalrepositorymain(interfaceutil.Interface):
     def close():
         """Close the handle on this repository."""
 
-    def peer():
+    def peer(path=None):
         """Obtain an object conforming to the ``peer`` interface."""
 
     def unfiltered():
@@ -1794,7 +1803,7 @@ class ilocalrepositorymain(interfaceutil.Interface):
         DANGEROUS.
         """
 
-    def updatecaches(tr=None, full=False):
+    def updatecaches(tr=None, full=False, caches=None):
         """Warm repo caches."""
 
     def invalidatecaches():
@@ -1814,6 +1823,9 @@ class ilocalrepositorymain(interfaceutil.Interface):
 
     def lock(wait=True):
         """Lock the repository store and return a lock instance."""
+
+    def currentlock():
+        """Return the lock if it's held or None."""
 
     def wlock(wait=True):
         """Lock the non-store parts of the repository."""

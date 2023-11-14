@@ -36,7 +36,6 @@ A few obvious properties that are not currently handled realistically:
 - Symlinks and binary files are ignored
 '''
 
-from __future__ import absolute_import
 import bisect
 import collections
 import itertools
@@ -57,10 +56,10 @@ from mercurial import (
     diffutil,
     error,
     hg,
+    logcmdutil,
     patch,
     pycompat,
     registrar,
-    scmutil,
 )
 from mercurial.utils import dateutil
 
@@ -180,7 +179,7 @@ def analyze(ui, repo, *revs, **opts):
 
     # If a mercurial repo is available, also model the commit history.
     if repo:
-        revs = scmutil.revrange(repo, revs)
+        revs = logcmdutil.revrange(repo, revs)
         revs.sort()
 
         progress = ui.makeprogress(
@@ -213,7 +212,7 @@ def analyze(ui, repo, *revs, **opts):
             for filename, mar, lineadd, lineremove, isbin in parsegitdiff(diff):
                 if isbin:
                     continue
-                added = sum(pycompat.itervalues(lineadd), 0)
+                added = sum(lineadd.values(), 0)
                 if mar == 'm':
                     if added and lineremove:
                         lineschanged[

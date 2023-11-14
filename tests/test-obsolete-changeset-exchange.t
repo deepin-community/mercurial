@@ -47,12 +47,7 @@ Push it. The bundle should not refer to the extinct changeset.
   adding manifests
   adding file changes
   added 2 changesets with 2 changes to 2 files
-  $ hg -R ../other verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 2 changesets with 2 changes to 2 files
+  $ hg -R ../other verify -q
 
 Adding a changeset going extinct locally
 ------------------------------------------
@@ -169,7 +164,7 @@ client only pulls down 1 changeset
   adding manifests
   adding file changes
   adding foo revisions
-  bundle2-input-part: total payload size 476
+  bundle2-input-part: total payload size 486
   bundle2-input-part: "listkeys" (params: 1 mandatory) supported
   bundle2-input-part: "phase-heads" supported
   bundle2-input-part: total payload size 24

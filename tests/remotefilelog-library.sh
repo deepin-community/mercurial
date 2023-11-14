@@ -7,8 +7,6 @@ debug=True
 remotefilelog=
 rebase=
 strip=
-[ui]
-ssh="$PYTHON" "$TESTDIR/dummyssh"
 [server]
 preferuncompressed=True
 [experimental]
@@ -71,5 +69,5 @@ ls_l() {
 }
 
 identifyrflcaps() {
-    xargs -n 1 echo | egrep '(remotefilelog|getflogheads|getfile)' | sort
+    xargs -n 1 echo | grep -E '(remotefilelog|getflogheads|getfile)' | sort
 }

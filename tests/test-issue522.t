@@ -6,7 +6,8 @@ the version in p1 is an ancestor of the version in p2. This test makes
 sure that we'll use the version from p2 in the manifest of the merge
 revision.
 
-  $ hg init
+  $ hg init repo
+  $ cd repo
 
   $ echo foo > foo
   $ hg ci -qAm 'add foo'
@@ -45,7 +46,7 @@ revision.
   c6fc755d7e68f49f880599da29f15add41f42f5a 644   foo
 
   $ hg debugindex foo
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       0 2ed2a3912a0b 000000000000 000000000000
        1       1 6f4310b00b9a 2ed2a3912a0b 000000000000
        2       2 c6fc755d7e68 6f4310b00b9a 000000000000

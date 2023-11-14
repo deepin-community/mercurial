@@ -9,35 +9,24 @@
 //! `hg-core` package.
 
 use std::cell::{RefCell, RefMut};
-use std::convert::TryInto;
 
 use cpython::{
-    exc, ObjectProtocol, PyBool, PyBytes, PyClone, PyDict, PyErr, PyList,
-    PyObject, PyResult, PySet, PyString, Python, PythonObject, ToPyObject,
-    UnsafePyLeaked,
+    exc, PyBool, PyBytes, PyClone, PyDict, PyErr, PyList, PyNone, PyObject,
+    PyResult, Python, PythonObject, ToPyObject, UnsafePyLeaked,
 };
+use hg::dirstate::{ParentFileData, TruncatedTimestamp};
 
 use crate::{
     dirstate::copymap::{CopyMap, CopyMapItemsIterator, CopyMapKeysIterator},
-    dirstate::make_dirstate_item,
-    dirstate::make_dirstate_item_raw,
-    dirstate::non_normal_entries::{
-        NonNormalEntries, NonNormalEntriesIterator,
-    },
-    dirstate::owning::OwningDirstateMap,
-    parsers::dirstate_parents_to_pytuple,
+    dirstate::item::DirstateItem,
+    pybytes_deref::PyBytesDeref,
 };
 use hg::{
-    dirstate::parsers::Timestamp,
-    dirstate::MTIME_UNSET,
-    dirstate::SIZE_NON_NORMAL,
-    dirstate_tree::dispatch::DirstateMapMethods,
+    dirstate::StateMapIter, dirstate_tree::dirstate_map::DirstateMapWriteMode,
     dirstate_tree::on_disk::DirstateV2ParseError,
-    revlog::Node,
-    utils::files::normalize_case,
-    utils::hg_path::{HgPath, HgPathBuf},
-    DirstateEntry, DirstateError, DirstateMap as RustDirstateMap,
-    DirstateParents, EntryState, StateMapIter,
+    dirstate_tree::owning::OwningDirstateMap, revlog::Node,
+    utils::files::normalize_case, utils::hg_path::HgPath, DirstateEntry,
+    DirstateError, DirstateParents,
 };
 
 // TODO
@@ -53,26 +42,21 @@ use hg::{
 //     All attributes also have to have a separate refcount data attribute for
 //     leaks, with all methods that go along for reference sharing.
 py_class!(pub class DirstateMap |py| {
-    @shared data inner: Box<dyn DirstateMapMethods + Send>;
+    @shared data inner: OwningDirstateMap;
 
     /// Returns a `(dirstate_map, parents)` tuple
     @staticmethod
     def new_v1(
-        use_dirstate_tree: bool,
         on_disk: PyBytes,
+        identity: Option<u64>,
     ) -> PyResult<PyObject> {
-        let (inner, parents) = if use_dirstate_tree {
-            let (map, parents) = OwningDirstateMap::new_v1(py, on_disk)
-                .map_err(|e| dirstate_error(py, e))?;
-            (Box::new(map) as _, parents)
-        } else {
-            let bytes = on_disk.data(py);
-            let mut map = RustDirstateMap::default();
-            let parents = map.read(bytes).map_err(|e| dirstate_error(py, e))?;
-            (Box::new(map) as _, parents)
-        };
-        let map = Self::create_instance(py, inner)?;
-        let parents = parents.map(|p| dirstate_parents_to_pytuple(py, &p));
+        let on_disk = PyBytesDeref::new(py, on_disk);
+        let (map, parents) = OwningDirstateMap::new_v1(on_disk, identity)
+            .map_err(|e| dirstate_error(py, e))?;
+        let map = Self::create_instance(py, map)?;
+        let p1 = PyBytes::new(py, parents.p1.as_bytes());
+        let p2 = PyBytes::new(py, parents.p2.as_bytes());
+        let parents = (p1, p2);
         Ok((map, parents).to_py_object(py).into_object())
     }
 
@@ -82,14 +66,30 @@ py_class!(pub class DirstateMap |py| {
         on_disk: PyBytes,
         data_size: usize,
         tree_metadata: PyBytes,
+        uuid: PyBytes,
+        identity: Option<u64>,
     ) -> PyResult<PyObject> {
         let dirstate_error = |e: DirstateError| {
             PyErr::new::<exc::OSError, _>(py, format!("Dirstate error: {:?}", e))
         };
-        let inner = OwningDirstateMap::new_v2(
-            py, on_disk, data_size, tree_metadata,
+        let on_disk = PyBytesDeref::new(py, on_disk);
+        let uuid = uuid.data(py);
+        let map = OwningDirstateMap::new_v2(
+            on_disk,
+            data_size,
+            tree_metadata.data(py),
+            uuid.to_owned(),
+            identity,
         ).map_err(dirstate_error)?;
-        let map = Self::create_instance(py, Box::new(inner))?;
+        let map = Self::create_instance(py, map)?;
+        Ok(map.into_object())
+    }
+
+    /// Returns an empty DirstateMap. Only used for a new dirstate.
+    @staticmethod
+    def new_empty() -> PyResult<PyObject> {
+        let map = OwningDirstateMap::new_empty(vec![]);
+        let map = Self::create_instance(py, map)?;
         Ok(map.into_object())
     }
 
@@ -111,229 +111,101 @@ py_class!(pub class DirstateMap |py| {
             .map_err(|e| v2_error(py, e))?
         {
             Some(entry) => {
-                Ok(Some(make_dirstate_item(py, &entry)?))
+                Ok(Some(DirstateItem::new_as_pyobject(py, entry)?))
             },
             None => Ok(default)
         }
     }
 
-    def set_v1(&self, path: PyObject, item: PyObject) -> PyResult<PyObject> {
-        let f = path.extract::<PyBytes>(py)?;
-        let filename = HgPath::new(f.data(py));
-        let state = item.getattr(py, "state")?.extract::<PyBytes>(py)?;
-        let state = state.data(py)[0];
-        let entry = DirstateEntry {
-            state: state.try_into().expect("state is always valid"),
-            mtime: item.getattr(py, "mtime")?.extract(py)?,
-            size: item.getattr(py, "size")?.extract(py)?,
-            mode: item.getattr(py, "mode")?.extract(py)?,
-        };
-        self.inner(py).borrow_mut().set_v1(filename, entry);
-        Ok(py.None())
+    def set_tracked(&self, f: PyObject) -> PyResult<PyBool> {
+        let bytes = f.extract::<PyBytes>(py)?;
+        let path = HgPath::new(bytes.data(py));
+        let res = self.inner(py).borrow_mut().set_tracked(path);
+        let was_tracked = res.map_err(|_| PyErr::new::<exc::OSError, _>(py, "Dirstate error".to_string()))?;
+        Ok(was_tracked.to_py_object(py))
     }
 
-    def addfile(
+    def set_untracked(&self, f: PyObject) -> PyResult<PyBool> {
+        let bytes = f.extract::<PyBytes>(py)?;
+        let path = HgPath::new(bytes.data(py));
+        let res = self.inner(py).borrow_mut().set_untracked(path);
+        let was_tracked = res.map_err(|_| PyErr::new::<exc::OSError, _>(py, "Dirstate error".to_string()))?;
+        Ok(was_tracked.to_py_object(py))
+    }
+
+    def set_clean(
         &self,
         f: PyObject,
-        mode: PyObject,
-        size: PyObject,
-        mtime: PyObject,
-        added: PyObject,
-        merged: PyObject,
-        from_p2: PyObject,
-        possibly_dirty: PyObject,
-    ) -> PyResult<PyObject> {
-        let f = f.extract::<PyBytes>(py)?;
-        let filename = HgPath::new(f.data(py));
-        let mode = if mode.is_none(py) {
-            // fallback default value
-            0
-        } else {
-            mode.extract(py)?
-        };
-        let size = if size.is_none(py) {
-            // fallback default value
-            SIZE_NON_NORMAL
-        } else {
-            size.extract(py)?
-        };
-        let mtime = if mtime.is_none(py) {
-            // fallback default value
-            MTIME_UNSET
-        } else {
-            mtime.extract(py)?
-        };
-        let entry = DirstateEntry {
-            // XXX Arbitrary default value since the value is determined later
-            state: EntryState::Normal,
-            mode: mode,
-            size: size,
-            mtime: mtime,
-        };
-        let added = added.extract::<PyBool>(py)?.is_true();
-        let merged = merged.extract::<PyBool>(py)?.is_true();
-        let from_p2 = from_p2.extract::<PyBool>(py)?.is_true();
-        let possibly_dirty = possibly_dirty.extract::<PyBool>(py)?.is_true();
-        self.inner(py).borrow_mut().add_file(
-            filename,
-            entry,
-            added,
-            merged,
-            from_p2,
-            possibly_dirty
-        ).and(Ok(py.None())).or_else(|e: DirstateError| {
-            Err(PyErr::new::<exc::ValueError, _>(py, e.to_string()))
-        })
+        mode: u32,
+        size: u32,
+        mtime: (i64, u32, bool)
+    ) -> PyResult<PyNone> {
+        let (mtime_s, mtime_ns, second_ambiguous) = mtime;
+        let timestamp = TruncatedTimestamp::new_truncate(
+            mtime_s, mtime_ns, second_ambiguous
+        );
+        let bytes = f.extract::<PyBytes>(py)?;
+        let path = HgPath::new(bytes.data(py));
+        let res = self.inner(py).borrow_mut().set_clean(
+            path, mode, size, timestamp,
+        );
+        res.map_err(|_| PyErr::new::<exc::OSError, _>(py, "Dirstate error".to_string()))?;
+        Ok(PyNone)
     }
 
-    def removefile(
+    def set_possibly_dirty(&self, f: PyObject) -> PyResult<PyNone> {
+        let bytes = f.extract::<PyBytes>(py)?;
+        let path = HgPath::new(bytes.data(py));
+        let res = self.inner(py).borrow_mut().set_possibly_dirty(path);
+        res.map_err(|_| PyErr::new::<exc::OSError, _>(py, "Dirstate error".to_string()))?;
+        Ok(PyNone)
+    }
+
+    def reset_state(
         &self,
         f: PyObject,
-        in_merge: PyObject
-    ) -> PyResult<PyObject> {
-        self.inner(py).borrow_mut()
-            .remove_file(
-                HgPath::new(f.extract::<PyBytes>(py)?.data(py)),
-                in_merge.extract::<PyBool>(py)?.is_true(),
-            )
-            .or_else(|_| {
-                Err(PyErr::new::<exc::OSError, _>(
-                    py,
-                    "Dirstate error".to_string(),
-                ))
-            })?;
-        Ok(py.None())
-    }
-
-    def dropfile(
-        &self,
-        f: PyObject,
-    ) -> PyResult<PyBool> {
-        self.inner(py).borrow_mut()
-            .drop_file(
-                HgPath::new(f.extract::<PyBytes>(py)?.data(py)),
-            )
-            .and_then(|b| Ok(b.to_py_object(py)))
-            .or_else(|e| {
-                Err(PyErr::new::<exc::OSError, _>(
-                    py,
-                    format!("Dirstate error: {}", e.to_string()),
-                ))
-            })
-    }
-
-    def clearambiguoustimes(
-        &self,
-        files: PyObject,
-        now: PyObject
-    ) -> PyResult<PyObject> {
-        let files: PyResult<Vec<HgPathBuf>> = files
-            .iter(py)?
-            .map(|filename| {
-                Ok(HgPathBuf::from_bytes(
-                    filename?.extract::<PyBytes>(py)?.data(py),
-                ))
-            })
-            .collect();
-        self.inner(py)
-            .borrow_mut()
-            .clear_ambiguous_times(files?, now.extract(py)?)
-            .map_err(|e| v2_error(py, e))?;
-        Ok(py.None())
-    }
-
-    def other_parent_entries(&self) -> PyResult<PyObject> {
-        let mut inner_shared = self.inner(py).borrow_mut();
-        let set = PySet::empty(py)?;
-        for path in inner_shared.iter_other_parent_paths() {
-            let path = path.map_err(|e| v2_error(py, e))?;
-            set.add(py, PyBytes::new(py, path.as_bytes()))?;
-        }
-        Ok(set.into_object())
-    }
-
-    def non_normal_entries(&self) -> PyResult<NonNormalEntries> {
-        NonNormalEntries::from_inner(py, self.clone_ref(py))
-    }
-
-    def non_normal_entries_contains(&self, key: PyObject) -> PyResult<bool> {
-        let key = key.extract::<PyBytes>(py)?;
-        self.inner(py)
-            .borrow_mut()
-            .non_normal_entries_contains(HgPath::new(key.data(py)))
-            .map_err(|e| v2_error(py, e))
-    }
-
-    def non_normal_entries_display(&self) -> PyResult<PyString> {
-        let mut inner = self.inner(py).borrow_mut();
-        let paths = inner
-            .iter_non_normal_paths()
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| v2_error(py, e))?;
-        let formatted = format!("NonNormalEntries: {}", hg::utils::join_display(paths, ", "));
-        Ok(PyString::new(py, &formatted))
-    }
-
-    def non_normal_entries_remove(&self, key: PyObject) -> PyResult<PyObject> {
-        let key = key.extract::<PyBytes>(py)?;
-        let key = key.data(py);
-        let was_present = self
-            .inner(py)
-            .borrow_mut()
-            .non_normal_entries_remove(HgPath::new(key));
-        if !was_present {
-            let msg = String::from_utf8_lossy(key);
-            Err(PyErr::new::<exc::KeyError, _>(py, msg))
-        } else {
-            Ok(py.None())
-        }
-    }
-
-    def non_normal_entries_discard(&self, key: PyObject) -> PyResult<PyObject>
-    {
-        let key = key.extract::<PyBytes>(py)?;
-        self
-            .inner(py)
-            .borrow_mut()
-            .non_normal_entries_remove(HgPath::new(key.data(py)));
-        Ok(py.None())
-    }
-
-    def non_normal_entries_add(&self, key: PyObject) -> PyResult<PyObject> {
-        let key = key.extract::<PyBytes>(py)?;
-        self
-            .inner(py)
-            .borrow_mut()
-            .non_normal_entries_add(HgPath::new(key.data(py)));
-        Ok(py.None())
-    }
-
-    def non_normal_or_other_parent_paths(&self) -> PyResult<PyList> {
-        let mut inner = self.inner(py).borrow_mut();
-
-        let ret = PyList::new(py, &[]);
-        for filename in inner.non_normal_or_other_parent_paths() {
-            let filename = filename.map_err(|e| v2_error(py, e))?;
-            let as_pystring = PyBytes::new(py, filename.as_bytes());
-            ret.append(py, as_pystring.into_object());
-        }
-        Ok(ret)
-    }
-
-    def non_normal_entries_iter(&self) -> PyResult<NonNormalEntriesIterator> {
-        // Make sure the sets are defined before we no longer have a mutable
-        // reference to the dmap.
-        self.inner(py)
-            .borrow_mut()
-            .set_non_normal_other_parent_entries(false);
-
-        let leaked_ref = self.inner(py).leak_immutable();
-
-        NonNormalEntriesIterator::from_inner(py, unsafe {
-            leaked_ref.map(py, |o| {
-                o.iter_non_normal_paths_panic()
-            })
-        })
+        wc_tracked: bool,
+        p1_tracked: bool,
+        p2_info: bool,
+        has_meaningful_mtime: bool,
+        parentfiledata: Option<(u32, u32, Option<(i64, u32, bool)>)>,
+    ) -> PyResult<PyNone> {
+        let mut has_meaningful_mtime = has_meaningful_mtime;
+        let parent_file_data = match parentfiledata {
+            None => {
+                has_meaningful_mtime = false;
+                None
+            },
+            Some(data) => {
+                let (mode, size, mtime_info) = data;
+                let mtime = if let Some(mtime_info) = mtime_info {
+                    let (mtime_s, mtime_ns, second_ambiguous) = mtime_info;
+                    let timestamp = TruncatedTimestamp::new_truncate(
+                        mtime_s, mtime_ns, second_ambiguous
+                    );
+                    Some(timestamp)
+                } else {
+                    has_meaningful_mtime = false;
+                    None
+                };
+                Some(ParentFileData {
+                    mode_size: Some((mode, size)),
+                    mtime,
+                })
+            }
+        };
+        let bytes = f.extract::<PyBytes>(py)?;
+        let path = HgPath::new(bytes.data(py));
+        let res = self.inner(py).borrow_mut().reset_state(
+            path,
+            wc_tracked,
+            p1_tracked,
+            p2_info,
+            has_meaningful_mtime,
+            parent_file_data,
+        );
+        res.map_err(|_| PyErr::new::<exc::OSError, _>(py, "Dirstate error".to_string()))?;
+        Ok(PyNone)
     }
 
     def hastrackeddir(&self, d: PyObject) -> PyResult<PyBool> {
@@ -360,16 +232,13 @@ py_class!(pub class DirstateMap |py| {
         &self,
         p1: PyObject,
         p2: PyObject,
-        now: PyObject
     ) -> PyResult<PyBytes> {
-        let now = Timestamp(now.extract(py)?);
-
-        let mut inner = self.inner(py).borrow_mut();
+        let inner = self.inner(py).borrow();
         let parents = DirstateParents {
             p1: extract_node_id(py, &p1)?,
             p2: extract_node_id(py, &p2)?,
         };
-        let result = inner.pack_v1(parents, now);
+        let result = inner.pack_v1(parents);
         match result {
             Ok(packed) => Ok(PyBytes::new(py, &packed)),
             Err(_) => Err(PyErr::new::<exc::OSError, _>(
@@ -384,17 +253,20 @@ py_class!(pub class DirstateMap |py| {
     /// instead of written to a new data file (False).
     def write_v2(
         &self,
-        now: PyObject,
-        can_append: bool,
+        write_mode: usize,
     ) -> PyResult<PyObject> {
-        let now = Timestamp(now.extract(py)?);
-
-        let mut inner = self.inner(py).borrow_mut();
-        let result = inner.pack_v2(now, can_append);
+        let inner = self.inner(py).borrow();
+        let rust_write_mode = match write_mode {
+            0 => DirstateMapWriteMode::Auto,
+            1 => DirstateMapWriteMode::ForceNewDataFile,
+            2 => DirstateMapWriteMode::ForceAppend,
+            _ => DirstateMapWriteMode::Auto, // XXX should we error out?
+        };
+        let result = inner.pack_v2(rust_write_mode);
         match result {
-            Ok((packed, tree_metadata, append)) => {
+            Ok((packed, tree_metadata, append, _old_data_size)) => {
                 let packed = PyBytes::new(py, &packed);
-                let tree_metadata = PyBytes::new(py, &tree_metadata);
+                let tree_metadata = PyBytes::new(py, tree_metadata.as_bytes());
                 let tuple = (packed, tree_metadata, append);
                 Ok(tuple.to_py_object(py).into_object())
             },
@@ -409,7 +281,7 @@ py_class!(pub class DirstateMap |py| {
         let dict = PyDict::new(py);
         for item in self.inner(py).borrow_mut().iter() {
             let (path, entry) = item.map_err(|e| v2_error(py, e))?;
-            if entry.state != EntryState::Removed {
+            if !entry.removed() {
                 let key = normalize_case(path);
                 let value = path;
                 dict.set_item(
@@ -444,7 +316,7 @@ py_class!(pub class DirstateMap |py| {
             .map_err(|e| v2_error(py, e))?
         {
             Some(entry) => {
-                Ok(make_dirstate_item(py, &entry)?)
+                Ok(DirstateItem::new_as_pyobject(py, entry)?)
             },
             None => Err(PyErr::new::<exc::KeyError, _>(
                 py,
@@ -548,8 +420,8 @@ py_class!(pub class DirstateMap |py| {
         self.inner(py)
             .borrow_mut()
             .copy_map_insert(
-                HgPathBuf::from_bytes(key.data(py)),
-                HgPathBuf::from_bytes(value.data(py)),
+                HgPath::new(key.data(py)),
+                HgPath::new(value.data(py)),
             )
             .map_err(|e| v2_error(py, e))?;
         Ok(py.None())
@@ -566,7 +438,9 @@ py_class!(pub class DirstateMap |py| {
             .copy_map_remove(HgPath::new(key.data(py)))
             .map_err(|e| v2_error(py, e))?
         {
-            Some(_) => Ok(None),
+            Some(copy) => Ok(Some(
+                PyBytes::new(py, copy.as_bytes()).into_object(),
+            )),
             None => Ok(default),
         }
     }
@@ -599,14 +473,27 @@ py_class!(pub class DirstateMap |py| {
         Ok(dirs)
     }
 
-    def debug_iter(&self) -> PyResult<PyList> {
+    def setparents_fixup(&self) -> PyResult<PyDict> {
+        let dict = PyDict::new(py);
+        let copies = self.inner(py).borrow_mut().setparents_fixup();
+        for (key, value) in copies.map_err(|e| v2_error(py, e))? {
+            dict.set_item(
+                py,
+                PyBytes::new(py, key.as_bytes()),
+                PyBytes::new(py, value.as_bytes()),
+            )?;
+        }
+        Ok(dict)
+    }
+
+    def debug_iter(&self, all: bool) -> PyResult<PyList> {
         let dirs = PyList::new(py, &[]);
-        for item in self.inner(py).borrow().debug_iter() {
+        for item in self.inner(py).borrow().debug_iter(all) {
             let (path, (state, mode, size, mtime)) =
                 item.map_err(|e| v2_error(py, e))?;
             let path = PyBytes::new(py, path.as_bytes());
-            let item = make_dirstate_item_raw(py, state, mode, size, mtime)?;
-            dirs.append(py, (path, item).to_py_object(py).into_object())
+            let item = (path, state, mode, size, mtime);
+            dirs.append(py, item.to_py_object(py).into_object())
         }
         Ok(dirs)
     }
@@ -616,7 +503,7 @@ impl DirstateMap {
     pub fn get_inner_mut<'a>(
         &'a self,
         py: Python<'a>,
-    ) -> RefMut<'a, Box<dyn DirstateMapMethods + Send>> {
+    ) -> RefMut<'a, OwningDirstateMap> {
         self.inner(py).borrow_mut()
     }
     fn translate_key(
@@ -633,7 +520,7 @@ impl DirstateMap {
         let (f, entry) = res.map_err(|e| v2_error(py, e))?;
         Ok(Some((
             PyBytes::new(py, f.as_bytes()),
-            make_dirstate_item(py, &entry)?,
+            DirstateItem::new_as_pyobject(py, entry)?,
         )))
     }
 }

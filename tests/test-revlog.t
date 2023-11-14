@@ -32,6 +32,7 @@ Unknown version is rejected
 
 Test for CVE-2016-3630
 
+  $ mkdir test2; cd test2
   $ hg init
 
   >>> import codecs
@@ -52,3 +53,37 @@ Test for CVE-2016-3630
   >>> rl = revlog.revlog(tvfs, target=(KIND_OTHER, b'test'), radix=b'a')
   >>> rl.revision(1)
   mpatchError(*'patch cannot be decoded'*) (glob)
+
+  $ cd ..
+
+
+Regression test for support for the old repos with strange diff encoding.
+Apparently it used to be possible (maybe it's still possible, but we don't know how)
+to create commits whose diffs are encoded relative to a nullrev.
+This test checks that a repo with that encoding can still be read.
+
+This is what we did to produce the repo in test-revlog-diff-relative-to-nullrev.tar:
+
+- tweak the code in mercurial/revlogutils/deltas.py to produce such "trivial" deltas:
+>          if deltainfo is None:
+> -            deltainfo = self._fullsnapshotinfo(fh, revinfo, target_rev)
+> +            deltainfo = self._builddeltainfo(revinfo, nullrev, fh)
+- hg init
+- echo hi > a
+- hg commit -Am_
+- remove some cache files
+
+  $ tar -xf - < "$TESTDIR"/bundles/test-revlog-diff-relative-to-nullrev.tar
+  $ cd nullrev-diff
+  $ hg debugdeltachain a
+      rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
+        0      -1      -1       1        2       -1      p1         15          3         15   5.00000        15         0    0.00000         15         15   1.00000        1
+        1       0      -1       1        2       -1      p2         15          3         15   5.00000        30        15    1.00000         30         30   0.50000        1
+        2      -1      -1       1        2       -1      p1         15          3         15   5.00000        45        30    2.00000         45         45   0.33333        1
+  $ hg cat --config rhg.cat=true -r 0 a
+  hi
+  $ hg cat --config rhg.cat=true -r 1 a
+  ho
+  $ hg cat --config rhg.cat=true -r 2 a
+  ha
+  $ cd ..

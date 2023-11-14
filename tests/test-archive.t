@@ -51,12 +51,12 @@ hg subrepos are shared into existence on demand if the parent was shared
   $ hg -R clone1 update -C tip
   cloning subrepo subrepo from $TESTTMP/test/subrepo
   3 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ find share2 | egrep 'sharedpath|00.+\.i' | sort
+  $ find share2 | grep -E 'sharedpath|00.+\.i' | sort
   share2/.hg/sharedpath
   share2/subrepo/.hg/sharedpath
   $ hg -R share2 unshare
   unsharing subrepo 'subrepo'
-  $ find share2 | egrep 'sharedpath|00.+\.i' | sort
+  $ find share2 | grep -E 'sharedpath|00.+\.i' | sort
   share2/.hg/00changelog.i
   share2/.hg/sharedpath.old
   share2/.hg/store/00changelog.i
@@ -320,7 +320,6 @@ invalid arch type should give 404
   $ TIP=`hg id -v | cut -f1 -d' '`
   $ QTIP=`hg id -q`
   $ cat > getarchive.py <<EOF
-  > from __future__ import absolute_import
   > import os
   > import sys
   > from mercurial import (
@@ -455,7 +454,6 @@ The '-t' should override autodetection
   > done
 
   $ cat > md5comp.py <<EOF
-  > from __future__ import absolute_import, print_function
   > import hashlib
   > import sys
   > f1, f2 = sys.argv[1:3]
@@ -568,7 +566,7 @@ old file -- date clamped to 1980
   $ hg add old
   $ hg commit -m old
   $ hg archive ../old.zip
-  $ unzip -l ../old.zip | grep -v -- ----- | egrep -v files$
+  $ unzip -l ../old.zip | grep -v -- ----- | grep -E -v files$
   Archive:  ../old.zip
   \s*Length.* (re)
   *172*80*00:00*old/.hg_archival.txt (glob)
@@ -582,14 +580,9 @@ test xz support only available in Python 3.4
   Strms  Blocks   Compressed Uncompressed  Ratio  Check   Filename (xz !)
   $ rm -f ../archive.txz
 #endif
-#if py3 no-lzma
+#if no-lzma
   $ hg archive ../archive.txz
   abort: lzma module is not available
-  [255]
-#endif
-#if no-py3
-  $ hg archive ../archive.txz
-  abort: xz compression is only available in Python 3
   [255]
 #endif
 
@@ -617,7 +610,6 @@ configured as GMT.
   $ hg -R repo add repo/a
   $ hg -R repo commit -m '#0' -d '456789012 21600'
   $ cat > show_mtime.py <<EOF
-  > from __future__ import absolute_import, print_function
   > import os
   > import sys
   > print(int(os.stat(sys.argv[1]).st_mtime))

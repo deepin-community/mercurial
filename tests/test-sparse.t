@@ -21,6 +21,29 @@ test sparse
 Verify basic --include
 
   $ hg up -q 0
+
+Test that sparse pattern by default is interpreted as "glob:", and is interpreted relative to the root.
+
+  $ hg debugsparse --reset
+  $ hg debugsparse -X 'foo*bar'
+  $ cat .hg/sparse
+  [exclude]
+  foo*bar
+
+  $ mk() { mkdir -p "$1"; touch "$1"/"$2"; }
+  $ mk 'foo' bar
+  $ mk 'foo-bar' x
+  $ mk 'unanchoredfoo-bar' x
+  $ mk 'foo*bar' x
+  $ mk 'dir/foo-bar' x
+  $ hg status --config rhg.on-unsupported=abort
+  ? dir/foo-bar/x
+  ? foo/bar
+  ? unanchoredfoo-bar/x
+  $ hg clean -a --no-confirm
+  $ rm -r foo*bar
+  $ hg debugsparse --reset
+
   $ hg debugsparse --include 'hide'
   $ ls -A
   .hg
@@ -147,7 +170,7 @@ Verify deleting sparseness while a file has changes fails
 
 Verify deleting sparseness with --force brings back files
 
-  $ hg debugsparse --delete -f 'show*'
+  $ hg debugsparse -f --delete 'show*'
   pending changes to 'hide'
   $ ls -A
   .hg
@@ -170,7 +193,7 @@ Verify editing sparseness fails if pending changes
 
 Verify adding sparseness hides files
 
-  $ hg debugsparse --exclude -f 'hide*'
+  $ hg debugsparse -f --exclude 'hide*'
   pending changes to 'hide'
   $ ls -A
   .hg
@@ -254,6 +277,15 @@ Verify merge fails if merging excluded files
   hide*
   
 
+Multiple -I and -X can be passed at once
+
+  $ hg debugsparse --reset -I '*2' -X 'hide2'
+  $ ls -A
+  .hg
+  hide.orig
+  show2
+  $ hg debugsparse --reset -X 'hide*'
+
 Verify strip -k resets dirstate correctly
 
   $ hg status
@@ -303,7 +335,7 @@ Mix files and subdirectories, both "glob:" and unprefixed
   $ touch dir1/notshown
   $ hg commit -A dir1/notshown -m "notshown"
   $ hg debugsparse --include 'dir1/dir2'
-  $ "$PYTHON" $TESTDIR/list-tree.py . | egrep -v '\.[\/]\.hg'
+  $ "$PYTHON" $TESTDIR/list-tree.py . | grep -E -v '\.[\/]\.hg'
   ./
   ./dir1/
   ./dir1/dir2/
@@ -311,7 +343,7 @@ Mix files and subdirectories, both "glob:" and unprefixed
   ./hide.orig
   $ hg debugsparse --delete 'dir1/dir2'
   $ hg debugsparse --include 'glob:dir1/dir2'
-  $ "$PYTHON" $TESTDIR/list-tree.py . | egrep -v '\.[\/]\.hg'
+  $ "$PYTHON" $TESTDIR/list-tree.py . | grep -E -v '\.[\/]\.hg'
   ./
   ./dir1/
   ./dir1/dir2/

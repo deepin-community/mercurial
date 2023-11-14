@@ -119,6 +119,10 @@ Log works too:
 and bookmarks:
   $ hg bookmarks
    * master                    1:3d9be8deba43
+  $ hg up master
+  0 files updated, 0 files merged, 0 files removed, 0 files unresolved
+  $ hg bookmarks
+   * master                    1:3d9be8deba43
 
 diff even works transparently in both systems:
   $ echo blah >> alpha
@@ -137,6 +141,12 @@ diff even works transparently in both systems:
   @@ -1,1 +1,2 @@
    alpha
   +blah
+
+status --all shows all files, including clean:
+  $ hg status --all
+  M alpha
+  ? gamma
+  C beta
 
 Remove a file, it shows as such:
   $ rm alpha
@@ -302,7 +312,7 @@ This covers gitlog._partialmatch()
   
   $ hg log -r dead
   abort: unknown revision 'dead'
-  [255]
+  [10]
 
 This coveres changelog.findmissing()
   $ hg merge --preview 3d9be8deba43
@@ -348,7 +358,7 @@ Status should be consistent for both systems
   $ hg status
   heads mismatch, rebuilding dagcache
   M beta
-  $ git status | egrep -v '^$|^  \(use '
+  $ git status | grep -E -v '^$|^  \(use '
   On branch master
   Changes not staged for commit:
   	modified:   beta
@@ -421,5 +431,8 @@ This covers changelog.headrevs() with a non-None arg
   7[tip][master]   1a0fee76bfc4   1970-01-01 00:00 +0000   test
     remove beta
   
-
-
+This covers revlog.findmissingrevs() (issue6472)
+  $ hg log -r 'last(only(master))' -Tcompact
+  7[tip][master]   1a0fee76bfc4   1970-01-01 00:00 +0000   test
+    remove beta
+  

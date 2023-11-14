@@ -6,9 +6,7 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
-import errno
 import re
 import struct
 
@@ -16,6 +14,7 @@ from ..node import hex
 
 from .. import (
     error,
+    requirements,
     util,
 )
 from . import docket as docket_mod
@@ -32,6 +31,19 @@ def test_race_hook_1():
     This let tests to have things happens between the docket reading and the
     data reading"""
     pass
+
+
+def post_stream_cleanup(repo):
+    """The stream clone might needs to remove some file if persisten nodemap
+    was dropped while stream cloning
+    """
+    if requirements.REVLOGV1_REQUIREMENT not in repo.requirements:
+        return
+    if requirements.NODEMAP_REQUIREMENT in repo.requirements:
+        return
+    unfi = repo.unfiltered()
+    delete_nodemap(None, unfi, unfi.changelog)
+    delete_nodemap(None, repo, unfi.manifestlog._rootstore._revlog)
 
 
 def persisted_data(revlog):
@@ -70,11 +82,8 @@ def persisted_data(revlog):
                     data = b''
             else:
                 data = fd.read(data_length)
-    except (IOError, OSError) as e:
-        if e.errno == errno.ENOENT:
-            return None
-        else:
-            raise
+    except FileNotFoundError:
+        return None
     if len(data) < data_length:
         return None
     return docket, data
@@ -100,7 +109,7 @@ def setup_persistent_nodemap(tr, revlog):
     tr.addfinalize(callback_id, lambda tr: persist_nodemap(tr, revlog))
 
 
-class _NoTransaction(object):
+class _NoTransaction:
     """transaction like object to update the nodemap outside a transaction"""
 
     def __init__(self):
@@ -144,10 +153,12 @@ def update_persistent_nodemap(revlog):
 
 def delete_nodemap(tr, repo, revlog):
     """Delete nodemap data on disk for a given revlog"""
-    if revlog._nodemap_file is None:
-        msg = "calling persist nodemap on a revlog without the feature enabled"
-        raise error.ProgrammingError(msg)
-    repo.svfs.unlink(revlog._nodemap_file)
+    prefix = revlog.radix
+    pattern = re.compile(br"(^|/)%s(-[0-9a-f]+\.nd|\.n(\.a)?)$" % prefix)
+    dirpath = revlog.opener.dirname(revlog._indexfile)
+    for f in revlog.opener.listdir(dirpath):
+        if pattern.match(f):
+            repo.svfs.tryunlink(f)
 
 
 def persist_nodemap(tr, revlog, pending=False, force=False):
@@ -289,7 +300,7 @@ S_VERSION = struct.Struct(">B")
 S_HEADER = struct.Struct(">BQQQQ")
 
 
-class NodeMapDocket(object):
+class NodeMapDocket:
     """metadata associated with persistent nodemap data
 
     The persistent data may come from disk or be on their way to disk.
@@ -600,10 +611,10 @@ def parse_data(data):
 def check_data(ui, index, data):
     """verify that the provided nodemap data are valid for the given idex"""
     ret = 0
-    ui.status((b"revision in index:   %d\n") % len(index))
+    ui.status((b"revisions in index:   %d\n") % len(index))
     root, __ = parse_data(data)
     all_revs = set(_all_revisions(root))
-    ui.status((b"revision in nodemap: %d\n") % len(all_revs))
+    ui.status((b"revisions in nodemap: %d\n") % len(all_revs))
     for r in range(len(index)):
         if r not in all_revs:
             msg = b"  revision missing from nodemap: %d\n" % r
@@ -626,7 +637,7 @@ def check_data(ui, index, data):
 
     if all_revs:
         for r in sorted(all_revs):
-            msg = b"  extra revision in  nodemap: %d\n" % r
+            msg = b"  extra revisions in  nodemap: %d\n" % r
             ui.write_err(msg)
         ret = 1
     return ret

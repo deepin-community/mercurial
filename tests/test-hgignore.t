@@ -1,15 +1,12 @@
-#testcases dirstate-v1 dirstate-v1-tree dirstate-v2
-
-#if dirstate-v1-tree
-#require rust
-  $ echo '[experimental]' >> $HGRCPATH
-  $ echo 'dirstate-tree.in-memory=1' >> $HGRCPATH
-#endif
+#testcases dirstate-v1 dirstate-v2
 
 #if dirstate-v2
-#require rust
-  $ echo '[format]' >> $HGRCPATH
-  $ echo 'exp-dirstate-v2=1' >> $HGRCPATH
+  $ cat >> $HGRCPATH << EOF
+  > [format]
+  > use-dirstate-v2=1
+  > [storage]
+  > dirstate-v2.slow-path=allow
+  > EOF
 #endif
 
   $ hg init ignorerepo
@@ -65,6 +62,97 @@ Should display baz only:
   $ hg status
   abort: $TESTTMP/ignorerepo/.hgignore: invalid pattern (relre): *.o (glob)
   [255]
+
+Test relre with flags (issue6759)
+---------------------------------
+
+regexp with flag is the first one
+
+  $ echo 're:(?i)\.O$' > .hgignore
+  $ echo 're:.hgignore' >> .hgignore
+  $ hg status
+  A dir/b.o
+  ? a.c
+  ? syntax
+  $ hg debugignore
+  <includematcher includes='(?i:.*\\.O$)|.*.hgignore'>
+
+regex with flag is not the first one
+
+  $ echo 're:.hgignore' > .hgignore
+  $ echo 're:(?i)\.O$' >> .hgignore
+  $ hg status
+  A dir/b.o
+  ? a.c
+  ? syntax
+  $ hg debugignore
+  <includematcher includes='.*.hgignore|(?i:.*\\.O$)'>
+
+flag in a pattern should affect that pattern only
+
+  $ echo 're:(?i)\.O$' > .hgignore
+  $ echo 're:.HGIGNORE' >> .hgignore
+  $ hg status
+  A dir/b.o
+  ? .hgignore
+  ? a.c
+  ? syntax
+  $ hg debugignore
+  <includematcher includes='(?i:.*\\.O$)|.*.HGIGNORE'>
+
+  $ echo 're:.HGIGNORE' > .hgignore
+  $ echo 're:(?i)\.O$' >> .hgignore
+  $ hg status
+  A dir/b.o
+  ? .hgignore
+  ? a.c
+  ? syntax
+  $ hg debugignore
+  <includematcher includes='.*.HGIGNORE|(?i:.*\\.O$)'>
+
+Check that '^' after flag is properly detected.
+
+  $ echo 're:(?i)^[^a].*\.O$' > .hgignore
+  $ echo 're:.HGIGNORE' >> .hgignore
+  $ hg status
+  A dir/b.o
+  ? .hgignore
+  ? a.c
+  ? a.o
+  ? syntax
+  $ hg debugignore
+  <includematcher includes='(?i:^[^a].*\\.O$)|.*.HGIGNORE'>
+
+  $ echo 're:.HGIGNORE' > .hgignore
+  $ echo 're:(?i)^[^a].*\.O$' >> .hgignore
+  $ hg status
+  A dir/b.o
+  ? .hgignore
+  ? a.c
+  ? a.o
+  ? syntax
+  $ hg debugignore
+  <includematcher includes='.*.HGIGNORE|(?i:^[^a].*\\.O$)'>
+
+
+further testing
+---------------
+
+  $ echo 're:^(?!a).*\.o$' > .hgignore
+  $ hg status
+  A dir/b.o
+  ? .hgignore
+  ? a.c
+  ? a.o
+  ? syntax
+#if rhg
+  $ hg status --config rhg.on-unsupported=abort
+  unsupported feature: Unsupported syntax regex parse error:
+      ^(?:^(?!a).*\.o$)
+           ^^^
+  error: look-around, including look-ahead and look-behind, is not supported
+  [252]
+#endif
 
 Ensure given files are relative to cwd
 
@@ -403,21 +491,56 @@ Windows paths are accepted on input
 
 #endif
 
-#if dirstate-v2
+#if dirstate-v2 rust
 
 Check the hash of ignore patterns written in the dirstate
+This is an optimization that is only relevant when using the Rust extensions
 
+  $ cat_filename_and_hash () {
+  >     for i in "$@"; do
+  >         printf "$i "
+  >         cat "$i" | "$TESTDIR"/f --raw-sha1 | sed 's/^raw-sha1=//'
+  >     done
+  > }
   $ hg status > /dev/null
-  $ cat .hg/testhgignore .hg/testhgignorerel .hgignore dir2/.hgignore dir1/.hgignore dir1/.hgignoretwo | $TESTDIR/f --sha1
-  sha1=6e315b60f15fb5dfa02be00f3e2c8f923051f5ff
-  $ hg debugdirstateignorepatternshash
-  6e315b60f15fb5dfa02be00f3e2c8f923051f5ff
+  $ cat_filename_and_hash .hg/testhgignore .hg/testhgignorerel .hgignore dir2/.hgignore dir1/.hgignore dir1/.hgignoretwo | $TESTDIR/f --sha1
+  sha1=c0beb296395d48ced8e14f39009c4ea6e409bfe6
+  $ hg debugstate --docket | grep ignore
+  ignore pattern hash: c0beb296395d48ced8e14f39009c4ea6e409bfe6
 
   $ echo rel > .hg/testhgignorerel
   $ hg status > /dev/null
-  $ cat .hg/testhgignore .hg/testhgignorerel .hgignore dir2/.hgignore dir1/.hgignore dir1/.hgignoretwo | $TESTDIR/f --sha1
-  sha1=dea19cc7119213f24b6b582a4bae7b0cb063e34e
-  $ hg debugdirstateignorepatternshash
-  dea19cc7119213f24b6b582a4bae7b0cb063e34e
+  $ cat_filename_and_hash .hg/testhgignore .hg/testhgignorerel .hgignore dir2/.hgignore dir1/.hgignore dir1/.hgignoretwo | $TESTDIR/f --sha1
+  sha1=b8e63d3428ec38abc68baa27631516d5ec46b7fa
+  $ hg debugstate --docket | grep ignore
+  ignore pattern hash: b8e63d3428ec38abc68baa27631516d5ec46b7fa
+  $ cd ..
+
+Check that the hash depends on the source of the hgignore patterns
+(otherwise the context is lost and things like subinclude are cached improperly)
+
+  $ hg init ignore-collision
+  $ cd ignore-collision
+  $ echo > .hg/testhgignorerel
+
+  $ mkdir dir1/ dir1/subdir
+  $ touch dir1/subdir/f dir1/subdir/ignored1
+  $ echo 'ignored1' > dir1/.hgignore
+
+  $ mkdir dir2 dir2/subdir
+  $ touch dir2/subdir/f dir2/subdir/ignored2
+  $ echo 'ignored2' > dir2/.hgignore
+  $ echo 'subinclude:dir2/.hgignore' >> .hgignore
+  $ echo 'subinclude:dir1/.hgignore' >> .hgignore
+
+  $ hg commit -Aqm_
+
+  $ > dir1/.hgignore
+  $ echo 'ignored' > dir2/.hgignore
+  $ echo 'ignored1' >> dir2/.hgignore
+  $ hg status
+  M dir1/.hgignore
+  M dir2/.hgignore
+  ? dir1/subdir/ignored1
 
 #endif

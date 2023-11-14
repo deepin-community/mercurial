@@ -5,16 +5,13 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import, print_function
 
 import abc
+import builtins
 import re
-import sys
 
 ####################
 # for Python3 compatibility (almost comes from mercurial/pycompat.py)
-
-ispy3 = sys.version_info[0] >= 3
 
 
 def identity(a):
@@ -39,27 +36,19 @@ def rapply(f, xs):
     return _rapply(f, xs)
 
 
-if ispy3:
-    import builtins
-
-    def bytestr(s):
-        # tiny version of pycompat.bytestr
-        return s.encode('latin1')
-
-    def sysstr(s):
-        if isinstance(s, builtins.str):
-            return s
-        return s.decode('latin-1')
-
-    def opentext(f):
-        return open(f, 'r')
+def bytestr(s):
+    # tiny version of pycompat.bytestr
+    return s.encode('latin1')
 
 
-else:
-    bytestr = str
-    sysstr = identity
+def sysstr(s):
+    if isinstance(s, builtins.str):
+        return s
+    return s.decode('latin-1')
 
-    opentext = open
+
+def opentext(f):
+    return open(f, 'r')
 
 
 def b2s(x):
@@ -80,7 +69,7 @@ def writeerr(data):
 ####################
 
 
-class embeddedmatcher(object):  # pytype: disable=ignored-metaclass
+class embeddedmatcher:  # pytype: disable=ignored-metaclass
     """Base class to detect embedded code fragments in *.t test script"""
 
     __metaclass__ = abc.ABCMeta
@@ -157,7 +146,7 @@ def embedded(basefile, lines, errors, matchers):
     :ends: line number (1-origin), at which embedded code ends (exclusive)
     :code: extracted embedded code, which is single-stringified
 
-    >>> class ambigmatcher(object):
+    >>> class ambigmatcher:
     ...     # mock matcher class to examine implementation of
     ...     # "ambiguous matching" corner case
     ...     def __init__(self, desc, matchfunc):

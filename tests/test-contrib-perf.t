@@ -96,6 +96,7 @@ perfstatus
    perf::branchmapupdate
                  benchmark branchmap update from for <base> revs to <target>
                  revs
+   perf::bundle  benchmark the creation of a bundle from a repository
    perf::bundleread
                  Benchmark reading of bundle files.
    perf::cca     (no help text available)
@@ -105,6 +106,9 @@ perfstatus
                  (no help text available)
    perf::ctxfiles
                  (no help text available)
+   perf::delta-find
+                 benchmark the process of finding a valid delta for a revlog
+                 revision
    perf::diffwd  Profile diff of working directory changes
    perf::dirfoldmap
                  benchmap a 'dirstate._map.dirfoldmap.get()' request
@@ -184,9 +188,17 @@ perfstatus
    perf::startup
                  (no help text available)
    perf::status  benchmark the performance of a single status call
+   perf::stream-consume
+                 benchmark the full application of a stream clone
+   perf::stream-generate
+                 benchmark the full generation of a stream clone
+   perf::stream-locked-section
+                 benchmark the initial, repo-locked, section of a stream-clone
    perf::tags    (no help text available)
    perf::templating
                  test the rendering time of a given template
+   perf::unbundle
+                 benchmark application of a bundle in a repository.
    perf::unidiff
                  benchmark a unified diff between revisions
    perf::volatilesets
@@ -292,21 +304,20 @@ Simple single entry
 
 Multiple entries
 
-  $ hg perfparents --config perf.stub=no --config perf.run-limits='500000-1, 0.000000001-5'
-  ! wall * comb * user * sys * (best of 5) (glob)
+  $ hg perfparents --config perf.stub=no --config perf.run-limits='500000-1, 0.000000001-50'
+  ! wall * comb * user * sys * (best of 50) (glob)
 
 error case are ignored
 
-  $ hg perfparents --config perf.stub=no --config perf.run-limits='500, 0.000000001-5'
+  $ hg perfparents --config perf.stub=no --config perf.run-limits='500, 0.000000001-50'
   malformatted run limit entry, missing "-": 500
-  ! wall * comb * user * sys * (best of 5) (glob)
-  $ hg perfparents --config perf.stub=no --config perf.run-limits='aaa-12, 0.000000001-5'
-  malformatted run limit entry, could not convert string to float: aaa: aaa-12 (no-py3 !)
-  malformatted run limit entry, could not convert string to float: 'aaa': aaa-12 (py3 !)
-  ! wall * comb * user * sys * (best of 5) (glob)
-  $ hg perfparents --config perf.stub=no --config perf.run-limits='12-aaaaaa, 0.000000001-5'
-  malformatted run limit entry, invalid literal for int() with base 10: 'aaaaaa': 12-aaaaaa
-  ! wall * comb * user * sys * (best of 5) (glob)
+  ! wall * comb * user * sys * (best of 50) (glob)
+  $ hg perfparents --config perf.stub=no --config perf.run-limits='aaa-120, 0.000000001-50'
+  malformatted run limit entry, could not convert string to float: 'aaa': aaa-120
+  ! wall * comb * user * sys * (best of 50) (glob)
+  $ hg perfparents --config perf.stub=no --config perf.run-limits='120-aaaaaa, 0.000000001-50'
+  malformatted run limit entry, invalid literal for int() with base 10: 'aaaaaa': 120-aaaaaa
+  ! wall * comb * user * sys * (best of 50) (glob)
 
 test actual output
 ------------------
@@ -386,13 +397,18 @@ Test pre-run feature
   searching for changes
   searching for changes
   searching for changes
+  $ hg perf::bundle 'last(all(), 5)'
+  $ hg bundle --exact --rev 'last(all(), 5)' last-5.hg
+  4 changesets found
+  $ hg perf::unbundle last-5.hg
+
 
 test  profile-benchmark option
 ------------------------------
 
 Function to check that statprof ran
   $ statprofran () {
-  >   egrep 'Sample count:|No samples recorded' > /dev/null
+  >   grep -E 'Sample count:|No samples recorded' > /dev/null
   > }
   $ hg perfdiscovery . --config perf.stub=no --config perf.run-limits='0.000000001-1' --config perf.profile-benchmark=yes 2>&1 | statprofran
 

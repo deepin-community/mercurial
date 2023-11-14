@@ -5,7 +5,6 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
 import itertools
 import os
@@ -46,13 +45,12 @@ if pycompat.TYPE_CHECKING:
         Any,
         Callable,
         Dict,
-        List,
         Optional,
         Sequence,
         Tuple,
     )
 
-    for t in (Any, Callable, Dict, List, Optional, Tuple):
+    for t in (Any, Callable, Dict, Optional, Tuple):
         assert t
 
 
@@ -63,9 +61,9 @@ def getlimit(opts):
         try:
             limit = int(limit)
         except ValueError:
-            raise error.Abort(_(b'limit must be a positive integer'))
+            raise error.InputError(_(b'limit must be a positive integer'))
         if limit <= 0:
-            raise error.Abort(_(b'limit must be positive'))
+            raise error.InputError(_(b'limit must be positive'))
     else:
         limit = None
     return limit
@@ -229,7 +227,7 @@ def diffordiffstat(
             )
 
 
-class changesetdiffer(object):
+class changesetdiffer:
     """Generate diff of changeset with pre-configured filtering functions"""
 
     def _makefilematcher(self, ctx):
@@ -263,7 +261,7 @@ def changesetlabels(ctx):
     return b' '.join(labels)
 
 
-class changesetprinter(object):
+class changesetprinter:
     '''show changeset information when templating not requested.'''
 
     def __init__(self, ui, repo, differ=None, diffopts=None, buffered=False):
@@ -329,7 +327,7 @@ class changesetprinter(object):
         if branch != b'default':
             self.ui.write(columns[b'branch'] % branch, label=b'log.branch')
 
-        for nsname, ns in pycompat.iteritems(self.repo.names):
+        for nsname, ns in self.repo.names.items():
             # branches has special logic already handled above, so here we just
             # skip it
             if nsname == b'branches':
@@ -378,10 +376,9 @@ class changesetprinter(object):
         self._exthook(ctx)
 
         if self.ui.debugflag:
-            files = ctx.p1().status(ctx)
             for key, value in zip(
                 [b'files', b'files+', b'files-'],
-                [files.modified, files.added, files.removed],
+                [ctx.filesmodified(), ctx.filesadded(), ctx.filesremoved()],
             ):
                 if value:
                     self.ui.write(
@@ -418,7 +415,7 @@ class changesetprinter(object):
                 self.ui.write(b"\n\n")
             else:
                 self.ui.write(
-                    columns[b'summary'] % description.splitlines()[0],
+                    columns[b'summary'] % stringutil.firstline(description),
                     label=b'log.summary',
                 )
         self.ui.write(b"\n")
@@ -513,11 +510,10 @@ class changesetformatter(changesetprinter):
             or b'added' in datahint
             or b'removed' in datahint
         ):
-            files = ctx.p1().status(ctx)
             fm.data(
-                modified=fm.formatlist(files.modified, name=b'file'),
-                added=fm.formatlist(files.added, name=b'file'),
-                removed=fm.formatlist(files.removed, name=b'file'),
+                modified=fm.formatlist(ctx.filesmodified(), name=b'file'),
+                added=fm.formatlist(ctx.filesadded(), name=b'file'),
+                removed=fm.formatlist(ctx.filesremoved(), name=b'file'),
             )
 
         verbose = not self.ui.debugflag and self.ui.verbose
@@ -708,49 +704,49 @@ def changesetdisplayer(ui, repo, opts, differ=None, buffered=False):
 
 
 @attr.s
-class walkopts(object):
+class walkopts:
     """Options to configure a set of revisions and file matcher factory
     to scan revision/file history
     """
 
     # raw command-line parameters, which a matcher will be built from
-    pats = attr.ib()  # type: List[bytes]
-    opts = attr.ib()  # type: Dict[bytes, Any]
+    pats = attr.ib()
+    opts = attr.ib()
 
     # a list of revset expressions to be traversed; if follow, it specifies
     # the start revisions
-    revspec = attr.ib()  # type: List[bytes]
+    revspec = attr.ib()
 
     # miscellaneous queries to filter revisions (see "hg help log" for details)
-    bookmarks = attr.ib(default=attr.Factory(list))  # type: List[bytes]
-    branches = attr.ib(default=attr.Factory(list))  # type: List[bytes]
-    date = attr.ib(default=None)  # type: Optional[bytes]
-    keywords = attr.ib(default=attr.Factory(list))  # type: List[bytes]
-    no_merges = attr.ib(default=False)  # type: bool
-    only_merges = attr.ib(default=False)  # type: bool
-    prune_ancestors = attr.ib(default=attr.Factory(list))  # type: List[bytes]
-    users = attr.ib(default=attr.Factory(list))  # type: List[bytes]
+    bookmarks = attr.ib(default=attr.Factory(list))
+    branches = attr.ib(default=attr.Factory(list))
+    date = attr.ib(default=None)
+    keywords = attr.ib(default=attr.Factory(list))
+    no_merges = attr.ib(default=False)
+    only_merges = attr.ib(default=False)
+    prune_ancestors = attr.ib(default=attr.Factory(list))
+    users = attr.ib(default=attr.Factory(list))
 
     # miscellaneous matcher arguments
-    include_pats = attr.ib(default=attr.Factory(list))  # type: List[bytes]
-    exclude_pats = attr.ib(default=attr.Factory(list))  # type: List[bytes]
+    include_pats = attr.ib(default=attr.Factory(list))
+    exclude_pats = attr.ib(default=attr.Factory(list))
 
     # 0: no follow, 1: follow first, 2: follow both parents
-    follow = attr.ib(default=0)  # type: int
+    follow = attr.ib(default=0)
 
     # do not attempt filelog-based traversal, which may be fast but cannot
     # include revisions where files were removed
-    force_changelog_traversal = attr.ib(default=False)  # type: bool
+    force_changelog_traversal = attr.ib(default=False)
 
     # filter revisions by file patterns, which should be disabled only if
     # you want to include revisions where files were unmodified
-    filter_revisions_by_pats = attr.ib(default=True)  # type: bool
+    filter_revisions_by_pats = attr.ib(default=True)
 
     # sort revisions prior to traversal: 'desc', 'topo', or None
-    sort_revisions = attr.ib(default=None)  # type: Optional[bytes]
+    sort_revisions = attr.ib(default=None)
 
     # limit number of changes displayed; None means unlimited
-    limit = attr.ib(default=None)  # type: Optional[int]
+    limit = attr.ib(default=None)
 
 
 def parseopts(ui, pats, opts):
@@ -821,18 +817,27 @@ def _makematcher(repo, revs, wopts):
             # There may be the case that a path doesn't exist in some (but
             # not all) of the specified start revisions, but let's consider
             # the path is valid. Missing files will be warned by the matcher.
-            startctxs = [repo[r] for r in revs]
-            for f in match.files():
-                found = False
-                for c in startctxs:
-                    if f in c:
-                        found = True
-                    elif c.hasdir(f):
+            all_files = list(match.files())
+            missing_files = set(all_files)
+            files = all_files
+            for r in revs:
+                if not files:
+                    # We don't have any file to check anymore.
+                    break
+                ctx = repo[r]
+                for f in files:
+                    if f in ctx:
+                        missing_files.discard(f)
+                    elif ctx.hasdir(f):
                         # If a directory exists in any of the start revisions,
                         # take the slow path.
-                        found = slowpath = True
-                if not found:
-                    raise error.Abort(
+                        missing_files.discard(f)
+                        slowpath = True
+                        # we found on slow path, no need to search for more.
+                        files = missing_files
+            for f in all_files:
+                if f in missing_files:
+                    raise error.StateError(
                         _(
                             b'cannot follow file not in any of the specified '
                             b'revisions: "%s"'
@@ -848,7 +853,7 @@ def _makematcher(repo, revs, wopts):
                         slowpath = True
                         continue
                     else:
-                        raise error.Abort(
+                        raise error.StateError(
                             _(
                                 b'cannot follow file not in parent '
                                 b'revision: "%s"'
@@ -859,7 +864,7 @@ def _makematcher(repo, revs, wopts):
                 if not filelog:
                     # A file exists in wdir but not in history, which means
                     # the file isn't committed yet.
-                    raise error.Abort(
+                    raise error.StateError(
                         _(b'cannot follow nonexistent file: "%s"') % f
                     )
         else:
@@ -913,6 +918,42 @@ def _makenofollowfilematcher(repo, pats, opts):
     return None
 
 
+def revsingle(repo, revspec, default=b'.', localalias=None):
+    """Resolves user-provided revset(s) into a single revision.
+
+    This just wraps the lower-level scmutil.revsingle() in order to raise an
+    exception indicating user error.
+    """
+    try:
+        return scmutil.revsingle(repo, revspec, default, localalias)
+    except error.RepoLookupError as e:
+        raise error.InputError(e.args[0], hint=e.hint)
+
+
+def revpair(repo, revs):
+    """Resolves user-provided revset(s) into two revisions.
+
+    This just wraps the lower-level scmutil.revpair() in order to raise an
+    exception indicating user error.
+    """
+    try:
+        return scmutil.revpair(repo, revs)
+    except error.RepoLookupError as e:
+        raise error.InputError(e.args[0], hint=e.hint)
+
+
+def revrange(repo, specs, localalias=None):
+    """Resolves user-provided revset(s).
+
+    This just wraps the lower-level scmutil.revrange() in order to raise an
+    exception indicating user error.
+    """
+    try:
+        return scmutil.revrange(repo, specs, localalias)
+    except error.RepoLookupError as e:
+        raise error.InputError(e.args[0], hint=e.hint)
+
+
 _opt2logrevset = {
     b'no_merges': (b'not merge()', None),
     b'only_merges': (b'merge()', None),
@@ -957,7 +998,7 @@ def _makerevset(repo, wopts, slowpath):
         opts[b'_patslog'] = list(wopts.pats)
 
     expr = []
-    for op, val in sorted(pycompat.iteritems(opts)):
+    for op, val in sorted(opts.items()):
         if not val:
             continue
         revop, listop = _opt2logrevset[op]
@@ -988,7 +1029,7 @@ def _makerevset(repo, wopts, slowpath):
 def _initialrevs(repo, wopts):
     """Return the initial set of revisions to be filtered or followed"""
     if wopts.revspec:
-        revs = scmutil.revrange(repo, wopts.revspec)
+        revs = revrange(repo, wopts.revspec)
     elif wopts.follow and repo.dirstate.p1() == repo.nullid:
         revs = smartset.baseset()
     elif wopts.follow:
@@ -1073,11 +1114,13 @@ def _parselinerangeopt(repo, opts):
         try:
             pat, linerange = pat.rsplit(b',', 1)
         except ValueError:
-            raise error.Abort(_(b'malformatted line-range pattern %s') % pat)
+            raise error.InputError(
+                _(b'malformatted line-range pattern %s') % pat
+            )
         try:
             fromline, toline = map(int, linerange.split(b':'))
         except ValueError:
-            raise error.Abort(_(b"invalid line range for %s") % pat)
+            raise error.InputError(_(b"invalid line range for %s") % pat)
         msg = _(b"line range pattern '%s' must match exactly one file") % pat
         fname = scmutil.parsefollowlinespattern(repo, None, pat, msg)
         linerangebyfname.append(
@@ -1101,7 +1144,7 @@ def getlinerangerevs(repo, userrevs, opts):
     linerangesbyrev = {}
     for fname, (fromline, toline) in _parselinerangeopt(repo, opts):
         if fname not in wctx:
-            raise error.Abort(
+            raise error.StateError(
                 _(b'cannot follow file not in parent revision: "%s"') % fname
             )
         fctx = wctx.filectx(fname)
@@ -1236,7 +1279,7 @@ def displayrevs(ui, repo, revs, displayer, getcopies):
 def checkunsupportedgraphflags(pats, opts):
     for op in [b"newest_first"]:
         if op in opts and opts[op]:
-            raise error.Abort(
+            raise error.InputError(
                 _(b"-G/--graph option is incompatible with --%s")
                 % op.replace(b"_", b"-")
             )

@@ -19,9 +19,12 @@ syntax: glob
 *.zip
 \#*\#
 .\#*
+result/
 tests/artifacts/cache/big-file-churn.hg
 tests/.coverage*
 tests/.testtimes*
+# the file is written in the CWD when run-tests is run.
+.testtimes
 tests/.hypothesis
 tests/hypothesis-generated
 tests/annotated
@@ -33,6 +36,7 @@ build
 contrib/chg/chg
 contrib/hgsh/hgsh
 contrib/vagrant/.vagrant
+contrib/merge-lists/target/
 dist
 packages
 doc/common.txt

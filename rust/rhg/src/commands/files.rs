@@ -1,12 +1,15 @@
 use crate::error::CommandError;
-use crate::ui::Ui;
+use crate::ui::{
+    print_narrow_sparse_warnings, relative_paths, RelativePaths, Ui,
+};
+use crate::utils::path_utils::RelativizePaths;
 use clap::Arg;
+use hg::narrow;
 use hg::operations::list_rev_tracked_files;
-use hg::operations::Dirstate;
 use hg::repo::Repo;
-use hg::utils::current_dir;
-use hg::utils::files::{get_bytes_from_path, relativize_path};
-use hg::utils::hg_path::{HgPath, HgPathBuf};
+use hg::utils::filter_map_results;
+use hg::utils::hg_path::HgPath;
+use rayon::prelude::*;
 
 pub const HELP_TEXT: &str = "
 List tracked files.
@@ -14,72 +17,94 @@ List tracked files.
 Returns 0 on success.
 ";
 
-pub fn args() -> clap::App<'static, 'static> {
-    clap::SubCommand::with_name("files")
+pub fn args() -> clap::Command {
+    clap::command!("files")
         .arg(
-            Arg::with_name("rev")
+            Arg::new("rev")
                 .help("search the repository as it is in REV")
-                .short("-r")
-                .long("--revision")
-                .value_name("REV")
-                .takes_value(true),
+                .short('r')
+                .long("revision")
+                .value_name("REV"),
         )
         .about(HELP_TEXT)
 }
 
 pub fn run(invocation: &crate::CliInvocation) -> Result<(), CommandError> {
-    let relative = invocation.config.get(b"ui", b"relative-paths");
-    if relative.is_some() {
+    let relative_paths = match relative_paths(invocation.config)? {
+        RelativePaths::Legacy => true,
+        RelativePaths::Bool(v) => v,
+    };
+
+    let rev = invocation.subcommand_args.get_one::<String>("rev");
+
+    let repo = invocation.repo?;
+
+    // It seems better if this check is removed: this would correspond to
+    // automatically enabling the extension if the repo requires it.
+    // However we need this check to be in sync with vanilla hg so hg tests
+    // pass.
+    if repo.has_sparse()
+        && invocation.config.get(b"extensions", b"sparse").is_none()
+    {
         return Err(CommandError::unsupported(
-            "non-default ui.relative-paths",
+            "repo is using sparse, but sparse extension is not enabled",
         ));
     }
 
-    let rev = invocation.subcommand_args.value_of("rev");
+    let (narrow_matcher, narrow_warnings) = narrow::matcher(repo)?;
+    print_narrow_sparse_warnings(&narrow_warnings, &[], invocation.ui, repo)?;
 
-    let repo = invocation.repo?;
     if let Some(rev) = rev {
-        let files = list_rev_tracked_files(repo, rev).map_err(|e| (e, rev))?;
-        display_files(invocation.ui, repo, files.iter())
+        let files = list_rev_tracked_files(repo, rev, narrow_matcher)
+            .map_err(|e| (e, rev.as_ref()))?;
+        display_files(invocation.ui, repo, relative_paths, files.iter())
     } else {
-        let distate = Dirstate::new(repo)?;
-        let files = distate.tracked_files()?;
-        display_files(invocation.ui, repo, files)
+        // The dirstate always reflects the sparse narrowspec.
+        let dirstate = repo.dirstate_map()?;
+        let files_res: Result<Vec<_>, _> =
+            filter_map_results(dirstate.iter(), |(path, entry)| {
+                Ok(if entry.tracked() && narrow_matcher.matches(path) {
+                    Some(path)
+                } else {
+                    None
+                })
+            })
+            .collect();
+
+        let mut files = files_res?;
+        files.par_sort_unstable();
+
+        display_files(
+            invocation.ui,
+            repo,
+            relative_paths,
+            files.into_iter().map::<Result<_, CommandError>, _>(Ok),
+        )
     }
 }
 
-fn display_files<'a>(
+fn display_files<'a, E>(
     ui: &Ui,
     repo: &Repo,
-    files: impl IntoIterator<Item = &'a HgPath>,
-) -> Result<(), CommandError> {
+    relative_paths: bool,
+    files: impl IntoIterator<Item = Result<&'a HgPath, E>>,
+) -> Result<(), CommandError>
+where
+    CommandError: From<E>,
+{
     let mut stdout = ui.stdout_buffer();
-
-    let cwd = current_dir()?;
-    let working_directory = repo.working_directory_path();
-    let working_directory = cwd.join(working_directory); // Make it absolute
-
     let mut any = false;
-    if let Ok(cwd_relative_to_repo) = cwd.strip_prefix(&working_directory) {
-        // The current directory is inside the repo, so we can work with
-        // relative paths
-        let cwd = HgPathBuf::from(get_bytes_from_path(cwd_relative_to_repo));
-        for file in files {
-            any = true;
-            stdout.write_all(relativize_path(&file, &cwd).as_ref())?;
-            stdout.write_all(b"\n")?;
+
+    let relativize = RelativizePaths::new(repo)?;
+    for result in files {
+        let path = result?;
+        if relative_paths {
+            stdout.write_all(&relativize.relativize(path))?;
+        } else {
+            stdout.write_all(path.as_bytes())?;
         }
-    } else {
-        let working_directory =
-            HgPathBuf::from(get_bytes_from_path(working_directory));
-        let cwd = HgPathBuf::from(get_bytes_from_path(cwd));
-        for file in files {
-            any = true;
-            // Absolute path in the filesystem
-            let file = working_directory.join(file);
-            stdout.write_all(relativize_path(&file, &cwd).as_ref())?;
-            stdout.write_all(b"\n")?;
-        }
+        stdout.write_all(b"\n")?;
+        any = true;
     }
 
     stdout.flush()?;

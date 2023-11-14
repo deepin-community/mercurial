@@ -61,6 +61,37 @@
   f  mammals/Procyonidae/raccoon     mammals/Procyonidae/raccoon
   f  mammals/skunk                   mammals/skunk
 
+Test 'filepath:' pattern
+
+  $ hg debugwalk -v -I 'filepath:mammals/Procyonidae/cacomistle'
+  * matcher:
+  <includematcher includes=''>
+  f  mammals/Procyonidae/cacomistle  mammals/Procyonidae/cacomistle
+
+  $ hg debugwalk -v -I 'filepath:mammals/Procyonidae'
+  * matcher:
+  <includematcher includes=''>
+
+  $ hg debugwalk -v -X 'filepath:beans/borlotti'
+  * matcher:
+  <differencematcher
+    m1=<alwaysmatcher>,
+    m2=<includematcher includes=''>>
+  f  beans/black                     beans/black
+  f  beans/kidney                    beans/kidney
+  f  beans/navy                      beans/navy
+  f  beans/pinto                     beans/pinto
+  f  beans/turtle                    beans/turtle
+  f  fennel                          fennel
+  f  fenugreek                       fenugreek
+  f  fiddlehead                      fiddlehead
+  f  mammals/Procyonidae/cacomistle  mammals/Procyonidae/cacomistle
+  f  mammals/Procyonidae/coatimundi  mammals/Procyonidae/coatimundi
+  f  mammals/Procyonidae/raccoon     mammals/Procyonidae/raccoon
+  f  mammals/skunk                   mammals/skunk
+
+Test relative paths
+
   $ cd mammals
   $ hg debugwalk -v
   * matcher:
@@ -299,10 +330,10 @@
   f  mammals/skunk                   skunk
   $ hg debugwalk -v .hg
   abort: path 'mammals/.hg' is inside nested repo 'mammals'
-  [255]
+  [10]
   $ hg debugwalk -v ../.hg
   abort: path contains illegal component: .hg
-  [255]
+  [10]
   $ cd ..
 
   $ hg debugwalk -v -Ibeans
@@ -410,16 +441,16 @@
   [255]
   $ hg debugwalk -v .hg
   abort: path contains illegal component: .hg
-  [255]
+  [10]
   $ hg debugwalk -v beans/../.hg
   abort: path contains illegal component: .hg
-  [255]
+  [10]
   $ hg debugwalk -v beans/../.hg/data
   abort: path contains illegal component: .hg/data
-  [255]
+  [10]
   $ hg debugwalk -v beans/.hg
   abort: path 'beans/.hg' is inside nested repo 'beans'
-  [255]
+  [10]
 
 Test explicit paths and excludes:
 
@@ -536,7 +567,7 @@ Test patterns:
   f  mammals/Procyonidae/raccoon     mammals/Procyonidae/raccoon
   $ hg debugwalk -v beans 'glob:beans/*'
   * matcher:
-  <patternmatcher patterns='beans(?:/|$)|beans/[^/]*$'>
+  <patternmatcher patterns='beans/[^/]*$|beans(?:/|$)'>
   f  beans/black     beans/black
   f  beans/borlotti  beans/borlotti
   f  beans/kidney    beans/kidney
@@ -640,13 +671,12 @@ Test split patterns on overflow
   $ cd t
   $ echo fennel > overflow.list
   $ cat >> printnum.py <<EOF
-  > from __future__ import print_function
   > for i in range(20000 // 100):
   >   print('x' * 100)
   > EOF
   $ "$PYTHON" printnum.py >> overflow.list
   $ echo fenugreek >> overflow.list
-  $ hg debugwalk 'listfile:overflow.list' 2>&1 | egrep -v '^xxx'
+  $ hg debugwalk 'listfile:overflow.list' 2>&1 | grep -E -v '^xxx'
   f  fennel     fennel     exact
   f  fenugreek  fenugreek  exact
   $ cd ..

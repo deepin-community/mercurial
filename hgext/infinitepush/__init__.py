@@ -87,11 +87,9 @@ delete this code at the end of 2020.
     bookmarks = True
 """
 
-from __future__ import absolute_import
 
 import collections
 import contextlib
-import errno
 import functools
 import logging
 import os
@@ -153,6 +151,18 @@ testedwith = b'ships-with-hg-core'
 
 configtable = {}
 configitem = registrar.configitem(configtable)
+
+configitem(
+    b'infinitepush',
+    b'deprecation-message',
+    default=True,
+)
+
+configitem(
+    b'infinitepush',
+    b'deprecation-abort',
+    default=True,
+)
 
 configitem(
     b'infinitepush',
@@ -287,7 +297,7 @@ def _tryhoist(ui, remotebookmark):
     return remotebookmark
 
 
-class bundlestore(object):
+class bundlestore:
     def __init__(self, repo):
         self._repo = repo
         storetype = self._repo.ui.config(b'infinitepush', b'storetype')
@@ -319,7 +329,20 @@ def _isserver(ui):
     return ui.configbool(b'infinitepush', b'server')
 
 
+WARNING_MSG = b"""IMPORTANT: if you use this extension, please contact
+mercurial-devel@mercurial-scm.org IMMEDIATELY. This extension is believed to be
+unused and barring learning of users of this functionality, we drop this
+extension in Mercurial 6.6.
+"""
+
+
 def reposetup(ui, repo):
+    if ui.configbool(b'infinitepush', b'deprecation-message'):
+        ui.write_err(WARNING_MSG)
+    if ui.configbool(b'infinitepush', b'deprecation-abort'):
+        msg = b"USING EXTENSION INFINITE PUSH DESPITE PENDING DROP"
+        hint = b"contact mercurial-devel@mercurial-scm.org"
+        raise error.Abort(msg, hint=hint)
     if _isserver(ui) and repo.local():
         repo.bundlestore = bundlestore(repo)
 
@@ -330,6 +353,11 @@ def extsetup(ui):
         serverextsetup(ui)
     else:
         clientextsetup(ui)
+
+
+def uipopulate(ui):
+    if not ui.hasconfig(b"experimental", b"changegroup3"):
+        ui.setconfig(b"experimental", b"changegroup3", False, b"infinitepush")
 
 
 def commonsetup(ui):
@@ -406,7 +434,7 @@ def _checkheads(orig, pushop):
 
 def wireprotolistkeyspatterns(repo, proto, namespace, patterns):
     patterns = wireprototypes.decodelist(patterns)
-    d = pycompat.iteritems(repo.listkeys(encoding.tolocal(namespace), patterns))
+    d = repo.listkeys(encoding.tolocal(namespace), patterns).items()
     return pushkey.encodekeys(d)
 
 
@@ -420,7 +448,7 @@ def localrepolistkeys(orig, self, namespace, patterns=None):
             if pattern.endswith(b'*'):
                 pattern = b're:^' + pattern[:-1] + b'.*'
             kind, pat, matcher = stringutil.stringmatcher(pattern)
-            for bookmark, node in pycompat.iteritems(bookmarks):
+            for bookmark, node in bookmarks.items():
                 if matcher(bookmark):
                     results[bookmark] = node
         return results
@@ -431,18 +459,19 @@ def localrepolistkeys(orig, self, namespace, patterns=None):
 @wireprotov1peer.batchable
 def listkeyspatterns(self, namespace, patterns):
     if not self.capable(b'pushkey'):
-        yield {}, None
-    f = wireprotov1peer.future()
+        return {}, None
     self.ui.debug(b'preparing listkeys for "%s"\n' % namespace)
-    yield {
+
+    def decode(d):
+        self.ui.debug(
+            b'received listkey for "%s": %i bytes\n' % (namespace, len(d))
+        )
+        return pushkey.decodekeys(d)
+
+    return {
         b'namespace': encoding.fromlocal(namespace),
         b'patterns': wireprototypes.encodelist(patterns),
-    }, f
-    d = f.value
-    self.ui.debug(
-        b'received listkey for "%s": %i bytes\n' % (namespace, len(d))
-    )
-    yield pushkey.decodekeys(d)
+    }, decode
 
 
 def _readbundlerevs(bundlerepo):
@@ -542,7 +571,7 @@ def _generateoutputparts(head, bundlerepo, bundleroots, bundlefile):
                     if part.type == b'changegroup':
                         haschangegroup = True
                     newpart = bundle2.bundlepart(part.type, data=part.read())
-                    for key, value in pycompat.iteritems(part.params):
+                    for key, value in part.params.items():
                         newpart.addparam(key, value)
                     parts.append(newpart)
 
@@ -684,12 +713,10 @@ def _lookupwrap(orig):
 def _pull(orig, ui, repo, source=b"default", **opts):
     opts = pycompat.byteskwargs(opts)
     # Copy paste from `pull` command
-    source, branches = urlutil.get_unique_pull_path(
+    path = urlutil.get_unique_pull_path_obj(
         b"infinite-push's pull",
-        repo,
         ui,
         source,
-        default_branches=opts.get(b'branch'),
     )
 
     scratchbookmarks = {}
@@ -710,7 +737,7 @@ def _pull(orig, ui, repo, source=b"default", **opts):
                 bookmarks.append(bookmark)
 
         if scratchbookmarks:
-            other = hg.peer(repo, opts, source)
+            other = hg.peer(repo, opts, path)
             try:
                 fetchedbookmarks = other.listkeyspatterns(
                     b'bookmarks', patterns=scratchbookmarks
@@ -735,14 +762,14 @@ def _pull(orig, ui, repo, source=b"default", **opts):
     try:
         # Remote scratch bookmarks will be deleted because remotenames doesn't
         # know about them. Let's save it before pull and restore after
-        remotescratchbookmarks = _readscratchremotebookmarks(ui, repo, source)
-        result = orig(ui, repo, source, **pycompat.strkwargs(opts))
+        remotescratchbookmarks = _readscratchremotebookmarks(ui, repo, path.loc)
+        result = orig(ui, repo, path.loc, **pycompat.strkwargs(opts))
         # TODO(stash): race condition is possible
         # if scratch bookmarks was updated right after orig.
         # But that's unlikely and shouldn't be harmful.
         if common.isremotebooksenabled(ui):
             remotescratchbookmarks.update(scratchbookmarks)
-            _saveremotebookmarks(repo, remotescratchbookmarks, source)
+            _saveremotebookmarks(repo, remotescratchbookmarks, path.loc)
         else:
             _savelocalbookmarks(repo, scratchbookmarks)
         return result
@@ -794,7 +821,7 @@ def _saveremotebookmarks(repo, newbookmarks, remote):
             # saveremotenames expects 20 byte binary nodes for branches
             branches[rname].append(bin(hexnode))
 
-    for bookmark, hexnode in pycompat.iteritems(newbookmarks):
+    for bookmark, hexnode in newbookmarks.items():
         bookmarks[bookmark] = hexnode
     remotenamesext.saveremotenames(repo, remotepath, branches, bookmarks)
 
@@ -804,7 +831,7 @@ def _savelocalbookmarks(repo, bookmarks):
         return
     with repo.wlock(), repo.lock(), repo.transaction(b'bookmark') as tr:
         changes = []
-        for scratchbook, node in pycompat.iteritems(bookmarks):
+        for scratchbook, node in bookmarks.items():
             changectx = repo[node]
             changes.append((scratchbook, changectx.node()))
         repo._bookmarks.applychanges(repo, tr, changes)
@@ -850,14 +877,14 @@ def _push(orig, ui, repo, *dests, **opts):
             raise error.Abort(msg)
 
         path = paths[0]
-        destpath = path.pushloc or path.loc
+        destpath = path.loc
         # Remote scratch bookmarks will be deleted because remotenames doesn't
         # know about them. Let's save it before push and restore after
         remotescratchbookmarks = _readscratchremotebookmarks(ui, repo, destpath)
         result = orig(ui, repo, *dests, **pycompat.strkwargs(opts))
         if common.isremotebooksenabled(ui):
             if bookmark and scratchpush:
-                other = hg.peer(repo, opts, destpath)
+                other = hg.peer(repo, opts, path)
                 try:
                     fetchedbookmarks = other.listkeyspatterns(
                         b'bookmarks', patterns=[bookmark]
@@ -1045,7 +1072,7 @@ def storetobundlestore(orig, repo, op, unbundler):
                 bundle2._processpart(op, part)
             else:
                 bundlepart = bundle2.bundlepart(part.type, data=part.read())
-                for key, value in pycompat.iteritems(part.params):
+                for key, value in part.params.items():
                     bundlepart.addparam(key, value)
 
                 # Certain parts require a response
@@ -1137,7 +1164,7 @@ def processparts(orig, repo, op, unbundler):
                     # differs from previous behavior, we need to put it behind a
                     # config flag for incremental rollout.
                     bundlepart = bundle2.bundlepart(part.type, data=part.read())
-                    for key, value in pycompat.iteritems(part.params):
+                    for key, value in part.params.items():
                         bundlepart.addparam(key, value)
 
                     # Certain parts require a response
@@ -1307,9 +1334,8 @@ def bundle2scratchbranch(op, part):
     finally:
         try:
             os.unlink(bundlefile)
-        except OSError as e:
-            if e.errno != errno.ENOENT:
-                raise
+        except FileNotFoundError:
+            pass
 
     return 1
 
@@ -1323,9 +1349,7 @@ def _maybeaddpushbackpart(op, bookmark, newnode, oldnode, params):
                 b'new': newnode,
                 b'old': oldnode,
             }
-            op.reply.newpart(
-                b'pushkey', mandatoryparams=pycompat.iteritems(params)
-            )
+            op.reply.newpart(b'pushkey', mandatoryparams=params.items())
 
 
 def bundle2pushkey(orig, op, part):

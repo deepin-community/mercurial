@@ -1,5 +1,11 @@
 #require chg
 
+Scale the timeout for the chg-server to the test timeout scaling.
+This is done to reduce the flakiness of this test on heavy load.
+
+  $ CHGTIMEOUT=`expr $HGTEST_TIMEOUT / 6`
+  $ export CHGTIMEOUT
+
   $ mkdir log
   $ cp $HGRCPATH $HGRCPATH.unconfigured
   $ cat <<'EOF' >> $HGRCPATH
@@ -64,7 +70,7 @@ by default, system() should be redirected to the client:
 
   $ touch foo
   $ CHGDEBUG= HGEDITOR=cat chg ci -Am channeled --edit 2>&1 \
-  > | egrep "HG:|run 'cat"
+  > | grep -E "HG:|run 'cat"
   chg: debug: * run 'cat "*"' at '$TESTTMP/editor' (glob)
   HG: Enter commit message.  Lines beginning with 'HG:' are removed.
   HG: Leave message empty to abort commit.
@@ -78,7 +84,7 @@ but no redirection should be made if output is captured:
   $ touch bar
   $ CHGDEBUG= HGEDITOR=cat chg ci -Am bufferred --edit \
   > --config extensions.pushbuffer="$TESTTMP/pushbuffer.py" 2>&1 \
-  > | egrep "HG:|run 'cat"
+  > | grep -E "HG:|run 'cat"
   [1]
 
 check that commit commands succeeded:
@@ -132,7 +138,6 @@ chg waits for pager if runcommand raises
   > EOF
 
   $ cat > $TESTTMP/fakepager.py <<EOF
-  > from __future__ import absolute_import
   > import sys
   > import time
   > for line in iter(sys.stdin.readline, ''):
@@ -232,14 +237,14 @@ isolate socket directory for stable result:
 
 warm up server:
 
-  $ CHGDEBUG= chg log 2>&1 | egrep 'instruction|start'
+  $ CHGDEBUG= chg log 2>&1 | grep -E 'instruction|start'
   chg: debug: * start cmdserver at $TESTTMP/extreload/chgsock/server.* (glob)
 
 new server should be started if extension modified:
 
   $ sleep 1
   $ touch dummyext.py
-  $ CHGDEBUG= chg log 2>&1 | egrep 'instruction|start'
+  $ CHGDEBUG= chg log 2>&1 | grep -E 'instruction|start'
   chg: debug: * instruction: unlink $TESTTMP/extreload/chgsock/server-* (glob)
   chg: debug: * instruction: reconnect (glob)
   chg: debug: * start cmdserver at $TESTTMP/extreload/chgsock/server.* (glob)
@@ -247,7 +252,7 @@ new server should be started if extension modified:
 old server will shut down, while new server should still be reachable:
 
   $ sleep 2
-  $ CHGDEBUG= chg log 2>&1 | (egrep 'instruction|start' || true)
+  $ CHGDEBUG= chg log 2>&1 | (grep -E 'instruction|start' || true)
 
 socket file should never be unlinked by old server:
 (simulates unowned socket by updating mtime, which makes sure server exits
@@ -263,7 +268,7 @@ at polling cycle)
 since no server is reachable from socket file, new server should be started:
 (this test makes sure that old server shut down automatically)
 
-  $ CHGDEBUG= chg log 2>&1 | egrep 'instruction|start'
+  $ CHGDEBUG= chg log 2>&1 | grep -E 'instruction|start'
   chg: debug: * start cmdserver at $TESTTMP/extreload/chgsock/server.* (glob)
 
 shut down servers and restore environment:
@@ -347,11 +352,10 @@ remove foo
 repository cache
 ----------------
 
-  $ rm log/server.log*
   $ cp $HGRCPATH.unconfigured $HGRCPATH
   $ cat <<'EOF' >> $HGRCPATH
   > [cmdserver]
-  > log = $TESTTMP/log/server.log
+  > log = $TESTTMP/log/server-cached.log
   > max-repo-cache = 1
   > track-log = command, repocache
   > EOF
@@ -415,9 +419,7 @@ shut down servers and restore environment:
 
 check server log:
 
-  $ cat log/server.log | filterlog
-  YYYY/MM/DD HH:MM:SS (PID)> worker process exited (pid=...)
-  YYYY/MM/DD HH:MM:SS (PID)> worker process exited (pid=...) (?)
+  $ cat log/server-cached.log | filterlog
   YYYY/MM/DD HH:MM:SS (PID)> init cached
   YYYY/MM/DD HH:MM:SS (PID)> id -R cached
   YYYY/MM/DD HH:MM:SS (PID)> loaded repo into cache: $TESTTMP/cached (in  ...s)
@@ -432,6 +434,20 @@ check server log:
   YYYY/MM/DD HH:MM:SS (PID)> loaded repo into cache: $TESTTMP/cached2 (in  ...s)
   YYYY/MM/DD HH:MM:SS (PID)> log -R cached
   YYYY/MM/DD HH:MM:SS (PID)> loaded repo into cache: $TESTTMP/cached (in  ...s)
+
+Test that -R is interpreted relative to --cwd.
+
+  $ hg init repo1
+  $ mkdir -p a/b
+  $ hg init a/b/repo2
+  $ printf "[alias]\ntest=repo1\n" >> repo1/.hg/hgrc
+  $ printf "[alias]\ntest=repo2\n" >> a/b/repo2/.hg/hgrc
+  $ cd a
+  $ chg --cwd .. -R repo1 show alias.test
+  repo1
+  $ chg --cwd . -R b/repo2 show alias.test
+  repo2
+  $ cd ..
 
 Test that chg works (sets to the user's actual LC_CTYPE) even when python
 "coerces" the locale (py3.7+)
@@ -479,7 +495,7 @@ share the same server
   > }
   $ newchg() {
   >   chg --kill-chg-daemon
-  >   filteredchg "$@" | egrep -v 'start cmdserver' || true
+  >   filteredchg "$@" | grep -E -v 'start cmdserver' || true
   > }
 (--profile isn't permanently on just because it was specified when chg was
 started)
@@ -537,3 +553,20 @@ FIXME: Run 4 should not be >3x Run 1's number of samples.
   $ filteredchg log -r . --no-profile
   $ filteredchg log -r .
   Sample count: * (glob)
+
+chg setting CHGHG itself
+------------------------
+
+If CHGHG is not set, chg will set it before spawning the command server.
+  $ hg --kill-chg-daemon
+  $ HG=$CHGHG CHGHG= CHGDEBUG= hg debugshell -c \
+  >   'ui.write(b"CHGHG=%s\n" % ui.environ.get(b"CHGHG"))' 2>&1 \
+  >   | grep -E 'CHGHG|start'
+  chg: debug: * start cmdserver at * (glob)
+  CHGHG=/*/install/bin/hg (glob)
+
+Running the same command a second time shouldn't spawn a new command server.
+  $ HG=$CHGHG CHGHG= CHGDEBUG= hg debugshell -c \
+  >   'ui.write(b"CHGHG=%s\n" % ui.environ.get(b"CHGHG"))' 2>&1 \
+  >   | grep -E 'CHGHG|start'
+  CHGHG=/*/install/bin/hg (glob)

@@ -9,19 +9,15 @@
 //! `hg-core` package.
 
 use std::cell::RefCell;
-use std::convert::TryInto;
 
 use cpython::{
     exc, ObjectProtocol, PyBytes, PyClone, PyDict, PyErr, PyObject, PyResult,
     Python, UnsafePyLeaked,
 };
 
-use crate::dirstate::extract_dirstate;
 use hg::{
-    errors::HgError,
     utils::hg_path::{HgPath, HgPathBuf},
-    DirsMultiset, DirsMultisetIter, DirstateError, DirstateMapError,
-    EntryState,
+    DirsMultiset, DirsMultisetIter,
 };
 
 py_class!(pub class Dirs |py| {
@@ -32,25 +28,11 @@ py_class!(pub class Dirs |py| {
     def __new__(
         _cls,
         map: PyObject,
-        skip: Option<PyObject> = None
     ) -> PyResult<Self> {
-        let mut skip_state: Option<EntryState> = None;
-        if let Some(skip) = skip {
-            skip_state = Some(
-                skip.extract::<PyBytes>(py)?.data(py)[0]
-                    .try_into()
-                    .map_err(|e: HgError| {
-                        PyErr::new::<exc::ValueError, _>(py, e.to_string())
-                    })?,
-            );
-        }
-        let inner = if let Ok(map) = map.cast_as::<PyDict>(py) {
-            let dirstate = extract_dirstate(py, &map)?;
-            let dirstate = dirstate.iter().map(|(k, v)| Ok((k, *v)));
-            DirsMultiset::from_dirstate(dirstate, skip_state)
-                .map_err(|e: DirstateError| {
-                    PyErr::new::<exc::ValueError, _>(py, e.to_string())
-                })?
+        let inner = if map.cast_as::<PyDict>(py).is_ok() {
+            let err = "pathutil.dirs() with a dict should only be used by the Python dirstatemap \
+                and should not be used when Rust is enabled";
+            return Err(PyErr::new::<exc::TypeError, _>(py, err.to_string()))
         } else {
             let map: Result<Vec<HgPathBuf>, PyErr> = map
                 .iter(py)?
@@ -72,19 +54,11 @@ py_class!(pub class Dirs |py| {
     def addpath(&self, path: PyObject) -> PyResult<PyObject> {
         self.inner(py).borrow_mut().add_path(
             HgPath::new(path.extract::<PyBytes>(py)?.data(py)),
-        ).and(Ok(py.None())).or_else(|e| {
-            match e {
-                DirstateMapError::EmptyPath => {
-                    Ok(py.None())
-                },
-                e => {
-                    Err(PyErr::new::<exc::ValueError, _>(
+        ).and(Ok(py.None())).map_err(|e| PyErr::new::<exc::ValueError, _>(
                         py,
                         e.to_string(),
-                    ))
-                }
-            }
-        })
+                    )
+        )
     }
 
     def delpath(&self, path: PyObject) -> PyResult<PyObject> {
@@ -92,19 +66,12 @@ py_class!(pub class Dirs |py| {
             HgPath::new(path.extract::<PyBytes>(py)?.data(py)),
         )
             .and(Ok(py.None()))
-            .or_else(|e| {
-                match e {
-                    DirstateMapError::EmptyPath => {
-                        Ok(py.None())
-                    },
-                    e => {
-                        Err(PyErr::new::<exc::ValueError, _>(
+            .map_err(|e|
+                        PyErr::new::<exc::ValueError, _>(
                             py,
                             e.to_string(),
-                        ))
-                    }
-                }
-            })
+                        )
+            )
     }
     def __iter__(&self) -> PyResult<DirsMultisetKeysIterator> {
         let leaked_ref = self.inner(py).leak_immutable();
@@ -116,7 +83,7 @@ py_class!(pub class Dirs |py| {
 
     def __contains__(&self, item: PyObject) -> PyResult<bool> {
         Ok(self.inner(py).borrow().contains(HgPath::new(
-            item.extract::<PyBytes>(py)?.data(py).as_ref(),
+            item.extract::<PyBytes>(py)?.data(py),
         )))
     }
 });

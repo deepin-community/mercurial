@@ -665,13 +665,24 @@ Default value for the \-\-terse flag, which condenses status output.
 .sp
 Determines what level of checking \%\fBhg update\fP\: will perform before moving
 to a destination revision. Valid values are \fBabort\fP, \fBnone\fP,
-\fBlinear\fP, and \fBnoconflict\fP. \fBabort\fP always fails if the working
-directory has uncommitted changes. \fBnone\fP performs no checking, and may
-result in a merge with uncommitted changes. \fBlinear\fP allows any update
-as long as it follows a straight line in the revision history, and may
-trigger a merge with uncommitted changes. \fBnoconflict\fP will allow any
-update which would not trigger a merge with uncommitted changes, if any
-are present.
+\fBlinear\fP, and \fBnoconflict\fP.
+.INDENT 7.0
+.IP \(bu 2
+.
+\fBabort\fP always fails if the working directory has uncommitted changes.
+.IP \(bu 2
+.
+\fBnone\fP performs no checking, and may result in a merge with uncommitted changes.
+.IP \(bu 2
+.
+\fBlinear\fP allows any update as long as it follows a straight line in the
+revision history, and may trigger a merge with uncommitted changes.
+.IP \(bu 2
+.
+\fBnoconflict\fP will allow any update which would not trigger a merge with
+uncommitted changes, if any are present.
+.UNINDENT
+.sp
 (default: \fBlinear\fP)
 .TP
 .B \fBupdate.requiredest\fP
@@ -1136,6 +1147,32 @@ churn =
 myfeature = ~/.hgext/myfeature.py
 .ft P
 .fi
+.sp
+If an extension fails to load, a warning will be issued, and Mercurial will
+proceed. To enforce that an extension must be loaded, one can set the \fIrequired\fP
+suboption in the config:
+.sp
+.nf
+.ft C
+[extensions]
+myfeature = ~/.hgext/myfeature.py
+myfeature:required = yes
+.ft P
+.fi
+.sp
+To debug extension loading issue, one can add \fI\-\-traceback\fP to their mercurial
+invocation.
+.sp
+A default setting can we set using the special \fI*\fP extension key:
+.sp
+.nf
+.ft C
+[extensions]
+*:required = yes
+myfeature = ~/.hgext/myfeature.py
+rebase=
+.ft P
+.fi
 .SS \fBformat\fP
 .sp
 Configuration that controls the repository format. Newer format options are more
@@ -1180,30 +1217,152 @@ Repositories with this on\-disk format require Mercurial version 1.1.
 .sp
 Enabled by default.
 .TP
+.B \fBuse\-dirstate\-v2\fP
+.sp
+Enable or disable the experimental "dirstate\-v2" feature. The dirstate
+functionality is shared by all commands interacting with the working copy.
+The new version is more robust, faster and stores more information.
+.sp
+The performance\-improving version of this feature is currently only
+implemented in Rust (see \%\fBhg help rust\fP\:), so people not using a version of
+Mercurial compiled with the Rust parts might actually suffer some slowdown.
+For this reason, such versions will by default refuse to access repositories
+with "dirstate\-v2" enabled.
+.sp
+This behavior can be adjusted via configuration: check
+\%\fBhg help config.storage.dirstate\-v2.slow\-path\fP\: for details.
+.sp
+Repositories with this on\-disk format require Mercurial 6.0 or above.
+.sp
+By default this format variant is disabled if the fast implementation is not
+available, and enabled by default if the fast implementation is available.
+.sp
+To accomodate installations of Mercurial without the fast implementation,
+you can downgrade your repository. To do so run the following command:
+.INDENT 7.0
+.TP
+.B $ hg debugupgraderepo 
+.
+\-\-run \-\-config format.use\-dirstate\-v2=False \-\-config storage.dirstate\-v2.slow\-path=allow
+.UNINDENT
+.sp
+For a more comprehensive guide, see \%\fBhg help internals.dirstate\-v2\fP\:.
+.TP
+.B \fBuse\-dirstate\-v2.automatic\-upgrade\-of\-mismatching\-repositories\fP
+.sp
+When enabled, an automatic upgrade will be triggered when a repository format
+does not match its \fIuse\-dirstate\-v2\fP config.
+.sp
+This is an advanced behavior that most users will not need. We recommend you
+don\(aqt use this unless you are a seasoned administrator of a Mercurial install
+base.
+.sp
+Automatic upgrade means that any process accessing the repository will
+upgrade the repository format to use \fIdirstate\-v2\fP. This only triggers if a
+change is needed. This also applies to operations that would have been
+read\-only (like hg status).
+.sp
+If the repository cannot be locked, the automatic\-upgrade operation will be
+skipped. The next operation will attempt it again.
+.sp
+This configuration will apply for moves in any direction, either adding the
+\fIdirstate\-v2\fP format if \fIformat.use\-dirstate\-v2=yes\fP or removing the
+\fIdirstate\-v2\fP requirement if \fIformat.use\-dirstate\-v2=no\fP. So we recommend
+setting both this value and \fIformat.use\-dirstate\-v2\fP at the same time.
+.TP
+.B \fBuse\-dirstate\-v2.automatic\-upgrade\-of\-mismatching\-repositories:quiet\fP
+.sp
+Hide message when performing such automatic upgrade.
+.TP
+.B \fBuse\-dirstate\-tracked\-hint\fP
+.sp
+Enable or disable the writing of "tracked key" file alongside the dirstate.
+(default to disabled)
+.sp
+That "tracked\-hint" can help external automations to detect changes to the
+set of tracked files. (i.e the result of \fIhg files\fP or \fIhg status \-macd\fP)
+.sp
+The tracked\-hint is written in a new \fI.hg/dirstate\-tracked\-hint\fP. That file
+contains two lines:
+\- the first line is the file version (currently: 1),
+\- the second line contains the "tracked\-hint".
+That file is written right after the dirstate is written.
+.sp
+The tracked\-hint changes whenever the set of file tracked in the dirstate
+changes. The general idea is:
+\- if the hint is identical, the set of tracked file SHOULD be identical,
+\- if the hint is different, the set of tracked file MIGHT be different.
+.sp
+The "hint is identical" case uses \fISHOULD\fP as the dirstate and the hint file
+are two distinct files and therefore that cannot be read or written to in an
+atomic way. If the key is identical, nothing garantees that the dirstate is
+not updated right after the hint file. This is considered a negligible
+limitation for the intended usecase. It is actually possible to prevent this
+race by taking the repository lock during read operations.
+.sp
+They are two "ways" to use this feature:
+.sp
+1) monitoring changes to the \fI.hg/dirstate\-tracked\-hint\fP, if the file
+changes, the tracked set might have changed.
+.INDENT 7.0
+.IP 2. 3
+.
+storing the value and comparing it to a later value.
+.UNINDENT
+.TP
+.B \fBuse\-dirstate\-tracked\-hint.automatic\-upgrade\-of\-mismatching\-repositories\fP
+.sp
+When enabled, an automatic upgrade will be triggered when a repository format
+does not match its \fIuse\-dirstate\-tracked\-hint\fP config.
+.sp
+This is an advanced behavior that most users will not need. We recommend you
+don\(aqt use this unless you are a seasoned administrator of a Mercurial install
+base.
+.sp
+Automatic upgrade means that any process accessing the repository will
+upgrade the repository format to use \fIdirstate\-tracked\-hint\fP. This only
+triggers if a change is needed. This also applies to operations that would
+have been read\-only (like hg status).
+.sp
+If the repository cannot be locked, the automatic\-upgrade operation will be
+skipped. The next operation will attempt it again.
+.sp
+This configuration will apply for moves in any direction, either adding the
+\fIdirstate\-tracked\-hint\fP format if \fIformat.use\-dirstate\-tracked\-hint=yes\fP or
+removing the \fIdirstate\-tracked\-hint\fP requirement if
+\fIformat.use\-dirstate\-tracked\-hint=no\fP. So we recommend setting both this
+value and \fIformat.use\-dirstate\-tracked\-hint\fP at the same time.
+.TP
+.B \fBuse\-dirstate\-tracked\-hint.automatic\-upgrade\-of\-mismatching\-repositories:quiet\fP
+.sp
+Hide message when performing such automatic upgrade.
+.TP
 .B \fBuse\-persistent\-nodemap\fP
 .sp
 Enable or disable the "persistent\-nodemap" feature which improves
-performance if the rust extensions are available.
+performance if the Rust extensions are available.
 .sp
-The "persistence\-nodemap" persist the "node \-> rev" on disk removing the
+The "persistent\-nodemap" persist the "node \-> rev" on disk removing the
 need to dynamically build that mapping for each Mercurial invocation. This
-significantly reduce the startup cost of various local and server\-side
-operation for larger repository.
+significantly reduces the startup cost of various local and server\-side
+operation for larger repositories.
 .sp
-The performance improving version of this feature is currently only
-implemented in Rust, so people not using a version of Mercurial compiled
-with the Rust part  might actually suffer some slowdown. For this reason,
-Such version will by default refuse to access such repositories. That
-behavior can be controlled by configuration. Check
+The performance\-improving version of this feature is currently only
+implemented in Rust (see \%\fBhg help rust\fP\:), so people not using a version of
+Mercurial compiled with the Rust parts might actually suffer some slowdown.
+For this reason, such versions will by default refuse to access repositories
+with "persistent\-nodemap".
+.sp
+This behavior can be adjusted via configuration: check
 \%\fBhg help config.storage.revlog.persistent\-nodemap.slow\-path\fP\: for details.
 .sp
-Repository with this on\-disk format require Mercurial version 5.4 or above.
+Repositories with this on\-disk format require Mercurial 5.4 or above.
 .sp
-By default this format variant is disabled if fast implementation is not
-available and enabled by default if the fast implementation is available.
+By default this format variant is disabled if the fast implementation is not
+available, and enabled by default if the fast implementation is available.
 .sp
-To accomodate install of Mercurial without the fast implementation you can
-downgrade your repository. To do so run the following command:
+To accomodate installations of Mercurial without the fast implementation,
+you can downgrade your repository. To do so run the following command:
 .INDENT 7.0
 .TP
 .B $ hg debugupgraderepo 
@@ -1240,12 +1399,38 @@ ignoring important hooks.
 .sp
 Beware that existing shares will not be upgraded/downgraded, and by
 default, Mercurial will refuse to interact with them until the mismatch
-is resolved. See \%\fBhg help config share.safe\-mismatch.source\-safe\fP\: and
-\%\fBhg help config share.safe\-mismatch.source\-not\-safe\fP\: for details.
+is resolved. See \%\fBhg help config.share.safe\-mismatch.source\-safe\fP\: and
+\%\fBhg help config.share.safe\-mismatch.source\-not\-safe\fP\: for details.
 .sp
 Introduced in Mercurial 5.7.
 .sp
-Disabled by default.
+Enabled by default in Mercurial 6.1.
+.TP
+.B \fBuse\-share\-safe.automatic\-upgrade\-of\-mismatching\-repositories\fP
+.sp
+When enabled, an automatic upgrade will be triggered when a repository format
+does not match its \fIuse\-share\-safe\fP config.
+.sp
+This is an advanced behavior that most users will not need. We recommend you
+don\(aqt use this unless you are a seasoned administrator of a Mercurial install
+base.
+.sp
+Automatic upgrade means that any process accessing the repository will
+upgrade the repository format to use \fIshare\-safe\fP. This only triggers if a
+change is needed. This also applies to operation that would have been
+read\-only (like hg status).
+.sp
+If the repository cannot be locked, the automatic\-upgrade operation will be
+skipped. The next operation will attempt it again.
+.sp
+This configuration will apply for moves in any direction, either adding the
+\fIshare\-safe\fP format if \fIformat.use\-share\-safe=yes\fP or removing the
+\fIshare\-safe\fP requirement if \fIformat.use\-share\-safe=no\fP. So we recommend
+setting both this value and \fIformat.use\-share\-safe\fP at the same time.
+.TP
+.B \fBuse\-share\-safe.automatic\-upgrade\-of\-mismatching\-repositories:quiet\fP
+.sp
+Hide message when performing such automatic upgrade.
 .TP
 .B \fBusestore\fP
 .sp
@@ -1488,6 +1673,13 @@ Run before creating a tag. Exit status 0 allows the tag to be
 created. A non\-zero status will cause the tag to fail. The ID of the
 changeset to tag is in \fB$HG_NODE\fP. The name of tag is in \fB$HG_TAG\fP. The
 tag is local if \fB$HG_LOCAL=1\fP, or in the repository if \fB$HG_LOCAL=0\fP.
+.TP
+.B \fBpretransmit\-inline\-clone\-bundle\fP
+.sp
+Run before transferring an inline clonebundle to the peer.
+If the exit status is 0, the inline clonebundle will be allowed to be
+transferred. A non\-zero status will cause the transfer to fail.
+The path of the inline clonebundle is in \fB$HG_CLONEBUNDLEPATH\fP.
 .TP
 .B \fBpretxnopen\fP
 .sp
@@ -2179,7 +2371,65 @@ revision by default.
 .sp
 Revsets specifying bookmarks will not result in the bookmark being
 pushed.
+.TP
+.B \fBbookmarks.mode\fP
+.sp
+How bookmark will be dealt during the exchange. It support the following value
+.INDENT 7.0
+.IP \(bu 2
+.
+\fBdefault\fP: the default behavior, local and remote bookmarks are "merged"
+on push/pull.
+.IP \(bu 2
+.
+\fBmirror\fP: when pulling, replace local bookmarks by remote bookmarks. This
+is useful to replicate a repository, or as an optimization.
+.IP \(bu 2
+.
+\fBignore\fP: ignore bookmarks during exchange.
+(This currently only affect pulling)
 .UNINDENT
+.UNINDENT
+.sp
+\fBpulled\-delta\-reuse\-policy\fP
+Control the policy regarding deltas sent by the remote during pulls.
+.sp
+This is an advanced option that non\-admin users should not need to understand
+or set. This option can be used to speed up pulls from trusted central
+servers, or to fix\-up deltas from older servers.
+.sp
+It supports the following values:
+.INDENT 0.0
+.IP \(bu 2
+.
+\fBdefault\fP: use the policy defined by
+\fIstorage.revlog.reuse\-external\-delta\-parent\fP,
+.IP \(bu 2
+.
+\fBno\-reuse\fP: start a new optimal delta search for each new revision we add
+to the repository. The deltas from the server will be reused when the base
+it applies to is tested (this can be frequent if that base is the one and
+unique parent of that revision). This can significantly slowdown pulls but
+will result in an optimized storage space if the remote peer is sending poor
+quality deltas.
+.IP \(bu 2
+.
+\fBtry\-base\fP: try to reuse the deltas from the remote peer as long as they
+create a valid delta\-chain in the local repository. This speeds up the
+unbundling process, but can result in sub\-optimal storage space if the
+remote peer is sending poor quality deltas.
+.IP \(bu 2
+.
+\fBforced\fP: the deltas from the peer will be reused in all cases, even if
+the resulting delta\-chain is "invalid". This setting will ensure the bundle
+is applied at minimal CPU cost, but it can result in longer delta chains
+being created on the client, making revisions potentially slower to access
+in the future. If you think you need this option, you should make sure you
+are also talking to the Mercurial developer community to get confirmation.
+.UNINDENT
+.sp
+See \fIhg help config.storage.revlog.reuse\-external\-delta\-parent\fP for a similar
+global option. That option defines the behavior of \fIdefault\fP.
 .sp
 The following special named paths exist:
 .INDENT 0.0
@@ -2467,66 +2717,136 @@ Currently, only the rebase and absorb commands consider this configuration.
 (EXPERIMENTAL)
 .UNINDENT
 .UNINDENT
-.SS \fBshare\fP
+.SS \fBrhg\fP
 .sp
-\fBsafe\-mismatch.source\-safe\fP
+The pure Rust fast\-path for Mercurial. See \fIrust/README.rst\fP in the Mercurial repository.
 .INDENT 0.0
-.INDENT 3.5
+.TP
+.B \fBfallback\-executable\fP
+.sp
+Path to the executable to run in a sub\-process when falling back to
+another implementation of Mercurial.
+.TP
+.B \fBfallback\-immediately\fP
+.sp
+Fall back to \fBfallback\-executable\fP as soon as possible, regardless of
+the \fIrhg.on\-unsupported\fP configuration. Useful for debugging, for example to
+bypass \fIrhg\fP if the deault \fIhg\fP points to \fIrhg\fP.
+.sp
+Note that because this requires loading the configuration, it is possible
+that \fIrhg\fP error out before being able to fall back.
+.TP
+.B \fBignored\-extensions\fP
+.sp
+Controls which extensions should be ignored by \fIrhg\fP. By default, \fIrhg\fP
+triggers the \fIrhg.on\-unsupported\fP behavior any unsupported extensions.
+Users can disable that behavior when they know that a given extension
+does not need support from \fIrhg\fP.
+.sp
+Expects a list of extension names, or \fB*\fP to ignore all extensions.
+.sp
+Note: \fB*:<suboption>\fP is also a valid extension name for this
+configuration option.
+As of this writing, the only valid "global" suboption is \fBrequired\fP.
+.TP
+.B \fBon\-unsupported\fP
+.sp
+Controls the behavior of \fIrhg\fP when detecting unsupported features.
+.sp
+Possible values are \fIabort\fP (default), \fIabort\-silent\fP and \fIfallback\fP.
+.INDENT 7.0
+.TP
+.B \fBabort\fP
+.sp
+Print an error message describing what feature is not supported,
+and exit with code 252
+.TP
+.B \fBabort\-silent\fP
+.sp
+Silently exit with code 252
+.TP
+.B \fBfallback\fP
+.sp
+Try running the fallback executable with the same parameters
+(and trace the fallback reason, use \fIRUST_LOG=trace\fP to see).
+.UNINDENT
+.UNINDENT
+.SS \fBshare\fP
+.INDENT 0.0
+.TP
+.B \fBsafe\-mismatch.source\-safe\fP
 .sp
 Controls what happens when the shared repository does not use the
 share\-safe mechanism but its source repository does.
 .sp
 Possible values are \fIabort\fP (default), \fIallow\fP, \fIupgrade\-abort\fP and
-\fIupgrade\-abort\fP.
+\fIupgrade\-allow\fP.
+.INDENT 7.0
+.TP
+.B \fBabort\fP
 .sp
-\fBabort\fP
 Disallows running any command and aborts
-\fBallow\fP
-Respects the feature presence in the share source
-\fBupgrade\-abort\fP
-tries to upgrade the share to use share\-safe; if it fails, aborts
-\fBupgrade\-allow\fP
-tries to upgrade the share; if it fails, continue by
-respecting the share source setting
+.TP
+.B \fBallow\fP
 .sp
-Check \%\fBhg help config format.use\-share\-safe\fP\: for details about the
+Respects the feature presence in the share source
+.TP
+.B \fBupgrade\-abort\fP
+.sp
+Tries to upgrade the share to use share\-safe; if it fails, aborts
+.TP
+.B \fBupgrade\-allow\fP
+.sp
+Tries to upgrade the share; if it fails, continue by
+respecting the share source setting
+.UNINDENT
+.sp
+Check \%\fBhg help config.format.use\-share\-safe\fP\: for details about the
 share\-safe feature.
-.UNINDENT
-.UNINDENT
-.INDENT 0.0
+.TP
+.B \fBsafe\-mismatch.source\-safe:verbose\-upgrade\fP
+.sp
+Display a message when upgrading, (default: True)
 .TP
 .B \fBsafe\-mismatch.source\-safe.warn\fP
 .sp
 Shows a warning on operations if the shared repository does not use
 share\-safe, but the source repository does.
 (default: True)
-.UNINDENT
-.sp
-\fBsafe\-mismatch.source\-not\-safe\fP
-.INDENT 0.0
-.INDENT 3.5
+.TP
+.B \fBsafe\-mismatch.source\-not\-safe\fP
 .sp
 Controls what happens when the shared repository uses the share\-safe
 mechanism but its source does not.
 .sp
 Possible values are \fIabort\fP (default), \fIallow\fP, \fIdowngrade\-abort\fP and
-\fIdowngrade\-abort\fP.
+\fIdowngrade\-allow\fP.
+.INDENT 7.0
+.TP
+.B \fBabort\fP
 .sp
-\fBabort\fP
 Disallows running any command and aborts
-\fBallow\fP
-Respects the feature presence in the share source
-\fBdowngrade\-abort\fP
-tries to downgrade the share to not use share\-safe; if it fails, aborts
-\fBdowngrade\-allow\fP
-tries to downgrade the share to not use share\-safe;
-if it fails, continue by respecting the shared source setting
+.TP
+.B \fBallow\fP
 .sp
-Check \%\fBhg help config format.use\-share\-safe\fP\: for details about the
+Respects the feature presence in the share source
+.TP
+.B \fBdowngrade\-abort\fP
+.sp
+Tries to downgrade the share to not use share\-safe; if it fails, aborts
+.TP
+.B \fBdowngrade\-allow\fP
+.sp
+Tries to downgrade the share to not use share\-safe;
+if it fails, continue by respecting the shared source setting
+.UNINDENT
+.sp
+Check \%\fBhg help config.format.use\-share\-safe\fP\: for details about the
 share\-safe feature.
-.UNINDENT
-.UNINDENT
-.INDENT 0.0
+.TP
+.B \fBsafe\-mismatch.source\-not\-safe:verbose\-upgrade\fP
+.sp
+Display a message when upgrading, (default: True)
 .TP
 .B \fBsafe\-mismatch.source\-not\-safe.warn\fP
 .sp
@@ -2555,6 +2875,24 @@ through push, pull, clone and unbundle.
 .sp
 To fix affected revisions that already exist within the repository, one can
 use \%\fBhg debug\-repair\-issue\-6528\fP\:.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \fBrevlog.delta\-parent\-search.candidate\-group\-chunk\-size\fP
+.sp
+Tune the number of delta bases the storage will consider in the
+same "round" of search. In some very rare cases, using a smaller value
+might result in faster processing at the possible expense of storage
+space, while using larger values might result in slower processing at the
+possible benefit of storage space. A value of "0" means no limitation.
+.sp
+default: no limitation
+.sp
+This is unlikely that you\(aqll have to tune this configuration. If you think
+you do, consider talking with the mercurial developer community about your
+repositories.
+.UNINDENT
+.INDENT 0.0
 .TP
 .B \fBrevlog.optimize\-delta\-parent\-choice\fP
 .sp
@@ -2574,7 +2912,7 @@ and reduce memory pressure.
 Default to True.
 .sp
 For details on the "persistent\-nodemap" feature, see:
-\%\fBhg help config format.use\-persistent\-nodemap\fP\:.
+\%\fBhg help config.format.use\-persistent\-nodemap\fP\:.
 .TP
 .B \fBrevlog.persistent\-nodemap.slow\-path\fP
 .sp
@@ -2587,7 +2925,7 @@ the feature:
 \fBabort\fP: Prevent access to such repositories. (This is the default)
 .sp
 For details on the "persistent\-nodemap" feature, see:
-\%\fBhg help config format.use\-persistent\-nodemap\fP\:.
+\%\fBhg help config.format.use\-persistent\-nodemap\fP\:.
 .TP
 .B \fBrevlog.reuse\-external\-delta\-parent\fP
 .sp
@@ -2709,7 +3047,7 @@ effectively prevents concurrent pushes.
 .TP
 .B \fBpullbundle\fP
 .sp
-When set, the server will check pullbundle.manifest for bundles
+When set, the server will check pullbundles.manifest for bundles
 covering the requested heads and common nodes. The first matching
 entry will be streamed to the client.
 .sp
@@ -3096,7 +3434,8 @@ This config overrides the interface specified by ui.interface.
 .sp
 Largest file size that gives no memory use warning.
 Possible values are integers or 0 to disable the check.
-(default: 10000000)
+Value is expressed in bytes by default, one can use standard units for
+convenience (e.g. 10MB, 0.1GB, etc) (default: 10MB)
 .TP
 .B \fBlogtemplate\fP
 .sp
@@ -3819,7 +4158,7 @@ Mercurial was written by Olivia Mackall <\%olivia@selenic.com\:>.
 .SH COPYING
 .sp
 This manual page is copyright 2005 Bryan O\(aqSullivan.
-Mercurial is copyright 2005\-2021 Olivia Mackall.
+Mercurial is copyright 2005\-2023 Olivia Mackall.
 Free use of this software is granted under the terms of the GNU General
 Public License version 2 or any later version.
 .\" Common link and substitution definitions.

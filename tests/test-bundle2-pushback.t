@@ -1,19 +1,8 @@
-#testcases sshv1 sshv2
-
-#if sshv2
-  $ cat >> $HGRCPATH << EOF
-  > [experimental]
-  > sshpeer.advertise-v2 = true
-  > sshserver.support-v2 = true
-  > EOF
-#endif
-
   $ cat > bundle2.py << EOF
   > """A small extension to test bundle2 pushback parts.
   > Current bundle2 implementation doesn't provide a way to generate those
   > parts, so they must be created by extensions.
   > """
-  > from __future__ import absolute_import
   > from mercurial import bundle2, exchange, pushkey, util
   > def _newhandlechangegroup(op, inpart):
   >     """This function wraps the changegroup part handler for getbundle.
@@ -37,7 +26,6 @@
 
   $ cat >> $HGRCPATH <<EOF
   > [ui]
-  > ssh = "$PYTHON" "$TESTDIR/dummyssh"
   > username = nobody <no.reply@example.com>
   > 
   > [alias]

@@ -59,6 +59,20 @@ Manifest file with invalid URL aborts
   (if this error persists, consider contacting the server operator or disable clone bundles via "--config ui.clonebundles=false")
   [255]
 
+Manifest file with URL with unknown scheme skips the URL
+  $ echo 'weirdscheme://does.not.exist/bundle.hg' > server/.hg/clonebundles.manifest
+  $ hg clone http://localhost:$HGPORT unknown-scheme
+  no compatible clone bundles available on server; falling back to regular clone
+  (you may want to report this to the server operator)
+  requesting all changes
+  adding changesets
+  adding manifests
+  adding file changes
+  added 2 changesets with 2 changes to 2 files
+  new changesets 53245c60e682:aaff8d2ffbbf
+  updating to branch default
+  2 files updated, 0 files merged, 0 files removed, 0 files unresolved
+
 Server is not running aborts
 
   $ echo "http://localhost:$HGPORT1/bundle.hg" > server/.hg/clonebundles.manifest
@@ -208,7 +222,7 @@ by old clients.
 
 Feature works over SSH
 
-  $ hg clone -U -e "\"$PYTHON\" \"$TESTDIR/dummyssh\"" ssh://user@dummy/server ssh-full-clone
+  $ hg clone -U ssh://user@dummy/server ssh-full-clone
   applying clone bundle from http://localhost:$HGPORT1/full.hg
   adding changesets
   adding manifests
@@ -218,6 +232,93 @@ Feature works over SSH
   searching for changes
   no changes found
   2 local changesets published
+
+Inline bundle
+=============
+
+Checking bundle retrieved over the wireprotocol
+
+Feature works over SSH with inline bundle
+-----------------------------------------
+
+  $ mkdir server/.hg/bundle-cache/
+  $ cp full.hg server/.hg/bundle-cache/
+  $ echo "peer-bundle-cache://full.hg" > server/.hg/clonebundles.manifest
+  $ hg clone -U ssh://user@dummy/server ssh-inline-clone
+  applying clone bundle from peer-bundle-cache://full.hg
+  adding changesets
+  adding manifests
+  adding file changes
+  added 2 changesets with 2 changes to 2 files
+  finished applying clone bundle
+  searching for changes
+  no changes found
+  2 local changesets published
+
+HTTP Supports
+-------------
+
+  $ hg clone -U http://localhost:$HGPORT http-inline-clone
+  applying clone bundle from peer-bundle-cache://full.hg
+  adding changesets
+  adding manifests
+  adding file changes
+  added 2 changesets with 2 changes to 2 files
+  finished applying clone bundle
+  searching for changes
+  no changes found
+  2 local changesets published
+
+
+Check local behavior
+--------------------
+
+We don't use the clone bundle, but we do not crash either.
+
+  $ hg clone -U ./server local-inline-clone-default
+  $ hg clone -U ./server local-inline-clone-pull --pull
+  requesting all changes
+  adding changesets
+  adding manifests
+  adding file changes
+  added 2 changesets with 2 changes to 2 files
+  new changesets 53245c60e682:aaff8d2ffbbf
+
+Pre-transmit Hook
+-----------------
+
+Hooks work with inline bundle
+
+  $ cp server/.hg/hgrc server/.hg/hgrc-beforeinlinehooks
+  $ echo "[hooks]" >> server/.hg/hgrc
+  $ echo "pretransmit-inline-clone-bundle=echo foo" >> server/.hg/hgrc
+  $ hg clone -U ssh://user@dummy/server ssh-inline-clone-hook
+  applying clone bundle from peer-bundle-cache://full.hg
+  remote: foo
+  adding changesets
+  adding manifests
+  adding file changes
+  added 2 changesets with 2 changes to 2 files
+  finished applying clone bundle
+  searching for changes
+  no changes found
+  2 local changesets published
+
+Hooks can make an inline bundle fail
+
+  $ cp server/.hg/hgrc-beforeinlinehooks server/.hg/hgrc
+  $ echo "[hooks]" >> server/.hg/hgrc
+  $ echo "pretransmit-inline-clone-bundle=echo bar && false" >> server/.hg/hgrc
+  $ hg clone -U ssh://user@dummy/server ssh-inline-clone-hook-fail
+  applying clone bundle from peer-bundle-cache://full.hg
+  remote: bar
+  remote: abort: pretransmit-inline-clone-bundle hook exited with status 1
+  abort: stream ended unexpectedly (got 0 bytes, expected 1)
+  [255]
+  $ cp server/.hg/hgrc-beforeinlinehooks server/.hg/hgrc
+
+Other tests
+===========
 
 Entry with unknown BUNDLESPEC is filtered and not used
 
@@ -279,8 +380,9 @@ Stream clone bundles are supported
 
   $ hg -R server debugcreatestreamclonebundle packed.hg
   writing 613 bytes for 4 files
-  bundle requirements: generaldelta, revlogv1, sparserevlog (no-rust !)
-  bundle requirements: generaldelta, persistent-nodemap, revlogv1, sparserevlog (rust !)
+  bundle requirements: generaldelta, revlogv1, sparserevlog (no-rust no-zstd !)
+  bundle requirements: generaldelta, revlog-compression-zstd, revlogv1, sparserevlog (no-rust zstd !)
+  bundle requirements: generaldelta, revlog-compression-zstd, revlogv1, sparserevlog (rust !)
 
 No bundle spec should work
 
@@ -569,7 +671,7 @@ on a 32MB system.
   $ hg clone -U --debug --config ui.available-memory=16MB http://localhost:$HGPORT gzip-too-large
   using http://localhost:$HGPORT/
   sending capabilities command
-  sending clonebundles command
+  sending clonebundles_manifest command
   filtering http://localhost:$HGPORT1/gz-a.hg as it needs more than 2/3 of system memory
   no compatible clone bundles available on server; falling back to regular clone
   (you may want to report this to the server operator)
@@ -586,7 +688,7 @@ on a 32MB system.
   adding file changes
   adding bar revisions
   adding foo revisions
-  bundle2-input-part: total payload size 920
+  bundle2-input-part: total payload size 936
   bundle2-input-part: "listkeys" (params: 1 mandatory) supported
   bundle2-input-part: "phase-heads" supported
   bundle2-input-part: total payload size 24
@@ -602,7 +704,7 @@ on a 32MB system.
   $ hg clone -U --debug --config ui.available-memory=32MB http://localhost:$HGPORT gzip-too-large2
   using http://localhost:$HGPORT/
   sending capabilities command
-  sending clonebundles command
+  sending clonebundles_manifest command
   applying clone bundle from http://localhost:$HGPORT1/gz-a.hg
   bundle2-input-bundle: 1 params with-transaction
   bundle2-input-part: "changegroup" (params: 1 mandatory 1 advisory) supported
@@ -637,3 +739,114 @@ on a 32MB system.
   updating the branch cache
   (sent 4 HTTP requests and * bytes; received * bytes in responses) (glob)
   $ killdaemons.py
+
+Testing a clone bundles that involves revlog splitting (issue6811)
+==================================================================
+
+  $ cat >> $HGRCPATH << EOF
+  > [format]
+  > revlog-compression=none
+  > use-persistent-nodemap=no
+  > EOF
+
+  $ hg init server-revlog-split/
+  $ cd server-revlog-split
+  $ cat >> .hg/hgrc << EOF
+  > [extensions]
+  > clonebundles =
+  > EOF
+  $ echo foo > A
+  $ hg add A
+  $ hg commit -m 'initial commit'
+IMPORTANT: the revlogs must not be split
+  $ ls -1 .hg/store/00manifest.*
+  .hg/store/00manifest.i
+  $ ls -1 .hg/store/data/_a.*
+  .hg/store/data/_a.i
+
+do big enough update to split the revlogs
+
+  $ $TESTDIR/seq.py 100000 > A
+  $ mkdir foo
+  $ cd foo
+  $ touch `$TESTDIR/seq.py 10000`
+  $ cd ..
+  $ hg add -q foo
+  $ hg commit -m 'split the manifest and one filelog'
+
+IMPORTANT: now the revlogs must be split
+  $ ls -1 .hg/store/00manifest.*
+  .hg/store/00manifest.d
+  .hg/store/00manifest.i
+  $ ls -1 .hg/store/data/_a.*
+  .hg/store/data/_a.d
+  .hg/store/data/_a.i
+
+Add an extra commit on top of that
+
+  $ echo foo >> A
+  $ hg commit -m 'one extra commit'
+
+  $ cd ..
+
+Do a bundle that contains the split, but not the update
+
+  $ hg bundle --exact --rev '::(default~1)' -R server-revlog-split/ --type gzip-v2 split-test.hg
+  2 changesets found
+
+  $ cat > server-revlog-split/.hg/clonebundles.manifest << EOF
+  > http://localhost:$HGPORT1/split-test.hg BUNDLESPEC=gzip-v2
+  > EOF
+
+start the necessary server
+
+  $ "$PYTHON" $TESTDIR/dumbhttp.py -p $HGPORT1 --pid http.pid
+  $ cat http.pid >> $DAEMON_PIDS
+  $ hg -R server-revlog-split serve -d -p $HGPORT --pid-file hg.pid --accesslog access.log
+  $ cat hg.pid >> $DAEMON_PIDS
+
+Check that clone works fine
+===========================
+
+Here, the initial clone will trigger a revlog split (which is a bit clowny it
+itself, but whatever). The split revlogs will see additionnal data added to
+them in the subsequent pull. This should not be a problem
+
+  $ hg clone http://localhost:$HGPORT revlog-split-in-the-bundle
+  applying clone bundle from http://localhost:$HGPORT1/split-test.hg
+  adding changesets
+  adding manifests
+  adding file changes
+  added 2 changesets with 10002 changes to 10001 files
+  finished applying clone bundle
+  searching for changes
+  adding changesets
+  adding manifests
+  adding file changes
+  added 1 changesets with 1 changes to 1 files
+  new changesets e3879eaa1db7
+  2 local changesets published
+  updating to branch default
+  10001 files updated, 0 files merged, 0 files removed, 0 files unresolved
+
+check the results
+
+  $ cd revlog-split-in-the-bundle
+  $ f --size .hg/store/00manifest.*
+  .hg/store/00manifest.d: size=499037
+  .hg/store/00manifest.i: size=192
+  $ f --size .hg/store/data/_a.*
+  .hg/store/data/_a.d: size=588917
+  .hg/store/data/_a.i: size=192
+
+manifest should work
+
+  $ hg  files -r tip | wc -l
+  \s*10001 (re)
+
+file content should work
+
+  $ hg  cat -r tip A | wc -l
+  \s*100001 (re)
+
+

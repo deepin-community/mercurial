@@ -12,15 +12,14 @@ This provides efficient delta storage with O(1) retrieve and append
 and O(changes) merge between branches.
 """
 
-from __future__ import absolute_import
 
 import binascii
 import collections
 import contextlib
-import errno
 import io
 import os
 import struct
+import weakref
 import zlib
 
 # import stuff from node for others to import from revlog
@@ -40,11 +39,16 @@ from .revlogutils.constants import (
     COMP_MODE_DEFAULT,
     COMP_MODE_INLINE,
     COMP_MODE_PLAIN,
+    DELTA_BASE_REUSE_NO,
+    DELTA_BASE_REUSE_TRY,
+    ENTRY_RANK,
     FEATURES_BY_VERSION,
     FLAG_GENERALDELTA,
     FLAG_INLINE_DATA,
     INDEX_HEADER,
     KIND_CHANGELOG,
+    KIND_FILELOG,
+    RANK_UNKNOWN,
     REVLOGV0,
     REVLOGV1,
     REVLOGV1_FLAGS,
@@ -101,6 +105,7 @@ from .utils import (
 REVLOGV0
 REVLOGV1
 REVLOGV2
+CHANGELOGV2
 FLAG_INLINE_DATA
 FLAG_GENERALDELTA
 REVLOG_DEFAULT_FLAGS
@@ -124,7 +129,7 @@ rustrevlog = policy.importrust('revlog')
 # Aliased for performance.
 _zlibdecompress = zlib.decompress
 
-# max size of revlog with inline data
+# max size of inline data embedded into a revlog
 _maxinline = 131072
 
 # Flag processors for REVIDX_ELLIPSIS.
@@ -169,7 +174,7 @@ HAS_FAST_PERSISTENT_NODEMAP = rustrevlog is not None or util.safehasattr(
 
 @interfaceutil.implementer(repository.irevisiondelta)
 @attr.s(slots=True)
-class revlogrevisiondelta(object):
+class revlogrevisiondelta:
     node = attr.ib()
     p1node = attr.ib()
     p2node = attr.ib()
@@ -185,7 +190,7 @@ class revlogrevisiondelta(object):
 
 @interfaceutil.implementer(repository.iverifyproblem)
 @attr.s(frozen=True)
-class revlogproblem(object):
+class revlogproblem:
     warning = attr.ib(default=None)
     error = attr.ib(default=None)
     node = attr.ib(default=None)
@@ -199,16 +204,13 @@ def parse_index_v1(data, inline):
 
 def parse_index_v2(data, inline):
     # call the C implementation to parse the index data
-    index, cache = parsers.parse_index2(data, inline, revlogv2=True)
+    index, cache = parsers.parse_index2(data, inline, format=REVLOGV2)
     return index, cache
 
 
 def parse_index_cl_v2(data, inline):
     # call the C implementation to parse the index data
-    assert not inline
-    from .pure.parsers import parse_index_cl_v2
-
-    index, cache = parse_index_cl_v2(data)
+    index, cache = parsers.parse_index2(data, inline, format=CHANGELOGV2)
     return index, cache
 
 
@@ -237,8 +239,10 @@ FILE_TOO_SHORT_MSG = _(
     b'  expected %d bytes from offset %d, data size is %d'
 )
 
+hexdigits = b'0123456789abcdefABCDEF'
 
-class revlog(object):
+
+class revlog:
     """
     the underlying revision storage object
 
@@ -286,6 +290,16 @@ class revlog(object):
 
     _flagserrorclass = error.RevlogError
 
+    @staticmethod
+    def is_inline_index(header_bytes):
+        header = INDEX_HEADER.unpack(header_bytes)[0]
+
+        _format_flags = header & ~0xFFFF
+        _format_version = header & 0xFFFF
+
+        features = FEATURES_BY_VERSION[_format_version]
+        return features[b'inline'](_format_flags)
+
     def __init__(
         self,
         opener,
@@ -299,6 +313,8 @@ class revlog(object):
         persistentnodemap=False,
         concurrencychecker=None,
         trypending=False,
+        try_split=False,
+        canonical_parent_order=True,
     ):
         """
         create a revlog object
@@ -324,6 +340,7 @@ class revlog(object):
         self._nodemap_file = None
         self.postfix = postfix
         self._trypending = trypending
+        self._try_split = try_split
         self.opener = opener
         if persistentnodemap:
             self._nodemap_file = nodemaputil.get_nodemap_file(self)
@@ -346,6 +363,8 @@ class revlog(object):
         self._chunkcachesize = 65536
         self._maxchainlen = None
         self._deltabothparents = True
+        self._candidate_group_chunk_size = 0
+        self._debug_delta = False
         self.index = None
         self._docket = None
         self._nodemap_docket = None
@@ -361,6 +380,11 @@ class revlog(object):
         self._srdensitythreshold = 0.50
         self._srmingapsize = 262144
 
+        # other optionnals features
+
+        # might remove rank configuration once the computation has no impact
+        self._compute_rank = False
+
         # Make copy of flag processors so each revlog instance can support
         # custom flags.
         self._flagprocessors = dict(flagutil.flagprocessors)
@@ -373,6 +397,13 @@ class revlog(object):
         self._loadindex()
 
         self._concurrencychecker = concurrencychecker
+
+        # parent order is supposed to be semantically irrelevant, so we
+        # normally resort parents to ensure that the first parent is non-null,
+        # if there is a non-null parent at all.
+        # filelog abuses the parent order as flag to mark some instances of
+        # meta-encoded files, so allow it to disable this behavior.
+        self.canonical_parent_order = canonical_parent_order
 
     def _init_opts(self):
         """process options (from above/config) to setup associated default revlog mode
@@ -395,6 +426,7 @@ class revlog(object):
 
         if b'changelogv2' in opts and self.revlog_kind == KIND_CHANGELOG:
             new_header = CHANGELOGV2
+            self._compute_rank = opts.get(b'changelogv2.compute-rank', True)
         elif b'revlogv2' in opts:
             new_header = REVLOGV2
         elif b'revlogv1' in opts:
@@ -412,10 +444,15 @@ class revlog(object):
             self._maxchainlen = opts[b'maxchainlen']
         if b'deltabothparents' in opts:
             self._deltabothparents = opts[b'deltabothparents']
+        dps_cgds = opts.get(b'delta-parent-search.candidate-group-chunk-size')
+        if dps_cgds:
+            self._candidate_group_chunk_size = dps_cgds
         self._lazydelta = bool(opts.get(b'lazydelta', True))
         self._lazydeltabase = False
         if self._lazydelta:
             self._lazydeltabase = bool(opts.get(b'lazydeltabase', False))
+        if b'debug-delta' in opts:
+            self._debug_delta = opts[b'debug-delta']
         if b'compengine' in opts:
             self._compengine = opts[b'compengine']
         if b'zlib.level' in opts:
@@ -438,9 +475,7 @@ class revlog(object):
             self._flagprocessors[REVIDX_ELLIPSIS] = ellipsisprocessor
 
         # revlog v0 doesn't have flag processors
-        for flag, processor in pycompat.iteritems(
-            opts.get(b'flagprocessors', {})
-        ):
+        for flag, processor in opts.get(b'flagprocessors', {}).items():
             flagutil.insertflagprocessor(flag, processor, self._flagprocessors)
 
         if self._chunkcachesize <= 0:
@@ -478,10 +513,99 @@ class revlog(object):
                     return fp.read()
                 else:
                     return fp.read(size)
-        except IOError as inst:
-            if inst.errno != errno.ENOENT:
-                raise
+        except FileNotFoundError:
             return b''
+
+    def get_streams(self, max_linkrev, force_inline=False):
+        n = len(self)
+        index = self.index
+        while n > 0:
+            linkrev = index[n - 1][4]
+            if linkrev < max_linkrev:
+                break
+            # note: this loop will rarely go through multiple iterations, since
+            # it only traverses commits created during the current streaming
+            # pull operation.
+            #
+            # If this become a problem, using a binary search should cap the
+            # runtime of this.
+            n = n - 1
+        if n == 0:
+            # no data to send
+            return []
+        index_size = n * index.entry_size
+        data_size = self.end(n - 1)
+
+        # XXX we might have been split (or stripped) since the object
+        # initialization, We need to close this race too, but having a way to
+        # pre-open the file we feed to the revlog and never closing them before
+        # we are done streaming.
+
+        if self._inline:
+
+            def get_stream():
+                with self._indexfp() as fp:
+                    yield None
+                    size = index_size + data_size
+                    if size <= 65536:
+                        yield fp.read(size)
+                    else:
+                        yield from util.filechunkiter(fp, limit=size)
+
+            inline_stream = get_stream()
+            next(inline_stream)
+            return [
+                (self._indexfile, inline_stream, index_size + data_size),
+            ]
+        elif force_inline:
+
+            def get_stream():
+                with self._datafp() as fp_d:
+                    yield None
+
+                    for rev in range(n):
+                        idx = self.index.entry_binary(rev)
+                        if rev == 0 and self._docket is None:
+                            # re-inject the inline flag
+                            header = self._format_flags
+                            header |= self._format_version
+                            header |= FLAG_INLINE_DATA
+                            header = self.index.pack_header(header)
+                            idx = header + idx
+                        yield idx
+                        yield self._getsegmentforrevs(rev, rev, df=fp_d)[1]
+
+            inline_stream = get_stream()
+            next(inline_stream)
+            return [
+                (self._indexfile, inline_stream, index_size + data_size),
+            ]
+        else:
+
+            def get_index_stream():
+                with self._indexfp() as fp:
+                    yield None
+                    if index_size <= 65536:
+                        yield fp.read(index_size)
+                    else:
+                        yield from util.filechunkiter(fp, limit=index_size)
+
+            def get_data_stream():
+                with self._datafp() as fp:
+                    yield None
+                    if data_size <= 65536:
+                        yield fp.read(data_size)
+                    else:
+                        yield from util.filechunkiter(fp, limit=data_size)
+
+            index_stream = get_index_stream()
+            next(index_stream)
+            data_stream = get_data_stream()
+            next(data_stream)
+            return [
+                (self._datafile, data_stream, data_size),
+                (self._indexfile, index_stream, index_size),
+            ]
 
     def _loadindex(self, docket=None):
 
@@ -491,6 +615,8 @@ class revlog(object):
             entry_point = b'%s.i.%s' % (self.radix, self.postfix)
         elif self._trypending and self.opener.exists(b'%s.i.a' % self.radix):
             entry_point = b'%s.i.a' % self.radix
+        elif self._try_split and self.opener.exists(self._split_index_file):
+            entry_point = self._split_index_file
         else:
             entry_point = b'%s.i' % self.radix
 
@@ -498,7 +624,6 @@ class revlog(object):
             self._docket = docket
             self._docket_file = entry_point
         else:
-            entry_data = b''
             self._initempty = True
             entry_data = self._get_data(entry_point, mmapindexthreshold)
             if len(entry_data) > 0:
@@ -639,6 +764,10 @@ class revlog(object):
         # revlog header -> revlog compressor
         self._decompressors = {}
 
+    def get_revlog(self):
+        """simple function to mirror API of other not-really-revlog API"""
+        return self
+
     @util.propertycache
     def revlog_kind(self):
         return self.target[0]
@@ -646,9 +775,12 @@ class revlog(object):
     @util.propertycache
     def display_id(self):
         """The public facing "ID" of the revlog that we use in message"""
-        # Maybe we should build a user facing representation of
-        # revlog.target instead of using `self.radix`
-        return self.radix
+        if self.revlog_kind == KIND_FILELOG:
+            # Reference the file without the "data/" prefix, so it is familiar
+            # to the user.
+            return self.target[1]
+        else:
+            return self.radix
 
     def _get_decompressor(self, t):
         try:
@@ -693,9 +825,7 @@ class revlog(object):
             else:
                 f.seek(self._docket.index_end, os.SEEK_SET)
             return f
-        except IOError as inst:
-            if inst.errno != errno.ENOENT:
-                raise
+        except FileNotFoundError:
             return self.opener(
                 self._indexfile, mode=b"w+", checkambig=self._checkambig
             )
@@ -735,26 +865,11 @@ class revlog(object):
         return len(self.index)
 
     def __iter__(self):
-        return iter(pycompat.xrange(len(self)))
+        return iter(range(len(self)))
 
     def revs(self, start=0, stop=None):
         """iterate over all rev in this revlog (from start to stop)"""
         return storageutil.iterrevs(len(self), start=start, stop=stop)
-
-    @property
-    def nodemap(self):
-        msg = (
-            b"revlog.nodemap is deprecated, "
-            b"use revlog.index.[has_node|rev|get_rev]"
-        )
-        util.nouideprecwarn(msg, b'5.3', stacklevel=2)
-        return self.index.nodemap
-
-    @property
-    def _nodecache(self):
-        msg = b"revlog._nodecache is deprecated, use revlog.index.nodemap"
-        util.nouideprecwarn(msg, b'5.3', stacklevel=2)
-        return self.index.nodemap
 
     def hasnode(self, node):
         try:
@@ -870,7 +985,25 @@ class revlog(object):
         if flags & (flagutil.REVIDX_KNOWN_FLAGS ^ REVIDX_ELLIPSIS) == 0:
             return self.rawsize(rev)
 
-        return len(self.revision(rev, raw=False))
+        return len(self.revision(rev))
+
+    def fast_rank(self, rev):
+        """Return the rank of a revision if already known, or None otherwise.
+
+        The rank of a revision is the size of the sub-graph it defines as a
+        head. Equivalently, the rank of a revision `r` is the size of the set
+        `ancestors(r)`, `r` included.
+
+        This method returns the rank retrieved from the revlog in constant
+        time. It makes no attempt at computing unknown values for versions of
+        the revlog which do not persist the rank.
+        """
+        rank = self.index[rev][ENTRY_RANK]
+        if self._format_version != CHANGELOGV2 or rank == RANK_UNKNOWN:
+            return None
+        if rev == nullrev:
+            return 0  # convention
+        return rank
 
     def chainbase(self, rev):
         base = self._chainbasecache.get(rev)
@@ -898,7 +1031,10 @@ class revlog(object):
                 raise error.WdirUnsupported
             raise
 
-        return entry[5], entry[6]
+        if self.canonical_parent_order and entry[5] == nullrev:
+            return entry[6], entry[5]
+        else:
+            return entry[5], entry[6]
 
     # fast parentrevs(rev) where rev isn't filtered
     _uncheckedparentrevs = parentrevs
@@ -919,7 +1055,11 @@ class revlog(object):
     def parents(self, node):
         i = self.index
         d = i[self.rev(node)]
-        return i[d[5]][7], i[d[6]][7]  # map revisions to nodes inline
+        # inline node() to avoid function call overhead
+        if self.canonical_parent_order and d[5] == self.nullid:
+            return i[d[6]][7], i[d[5]][7]
+        else:
+            return i[d[5]][7], i[d[6]][7]
 
     def chainlen(self, rev):
         return self._chaininfo(rev)[0]
@@ -1042,7 +1182,7 @@ class revlog(object):
         heads = [self.rev(n) for n in heads]
 
         # we want the ancestors, but inclusive
-        class lazyset(object):
+        class lazyset:
             def __init__(self, lazyvalues):
                 self.addedvalues = set()
                 self.lazyvalues = lazyvalues
@@ -1303,7 +1443,7 @@ class revlog(object):
                     # But, obviously its parents aren't.
                     for p in self.parents(n):
                         heads.pop(p, None)
-        heads = [head for head, flag in pycompat.iteritems(heads) if flag]
+        heads = [head for head, flag in heads.items() if flag]
         roots = list(roots)
         assert orderedout
         assert roots
@@ -1469,7 +1609,7 @@ class revlog(object):
                 node = bin(id)
                 self.rev(node)
                 return node
-            except (TypeError, error.LookupError):
+            except (binascii.Error, error.LookupError):
                 pass
 
     def _partialmatch(self, id):
@@ -1496,7 +1636,7 @@ class revlog(object):
                 ambiguous = True
             # fall through to slow path that filters hidden revisions
         except (AttributeError, ValueError):
-            # we are pure python, or key was too short to search radix tree
+            # we are pure python, or key is not hex
             pass
         if ambiguous:
             raise error.AmbiguousPrefixLookupError(
@@ -1507,10 +1647,18 @@ class revlog(object):
             return self._pcache[id]
 
         if len(id) <= 40:
+            # hex(node)[:...]
+            l = len(id) // 2 * 2  # grab an even number of digits
             try:
-                # hex(node)[:...]
-                l = len(id) // 2  # grab an even number of digits
-                prefix = bin(id[: l * 2])
+                # we're dropping the last digit, so let's check that it's hex,
+                # to avoid the expensive computation below if it's not
+                if len(id) % 2 > 0:
+                    if not (id[-1] in hexdigits):
+                        return None
+                prefix = bin(id[:l])
+            except binascii.Error:
+                pass
+            else:
                 nl = [e[7] for e in self.index if e[7].startswith(prefix)]
                 nl = [
                     n for n in nl if hex(n).startswith(id) and self.hasnode(n)
@@ -1527,8 +1675,6 @@ class revlog(object):
                 if maybewdir:
                     raise error.WdirUnsupported
                 return None
-            except TypeError:
-                pass
 
     def lookup(self, id):
         """locate a node based on:
@@ -1741,7 +1887,7 @@ class revlog(object):
         """tells whether rev is a snapshot"""
         if not self._sparserevlog:
             return self.deltaparent(rev) == nullrev
-        elif util.safehasattr(self.index, b'issnapshot'):
+        elif util.safehasattr(self.index, 'issnapshot'):
             # directly assign the method to cache the testing and access
             self.issnapshot = self.index.issnapshot
             return self.issnapshot(rev)
@@ -1754,7 +1900,17 @@ class revlog(object):
         if base == nullrev:
             return True
         p1 = entry[5]
+        while self.length(p1) == 0:
+            b = self.deltaparent(p1)
+            if b == p1:
+                break
+            p1 = b
         p2 = entry[6]
+        while self.length(p2) == 0:
+            b = self.deltaparent(p2)
+            if b == p2:
+                break
+            p2 = b
         if base == p1 or base == p2:
             return False
         return self.issnapshot(base)
@@ -1776,33 +1932,13 @@ class revlog(object):
 
         return mdiff.textdiff(self.rawdata(rev1), self.rawdata(rev2))
 
-    def _processflags(self, text, flags, operation, raw=False):
-        """deprecated entry point to access flag processors"""
-        msg = b'_processflag(...) use the specialized variant'
-        util.nouideprecwarn(msg, b'5.2', stacklevel=2)
-        if raw:
-            return text, flagutil.processflagsraw(self, text, flags)
-        elif operation == b'read':
-            return flagutil.processflagsread(self, text, flags)
-        else:  # write operation
-            return flagutil.processflagswrite(self, text, flags)
-
-    def revision(self, nodeorrev, _df=None, raw=False):
+    def revision(self, nodeorrev, _df=None):
         """return an uncompressed revision of a given node or revision
         number.
 
         _df - an existing file handle to read from. (internal-only)
-        raw - an optional argument specifying if the revision data is to be
-        treated as raw data when applying flag transforms. 'raw' should be set
-        to True when generating changegroups or in debug commands.
         """
-        if raw:
-            msg = (
-                b'revlog.revision(..., raw=True) is deprecated, '
-                b'use revlog.rawdata(...)'
-            )
-            util.nouideprecwarn(msg, b'5.2', stacklevel=2)
-        return self._revisiondata(nodeorrev, _df, raw=raw)
+        return self._revisiondata(nodeorrev, _df)
 
     def sidedata(self, nodeorrev, _df=None):
         """a map of extra data related to the changeset but not part of the hash
@@ -1989,7 +2125,26 @@ class revlog(object):
                 raise error.CensoredNodeError(self.display_id, node, text)
             raise
 
-    def _enforceinlinesize(self, tr):
+    @property
+    def _split_index_file(self):
+        """the path where to expect the index of an ongoing splitting operation
+
+        The file will only exist if a splitting operation is in progress, but
+        it is always expected at the same location."""
+        parts = self.radix.split(b'/')
+        if len(parts) > 1:
+            # adds a '-s' prefix to the ``data/` or `meta/` base
+            head = parts[0] + b'-s'
+            mids = parts[1:-1]
+            tail = parts[-1] + b'.i'
+            pieces = [head] + mids + [tail]
+            return b'/'.join(pieces)
+        else:
+            # the revlog is stored at the root of the store (changelog or
+            # manifest), no risk of collision.
+            return self.radix + b'.i.s'
+
+    def _enforceinlinesize(self, tr, side_write=True):
         """Check if the revlog is too big for inline and convert if so.
 
         This should be called after revisions are added to the revlog. If the
@@ -2006,7 +2161,8 @@ class revlog(object):
             raise error.RevlogError(
                 _(b"%s not found in the transaction") % self._indexfile
             )
-        trindex = 0
+        if troffset:
+            tr.addbackup(self._indexfile, for_offset=True)
         tr.add(self._datafile, 0)
 
         existing_handles = False
@@ -2022,6 +2178,35 @@ class revlog(object):
             # No need to deal with sidedata writing handle as it is only
             # relevant with revlog-v2 which is never inline, not reaching
             # this code
+        if side_write:
+            old_index_file_path = self._indexfile
+            new_index_file_path = self._split_index_file
+            opener = self.opener
+            weak_self = weakref.ref(self)
+
+            # the "split" index replace the real index when the transaction is finalized
+            def finalize_callback(tr):
+                opener.rename(
+                    new_index_file_path,
+                    old_index_file_path,
+                    checkambig=True,
+                )
+                maybe_self = weak_self()
+                if maybe_self is not None:
+                    maybe_self._indexfile = old_index_file_path
+
+            def abort_callback(tr):
+                maybe_self = weak_self()
+                if maybe_self is not None:
+                    maybe_self._indexfile = old_index_file_path
+
+            tr.registertmp(new_index_file_path)
+            if self.target[1] is not None:
+                callback_id = b'000-revlog-split-%d-%s' % self.target
+            else:
+                callback_id = b'000-revlog-split-%d' % self.target[0]
+            tr.addfinalize(callback_id, finalize_callback)
+            tr.addabort(callback_id, abort_callback)
 
         new_dfh = self._datafp(b'w+')
         new_dfh.truncate(0)  # drop any potentially existing data
@@ -2029,10 +2214,10 @@ class revlog(object):
             with self._indexfp() as read_ifh:
                 for r in self:
                     new_dfh.write(self._getsegmentforrevs(r, r, df=read_ifh)[1])
-                    if troffset <= self.start(r) + r * self.index.entry_size:
-                        trindex = r
                 new_dfh.flush()
 
+            if side_write:
+                self._indexfile = new_index_file_path
             with self.__index_new_fp() as fp:
                 self._format_flags &= ~FLAG_INLINE_DATA
                 self._inline = False
@@ -2046,16 +2231,9 @@ class revlog(object):
                 if self._docket is not None:
                     self._docket.index_end = fp.tell()
 
-                # There is a small transactional race here. If the rename of
-                # the index fails, we should remove the datafile. It is more
-                # important to ensure that the data file is not truncated
-                # when the index is replaced as otherwise data is lost.
-                tr.replace(self._datafile, self.start(trindex))
+                # If we don't use side-write, the temp file replace the real
+                # index when we exit the context manager
 
-                # the temp file replace the real index when we exit the context
-                # manager
-
-            tr.replace(self._indexfile, trindex * self.index.entry_size)
             nodemaputil.setup_persistent_nodemap(tr, self)
             self._segmentfile = randomaccessfile.randomaccessfile(
                 self.opener,
@@ -2110,9 +2288,7 @@ class revlog(object):
                             dfh.seek(0, os.SEEK_END)
                         else:
                             dfh.seek(self._docket.data_end, os.SEEK_SET)
-                    except IOError as inst:
-                        if inst.errno != errno.ENOENT:
-                            raise
+                    except FileNotFoundError:
                         dfh = self._datafp(b"w+")
                     transaction.add(self._datafile, dsize)
                 if self._sidedatafile is not None:
@@ -2121,9 +2297,7 @@ class revlog(object):
                     try:
                         sdfh = self.opener(self._sidedatafile, mode=b"r+")
                         dfh.seek(self._docket.sidedata_end, os.SEEK_SET)
-                    except IOError as inst:
-                        if inst.errno != errno.ENOENT:
-                            raise
+                    except FileNotFoundError:
                         sdfh = self.opener(self._sidedatafile, mode=b"w+")
                     transaction.add(
                         self._sidedatafile, self._docket.sidedata_end
@@ -2424,7 +2598,22 @@ class revlog(object):
             textlen = len(rawtext)
 
         if deltacomputer is None:
-            deltacomputer = deltautil.deltacomputer(self)
+            write_debug = None
+            if self._debug_delta:
+                write_debug = transaction._report
+            deltacomputer = deltautil.deltacomputer(
+                self, write_debug=write_debug
+            )
+
+        if cachedelta is not None and len(cachedelta) == 2:
+            # If the cached delta has no information about how it should be
+            # reused, add the default reuse instruction according to the
+            # revlog's configuration.
+            if self._generaldelta and self._lazydeltabase:
+                delta_base_reuse = DELTA_BASE_REUSE_TRY
+            else:
+                delta_base_reuse = DELTA_BASE_REUSE_NO
+            cachedelta = (cachedelta[0], cachedelta[1], delta_base_reuse)
 
         revinfo = revlogutils.revisioninfo(
             node,
@@ -2472,6 +2661,22 @@ class revlog(object):
             # than ones we manually add.
             sidedata_offset = 0
 
+        rank = RANK_UNKNOWN
+        if self._compute_rank:
+            if (p1r, p2r) == (nullrev, nullrev):
+                rank = 1
+            elif p1r != nullrev and p2r == nullrev:
+                rank = 1 + self.fast_rank(p1r)
+            elif p1r == nullrev and p2r != nullrev:
+                rank = 1 + self.fast_rank(p2r)
+            else:  # merge node
+                if rustdagop is not None and self.index.rust_ext_compat:
+                    rank = rustdagop.rank(self.index, p1r, p2r)
+                else:
+                    pmin, pmax = sorted((p1r, p2r))
+                    rank = 1 + self.fast_rank(pmax)
+                    rank += sum(1 for _ in self.findmissingrevs([pmax], [pmin]))
+
         e = revlogutils.entry(
             flags=flags,
             data_offset=offset,
@@ -2486,6 +2691,7 @@ class revlog(object):
             sidedata_offset=sidedata_offset,
             sidedata_compressed_length=len(serialized_sidedata),
             sidedata_compression_mode=sidedata_compression_mode,
+            rank=rank,
         )
 
         self.index.append(e)
@@ -2581,10 +2787,15 @@ class revlog(object):
             self._enforceinlinesize(transaction)
         if self._docket is not None:
             # revlog-v2 always has 3 writing handles, help Pytype
-            assert self._writinghandles[2] is not None
-            self._docket.index_end = self._writinghandles[0].tell()
-            self._docket.data_end = self._writinghandles[1].tell()
-            self._docket.sidedata_end = self._writinghandles[2].tell()
+            wh1 = self._writinghandles[0]
+            wh2 = self._writinghandles[1]
+            wh3 = self._writinghandles[2]
+            assert wh1 is not None
+            assert wh2 is not None
+            assert wh3 is not None
+            self._docket.index_end = wh1.tell()
+            self._docket.data_end = wh2.tell()
+            self._docket.sidedata_end = wh3.tell()
 
         nodemaputil.setup_persistent_nodemap(transaction, self)
 
@@ -2596,6 +2807,8 @@ class revlog(object):
         alwayscache=False,
         addrevisioncb=None,
         duplicaterevisioncb=None,
+        debug_info=None,
+        delta_base_reuse_policy=None,
     ):
         """
         add a delta group
@@ -2611,11 +2824,26 @@ class revlog(object):
         if self._adding_group:
             raise error.ProgrammingError(b'cannot nest addgroup() calls')
 
+        # read the default delta-base reuse policy from revlog config if the
+        # group did not specify one.
+        if delta_base_reuse_policy is None:
+            if self._generaldelta and self._lazydeltabase:
+                delta_base_reuse_policy = DELTA_BASE_REUSE_TRY
+            else:
+                delta_base_reuse_policy = DELTA_BASE_REUSE_NO
+
         self._adding_group = True
         empty = True
         try:
             with self._writing(transaction):
-                deltacomputer = deltautil.deltacomputer(self)
+                write_debug = None
+                if self._debug_delta:
+                    write_debug = transaction._report
+                deltacomputer = deltautil.deltacomputer(
+                    self,
+                    write_debug=write_debug,
+                    debug_info=debug_info,
+                )
                 # loop through our set of deltas
                 for data in deltas:
                     (
@@ -2684,7 +2912,7 @@ class revlog(object):
                         p1,
                         p2,
                         flags,
-                        (baserev, delta),
+                        (baserev, delta, delta_base_reuse_policy),
                         alwayscache=alwayscache,
                         deltacomputer=deltacomputer,
                         sidedata=sidedata,
@@ -2793,9 +3021,7 @@ class revlog(object):
                 f.seek(0, io.SEEK_END)
                 actual = f.tell()
             dd = actual - expected
-        except IOError as inst:
-            if inst.errno != errno.ENOENT:
-                raise
+        except FileNotFoundError:
             dd = 0
 
         try:
@@ -2812,9 +3038,7 @@ class revlog(object):
                     databytes += max(0, self.length(r))
                 dd = 0
                 di = actual - len(self) * s - databytes
-        except IOError as inst:
-            if inst.errno != errno.ENOENT:
-                raise
+        except FileNotFoundError:
             di = 0
 
         return (dd, di)
@@ -2843,6 +3067,7 @@ class revlog(object):
         assumehaveparentrevisions=False,
         deltamode=repository.CG_DELTAMODE_STD,
         sidedata_helpers=None,
+        debug_info=None,
     ):
         if nodesorder not in (b'nodes', b'storage', b'linear', None):
             raise error.ProgrammingError(
@@ -2872,6 +3097,7 @@ class revlog(object):
             revisiondata=revisiondata,
             assumehaveparentrevisions=assumehaveparentrevisions,
             sidedata_helpers=sidedata_helpers,
+            debug_info=debug_info,
         )
 
     DELTAREUSEALWAYS = b'always'
@@ -2991,7 +3217,13 @@ class revlog(object):
         sidedata_helpers,
     ):
         """perform the core duty of `revlog.clone` after parameter processing"""
-        deltacomputer = deltautil.deltacomputer(destrevlog)
+        write_debug = None
+        if self._debug_delta:
+            write_debug = tr._report
+        deltacomputer = deltautil.deltacomputer(
+            destrevlog,
+            write_debug=write_debug,
+        )
         index = self.index
         for rev in self:
             entry = index[rev]

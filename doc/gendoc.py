@@ -4,7 +4,6 @@
 where DOC is the name of a document
 """
 
-from __future__ import absolute_import
 
 import os
 import sys
@@ -22,7 +21,7 @@ except ImportError:
 # available. Relax C module requirements.
 os.environ['HGMODULEPOLICY'] = 'allow'
 # import from the live mercurial repo
-sys.path.insert(0, "..")
+sys.path.insert(0, os.path.abspath(".."))
 from mercurial import demandimport
 
 demandimport.enable()

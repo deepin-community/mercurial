@@ -392,8 +392,6 @@ New operations are blocked with the correct state message
   .hg/dirstate
   .hg/merge/state
   .hg/rebasestate
-  .hg/undo.backup.dirstate
-  .hg/undo.dirstate
   .hg/updatestate
 
   $ hg rebase -s 3 -d tip

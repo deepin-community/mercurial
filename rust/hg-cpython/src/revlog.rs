@@ -107,7 +107,10 @@ py_class!(pub class MixedIndex |py| {
             String::from_utf8_lossy(node.data(py)).to_string()
         };
 
-        let prefix = NodePrefix::from_hex(&node_as_string).map_err(|_| PyErr::new::<ValueError, _>(py, "Invalid node or prefix"))?;
+        let prefix = NodePrefix::from_hex(&node_as_string)
+            .map_err(|_| PyErr::new::<ValueError, _>(
+                py, format!("Invalid node or prefix '{}'", node_as_string))
+            )?;
 
         nt.find_bin(idx, prefix)
             // TODO make an inner API returning the node directly
@@ -141,9 +144,9 @@ py_class!(pub class MixedIndex |py| {
         // __delitem__ is both for `del idx[r]` and `del idx[r1:r2]`
         self.cindex(py).borrow().inner().del_item(py, key)?;
         let mut opt = self.get_nodetree(py)?.borrow_mut();
-        let mut nt = opt.as_mut().unwrap();
+        let nt = opt.as_mut().unwrap();
         nt.invalidate_all();
-        self.fill_nodemap(py, &mut nt)?;
+        self.fill_nodemap(py, nt)?;
         Ok(())
     }
 

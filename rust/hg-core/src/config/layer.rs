@@ -81,6 +81,7 @@ impl ConfigLayer {
                         String::from_utf8_lossy(arg),
                     ),
                     CONFIG_PARSE_ERROR_ABORT,
+                    None,
                 ))?
             }
         }
@@ -93,11 +94,7 @@ impl ConfigLayer {
 
     /// Returns whether this layer comes from `--config` CLI arguments
     pub(crate) fn is_from_command_line(&self) -> bool {
-        if let ConfigOrigin::CommandLine = self.origin {
-            true
-        } else {
-            false
-        }
+        matches!(self.origin, ConfigOrigin::CommandLine)
     }
 
     /// Add an entry to the config, overwriting the old one if already present.
@@ -110,13 +107,13 @@ impl ConfigLayer {
     ) {
         self.sections
             .entry(section)
-            .or_insert_with(|| HashMap::new())
+            .or_insert_with(HashMap::new)
             .insert(item, ConfigValue { bytes: value, line });
     }
 
     /// Returns the config value in `<section>.<item>` if it exists
     pub fn get(&self, section: &[u8], item: &[u8]) -> Option<&ConfigValue> {
-        Some(self.sections.get(section)?.get(item)?)
+        self.sections.get(section)?.get(item)
     }
 
     /// Returns the keys defined in the given section
@@ -125,6 +122,24 @@ impl ConfigLayer {
             .get(section)
             .into_iter()
             .flat_map(|section| section.keys().map(|vec| &**vec))
+    }
+
+    /// Returns the (key, value) pairs defined in the given section
+    pub fn iter_section<'layer>(
+        &'layer self,
+        section: &[u8],
+    ) -> impl Iterator<Item = (&'layer [u8], &'layer [u8])> {
+        self.sections
+            .get(section)
+            .into_iter()
+            .flat_map(|section| section.iter().map(|(k, v)| (&**k, &*v.bytes)))
+    }
+
+    /// Returns whether any key is defined in the given section
+    pub fn has_non_empty_section(&self, section: &[u8]) -> bool {
+        self.sections
+            .get(section)
+            .map_or(false, |section| !section.is_empty())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -152,7 +167,7 @@ impl ConfigLayer {
 
         while let Some((index, bytes)) = lines_iter.next() {
             let line = Some(index + 1);
-            if let Some(m) = INCLUDE_RE.captures(&bytes) {
+            if let Some(m) = INCLUDE_RE.captures(bytes) {
                 let filename_bytes = &m[1];
                 let filename_bytes = crate::utils::expand_vars(filename_bytes);
                 // `Path::parent` only fails for the root directory,
@@ -186,18 +201,18 @@ impl ConfigLayer {
                         }
                     }
                 }
-            } else if let Some(_) = EMPTY_RE.captures(&bytes) {
-            } else if let Some(m) = SECTION_RE.captures(&bytes) {
+            } else if EMPTY_RE.captures(bytes).is_some() {
+            } else if let Some(m) = SECTION_RE.captures(bytes) {
                 section = m[1].to_vec();
-            } else if let Some(m) = ITEM_RE.captures(&bytes) {
+            } else if let Some(m) = ITEM_RE.captures(bytes) {
                 let item = m[1].to_vec();
                 let mut value = m[2].to_vec();
                 loop {
                     match lines_iter.peek() {
                         None => break,
                         Some((_, v)) => {
-                            if let Some(_) = COMMENT_RE.captures(&v) {
-                            } else if let Some(_) = CONT_RE.captures(&v) {
+                            if COMMENT_RE.captures(v).is_some() {
+                            } else if CONT_RE.captures(v).is_some() {
                                 value.extend(b"\n");
                                 value.extend(&m[1]);
                             } else {
@@ -208,7 +223,7 @@ impl ConfigLayer {
                     lines_iter.next();
                 }
                 current_layer.add(section.clone(), item, value, line);
-            } else if let Some(m) = UNSET_RE.captures(&bytes) {
+            } else if let Some(m) = UNSET_RE.captures(bytes) {
                 if let Some(map) = current_layer.sections.get_mut(&section) {
                     map.remove(&m[1]);
                 }
@@ -242,7 +257,7 @@ impl DisplayBytes for ConfigLayer {
         sections.sort_by(|e0, e1| e0.0.cmp(e1.0));
 
         for (section, items) in sections.into_iter() {
-            let mut items: Vec<_> = items.into_iter().collect();
+            let mut items: Vec<_> = items.iter().collect();
             items.sort_by(|e0, e1| e0.0.cmp(e1.0));
 
             for (item, config_entry) in items {
@@ -277,16 +292,19 @@ pub struct ConfigValue {
     pub line: Option<usize>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConfigOrigin {
     /// From a configuration file
     File(PathBuf),
+    /// From [ui.tweakdefaults]
+    Tweakdefaults,
     /// From a `--config` CLI argument
     CommandLine,
+    /// From a `--color` CLI argument
+    CommandLineColor,
     /// From environment variables like `$PAGER` or `$EDITOR`
     Environment(Vec<u8>),
-    /* TODO cli
-     * TODO defaults (configitems.py)
+    /* TODO defaults (configitems.py)
      * TODO extensions
      * TODO Python resources?
      * Others? */
@@ -300,7 +318,11 @@ impl DisplayBytes for ConfigOrigin {
         match self {
             ConfigOrigin::File(p) => out.write_all(&get_bytes_from_path(p)),
             ConfigOrigin::CommandLine => out.write_all(b"--config"),
+            ConfigOrigin::CommandLineColor => out.write_all(b"--color"),
             ConfigOrigin::Environment(e) => write_bytes!(out, b"${}", e),
+            ConfigOrigin::Tweakdefaults => {
+                write_bytes!(out, b"ui.tweakdefaults")
+            }
         }
     }
 }

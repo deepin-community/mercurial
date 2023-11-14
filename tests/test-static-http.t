@@ -38,12 +38,7 @@ one pull
   updating to branch default
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ cd local
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 2 changes to 2 files
+  $ hg verify -q
   $ cat bar
   foo
   $ cd ../remote
@@ -95,7 +90,7 @@ trying clone -r
   $ cd ..
   $ hg clone -r doesnotexist static-http://localhost:$HGPORT/remote local0
   abort: unknown revision 'doesnotexist'
-  [255]
+  [10]
   $ hg clone -r 0 static-http://localhost:$HGPORT/remote local0
   adding changesets
   adding manifests
@@ -134,13 +129,7 @@ test with "/" URI (issue747) and subrepo
   new changesets be090ea66256:322ea90975df
   3 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ cd local2
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 3 changes to 3 files
-  checking subrepo links
+  $ hg verify -q
   $ cat a
   a
   $ hg paths
@@ -155,12 +144,7 @@ test with empty repo (issue965)
   updating to branch default
   0 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ cd local3
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 0 changesets with 0 changes to 0 files
+  $ hg verify -q
   $ hg paths
   default = static-http://localhost:$HGPORT/remotempty
 
@@ -240,6 +224,7 @@ List of files accessed over HTTP:
   /.hg/store/data/a.i
   /.hg/store/data/~2ehgsub.i (py37 !)
   /.hg/store/data/~2ehgsubstate.i (py37 !)
+  /.hg/store/requires
   /notarepo/.hg/00changelog.i
   /notarepo/.hg/requires
   /remote-with-names/.hg/bookmarks
@@ -255,6 +240,8 @@ List of files accessed over HTTP:
   /remote-with-names/.hg/store/data/%7E2ehgtags.i (no-py37 !)
   /remote-with-names/.hg/store/data/foo.i
   /remote-with-names/.hg/store/data/~2ehgtags.i (py37 !)
+  /remote-with-names/.hg/store/obsstore
+  /remote-with-names/.hg/store/requires
   /remote/.hg/bookmarks
   /remote/.hg/bookmarks.current
   /remote/.hg/cache/branch2-base
@@ -274,12 +261,15 @@ List of files accessed over HTTP:
   /remote/.hg/store/data/quux.i
   /remote/.hg/store/data/~2edotfile%20with%20spaces.i (py37 !)
   /remote/.hg/store/data/~2ehgtags.i (py37 !)
+  /remote/.hg/store/obsstore
+  /remote/.hg/store/requires
   /remotempty/.hg/bookmarks
   /remotempty/.hg/bookmarks.current
   /remotempty/.hg/dirstate
   /remotempty/.hg/requires
   /remotempty/.hg/store/00changelog.i
   /remotempty/.hg/store/00manifest.i
+  /remotempty/.hg/store/requires
   /sub/.hg/bookmarks
   /sub/.hg/bookmarks.current
   /sub/.hg/cache/hgtagsfnodes1
@@ -290,3 +280,4 @@ List of files accessed over HTTP:
   /sub/.hg/store/data/%7E2ehgtags.i (no-py37 !)
   /sub/.hg/store/data/test.i
   /sub/.hg/store/data/~2ehgtags.i (py37 !)
+  /sub/.hg/store/requires

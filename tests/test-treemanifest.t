@@ -1,8 +1,3 @@
-  $ cat << EOF >> $HGRCPATH
-  > [ui]
-  > ssh="$PYTHON" "$TESTDIR/dummyssh"
-  > EOF
-
 Set up repo
 
   $ hg --config experimental.treemanifest=True init repo
@@ -10,7 +5,7 @@ Set up repo
 
 Requirements get set on init
 
-  $ grep treemanifest .hg/requires
+  $ hg debugrequires | grep treemanifest
   treemanifest
 
 Without directories, looks like any other repo
@@ -135,7 +130,7 @@ Merge creates 2-parent revision of directory revlog
   $ cat dir1/b
   6
   $ hg debugindex --dir dir1
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       1 8b3ffd73f901 000000000000 000000000000
        1       2 68e9d057c5a8 8b3ffd73f901 000000000000
        2       4 4698198d2624 68e9d057c5a8 000000000000
@@ -216,12 +211,14 @@ Create a few commits with flat manifest
   (branch merge, don't forget to commit)
   $ hg ci -m 'merge of flat manifests to new flat manifest'
 
-  $ hg serve -p $HGPORT -d --pid-file=hg.pid --errorlog=errors.log
-  $ cat hg.pid >> $DAEMON_PIDS
+  $ cd ..
+  $ hg -R repo-flat serve -p $HGPORT -d \
+  >   --pid-file=port-0-hg.pid \
+  >   --errorlog=port-0-errors.log
+  $ cat port-0-hg.pid >> $DAEMON_PIDS
 
 Create clone with tree manifests enabled
 
-  $ cd ..
   $ hg clone --config experimental.treemanifest=1 \
   >   http://localhost:$HGPORT repo-mixed -r 1
   adding changesets
@@ -231,10 +228,11 @@ Create clone with tree manifests enabled
   new changesets 5b02a3e8db7e:581ef6037d8b
   updating to branch default
   11 files updated, 0 files merged, 0 files removed, 0 files unresolved
+  $ cat port-0-errors.log
   $ cd repo-mixed
   $ test -d .hg/store/meta
   [1]
-  $ grep treemanifest .hg/requires
+  $ hg debugrequires | grep treemanifest
   treemanifest
 
 Should be possible to push updates from flat to tree manifest repo
@@ -281,7 +279,7 @@ Merge of two trees
 Parent of tree root manifest should be flat manifest, and two for merge
 
   $ hg debugindex -m
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       0 40536115ed9e 000000000000 000000000000
        1       1 f3376063c255 40536115ed9e 000000000000
        2       2 5d9b9da231a2 40536115ed9e 000000000000
@@ -301,13 +299,13 @@ Status across flat/tree boundary should work
 Turning off treemanifest config has no effect
 
   $ hg debugindex --dir dir1
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       4 064927a0648a 000000000000 000000000000
        1       5 25ecb8cb8618 000000000000 000000000000
   $ echo 2 > dir1/a
   $ hg --config experimental.treemanifest=False ci -qm 'modify dir1/a'
   $ hg debugindex --dir dir1
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       4 064927a0648a 000000000000 000000000000
        1       5 25ecb8cb8618 000000000000 000000000000
        2       6 5b16163a30c6 25ecb8cb8618 000000000000
@@ -320,7 +318,7 @@ Stripping and recovering changes should work
   1 files updated, 0 files merged, 0 files removed, 0 files unresolved
   saved backup bundle to $TESTTMP/repo-mixed/.hg/strip-backup/51cfd7b1e13b-78a2f3ed-backup.hg
   $ hg debugindex --dir dir1
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       4 064927a0648a 000000000000 000000000000
        1       5 25ecb8cb8618 000000000000 000000000000
 
@@ -347,7 +345,7 @@ Stripping and recovering changes should work
   saved backup bundle to $TESTTMP/repo-mixed/.hg/strip-backup/*-backup.hg (glob)
   $ hg unbundle -q .hg/strip-backup/*
   $ hg debugindex --dir dir1
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       4 064927a0648a 000000000000 000000000000
        1       5 25ecb8cb8618 000000000000 000000000000
        2       6 5b16163a30c6 25ecb8cb8618 000000000000
@@ -378,7 +376,7 @@ Pushing from treemanifest repo to an empty repo makes that a treemanifest repo
   > [experimental]
   > changegroup3=yes
   > EOF
-  $ grep treemanifest empty-repo/.hg/requires
+  $ hg debugrequires -R empty-repo | grep treemanifest
   [1]
   $ hg push -R repo -r 0 empty-repo
   pushing to empty-repo
@@ -387,13 +385,13 @@ Pushing from treemanifest repo to an empty repo makes that a treemanifest repo
   adding manifests
   adding file changes
   added 1 changesets with 2 changes to 2 files
-  $ grep treemanifest empty-repo/.hg/requires
+  $ hg debugrequires -R empty-repo | grep treemanifest
   treemanifest
 
 Pushing to an empty repo works
 
   $ hg --config experimental.treemanifest=1 init clone
-  $ grep treemanifest clone/.hg/requires
+  $ hg debugrequires -R clone | grep treemanifest
   treemanifest
   $ hg push -R repo clone
   pushing to clone
@@ -402,15 +400,9 @@ Pushing to an empty repo works
   adding manifests
   adding file changes
   added 11 changesets with 15 changes to 10 files (+3 heads)
-  $ grep treemanifest clone/.hg/requires
+  $ hg debugrequires -R clone | grep treemanifest
   treemanifest
-  $ hg -R clone verify
-  checking changesets
-  checking manifests
-  checking directory manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 11 changesets with 15 changes to 10 files
+  $ hg -R clone verify -q
 
 Create deeper repo with tree manifests.
 
@@ -572,13 +564,7 @@ Add some more changes to the deep repo
   $ hg ci -m troz
 
 Verify works
-  $ hg verify
-  checking changesets
-  checking manifests
-  checking directory manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 4 changesets with 18 changes to 8 files
+  $ hg verify -q
 
 #if repofncache
 Dirlogs are included in fncache
@@ -636,6 +622,7 @@ Verify reports missing dirlog
    b/bar/orange/fly/housefly.txt@0: in changeset but not in manifest
    b/foo/apple/bees/flower.py@0: in changeset but not in manifest
   checking files
+  not checking dirstate because of previous errors
   checked 4 changesets with 18 changes to 8 files
   6 warnings encountered! (reporevlogstore !)
   9 integrity errors encountered!
@@ -661,6 +648,7 @@ Verify reports missing dirlog entry
    (expected None)
   crosschecking files in changesets and manifests
   checking files
+  not checking dirstate because of previous errors
   checked 4 changesets with 18 changes to 8 files
   2 warnings encountered!
   8 integrity errors encountered!
@@ -669,9 +657,12 @@ Verify reports missing dirlog entry
   $ cp -R .hg/store-newcopy/. .hg/store
 
 Test cloning a treemanifest repo over http.
-  $ hg serve -p $HGPORT -d --pid-file=hg.pid --errorlog=errors.log
-  $ cat hg.pid >> $DAEMON_PIDS
   $ cd ..
+  $ hg -R deeprepo serve -p $HGPORT -d \
+  >   --pid-file=port-0-hg.pid \
+  >   --errorlog=port-0-errors.log
+  $ cat port-0-hg.pid >> $DAEMON_PIDS
+
 We can clone even with the knob turned off and we'll get a treemanifest repo.
   $ hg clone --config experimental.treemanifest=False \
   >   --config experimental.changegroup3=True \
@@ -685,9 +676,10 @@ We can clone even with the knob turned off and we'll get a treemanifest repo.
   updating to branch default
   8 files updated, 0 files merged, 0 files removed, 0 files unresolved
 No server errors.
-  $ cat deeprepo/errors.log
+  $ cat port-0-errors.log
+
 requires got updated to include treemanifest
-  $ cat deepclone/.hg/requires | grep treemanifest
+  $ hg debugrequires -R deepclone | grep treemanifest
   treemanifest
 Tree manifest revlogs exist.
   $ find deepclone/.hg/store/meta | sort
@@ -712,13 +704,7 @@ Tree manifest revlogs exist.
   deepclone/.hg/store/meta/~2e_a/00manifest.i (reporevlogstore !)
 Verify passes.
   $ cd deepclone
-  $ hg verify
-  checking changesets
-  checking manifests
-  checking directory manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 4 changesets with 18 changes to 8 files
+  $ hg verify -q
   $ cd ..
 
 #if reporevlogstore
@@ -734,12 +720,13 @@ Create clones using old repo formats to use in later tests
   new changesets 775704be6f52:523e5c631710
   updating to branch default
   8 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ cd deeprepo-basicstore
-  $ grep store .hg/requires
+  $ hg -R deeprepo-basicstore debugrequires | grep store
   [1]
-  $ hg serve -p $HGPORT1 -d --pid-file=hg.pid --errorlog=errors.log
-  $ cat hg.pid >> $DAEMON_PIDS
-  $ cd ..
+  $ hg -R deeprepo-basicstore serve -p $HGPORT1 -d \
+  >   --pid-file=port-1-hg.pid \
+  >   --errorlog=port-1-errors.log
+  $ cat port-1-hg.pid >> $DAEMON_PIDS
+
   $ hg clone --config format.usefncache=False \
   >   --config experimental.changegroup3=True \
   >   http://localhost:$HGPORT deeprepo-encodedstore
@@ -751,42 +738,24 @@ Create clones using old repo formats to use in later tests
   new changesets 775704be6f52:523e5c631710
   updating to branch default
   8 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ cd deeprepo-encodedstore
-  $ grep fncache .hg/requires
+  $ hg -R deeprepo-encodedstore debugrequires | grep fncache
   [1]
-  $ hg serve -p $HGPORT2 -d --pid-file=hg.pid --errorlog=errors.log
-  $ cat hg.pid >> $DAEMON_PIDS
-  $ cd ..
+  $ hg -R deeprepo-encodedstore serve -p $HGPORT2 -d \
+  >   --pid-file=port-2-hg.pid \
+  >   --errorlog=port-2-errors.log
+  $ cat port-2-hg.pid >> $DAEMON_PIDS
 
 Local clone with basicstore
   $ hg clone -U deeprepo-basicstore local-clone-basicstore
-  $ hg -R local-clone-basicstore verify
-  checking changesets
-  checking manifests
-  checking directory manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 4 changesets with 18 changes to 8 files
+  $ hg -R local-clone-basicstore verify -q
 
 Local clone with encodedstore
   $ hg clone -U deeprepo-encodedstore local-clone-encodedstore
-  $ hg -R local-clone-encodedstore verify
-  checking changesets
-  checking manifests
-  checking directory manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 4 changesets with 18 changes to 8 files
+  $ hg -R local-clone-encodedstore verify -q
 
 Local clone with fncachestore
   $ hg clone -U deeprepo local-clone-fncachestore
-  $ hg -R local-clone-fncachestore verify
-  checking changesets
-  checking manifests
-  checking directory manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 4 changesets with 18 changes to 8 files
+  $ hg -R local-clone-fncachestore verify -q
 
 Stream clone with basicstore
   $ hg clone --config experimental.changegroup3=True --stream -U \
@@ -794,13 +763,8 @@ Stream clone with basicstore
   streaming all changes
   28 files to transfer, * of data (glob)
   transferred * in * seconds (*) (glob)
-  $ hg -R stream-clone-basicstore verify
-  checking changesets
-  checking manifests
-  checking directory manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 4 changesets with 18 changes to 8 files
+  $ hg -R stream-clone-basicstore verify -q
+  $ cat port-1-errors.log
 
 Stream clone with encodedstore
   $ hg clone --config experimental.changegroup3=True --stream -U \
@@ -808,13 +772,8 @@ Stream clone with encodedstore
   streaming all changes
   28 files to transfer, * of data (glob)
   transferred * in * seconds (*) (glob)
-  $ hg -R stream-clone-encodedstore verify
-  checking changesets
-  checking manifests
-  checking directory manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 4 changesets with 18 changes to 8 files
+  $ hg -R stream-clone-encodedstore verify -q
+  $ cat port-2-errors.log
 
 Stream clone with fncachestore
   $ hg clone --config experimental.changegroup3=True --stream -U \
@@ -822,23 +781,16 @@ Stream clone with fncachestore
   streaming all changes
   22 files to transfer, * of data (glob)
   transferred * in * seconds (*) (glob)
-  $ hg -R stream-clone-fncachestore verify
-  checking changesets
-  checking manifests
-  checking directory manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 4 changesets with 18 changes to 8 files
+  $ hg -R stream-clone-fncachestore verify -q
+  $ cat port-0-errors.log
 
 Packed bundle
   $ hg -R deeprepo debugcreatestreamclonebundle repo-packed.hg
   writing 5330 bytes for 18 files (no-zstd !)
   writing 5400 bytes for 18 files (zstd !)
-  bundle requirements: generaldelta, revlogv1, sparserevlog, treemanifest (no-rust !)
-  bundle requirements: generaldelta, persistent-nodemap, revlogv1, sparserevlog, treemanifest (rust !)
+  bundle requirements:.* treemanifest(,.*)? (re)
   $ hg debugbundle --spec repo-packed.hg
-  none-packed1;requirements%3Dgeneraldelta%2Crevlogv1%2Csparserevlog%2Ctreemanifest (no-rust !)
-  none-packed1;requirements%3Dgeneraldelta%2Cpersistent-nodemap%2Crevlogv1%2Csparserevlog%2Ctreemanifest (rust !)
+  none-packed1;requirements%3D(.*%2C)?treemanifest(%2C.*)? (re)
 
 #endif
 
@@ -901,3 +853,52 @@ Committing a empty commit does not duplicate root treemanifest
   1:678d3574b88c
   1:678d3574b88c
   $ hg --config extensions.strip= strip -r . -q
+
+Testing repository upgrade
+--------------------------
+
+  $ for x in 1 2 3 4 5 6 7 8 9; do
+  >    echo $x > file-$x # make sure we have interresting compression
+  >    echo $x > dir/foo-$x # make sure we have interresting compression
+  >    hg add file-$x
+  >    hg add dir/foo-$x
+  > done
+  $ hg ci -m 'have some content'
+  $ f -s .hg/store/00manifest.*
+  .hg/store/00manifest.i: size=798 (no-pure !)
+  .hg/store/00manifest.i: size=784 (pure !)
+  $ f -s .hg/store/meta/dir/00manifest*
+  .hg/store/meta/dir/00manifest.i: size=556 (no-pure !)
+  .hg/store/meta/dir/00manifest.i: size=544 (pure !)
+  $ hg debugupgraderepo --config format.revlog-compression=none --config experimental.treemanifest=yes --run --quiet --no-backup
+  upgrade will perform the following actions:
+  
+  requirements
+     preserved: * (glob)
+     removed: revlog-compression-zstd (no-pure !)
+     added: exp-compression-none
+  
+  processed revlogs:
+    - all-filelogs
+    - changelog
+    - manifest
+  
+  $ hg verify
+  checking changesets
+  checking manifests
+  checking directory manifests
+  crosschecking files in changesets and manifests
+  checking files
+  checking dirstate
+  checked 4 changesets with 22 changes to 20 files
+  $ f -s .hg/store/00manifest.*
+  .hg/store/00manifest.i: size=1002
+  $ f -s .hg/store/meta/dir/00manifest*
+  .hg/store/meta/dir/00manifest.i: size=721
+  $ hg files --rev tip | wc -l
+  \s*20 (re)
+
+testing cache update warming persistent nodemaps
+------------------------------------------------
+
+  $ hg debugupdatecache

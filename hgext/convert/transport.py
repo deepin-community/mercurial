@@ -16,11 +16,13 @@
 
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see <http://www.gnu.org/licenses/>.
-from __future__ import absolute_import
 
+# pytype: disable=import-error
 import svn.client
 import svn.core
 import svn.ra
+
+# pytype: enable=import-error
 
 Pool = svn.core.Pool
 SubversionException = svn.core.SubversionException
@@ -38,7 +40,7 @@ svn_config = None
 
 def _create_auth_baton(pool):
     """Create a Subversion authentication baton."""
-    import svn.client
+    import svn.client  # pytype: disable=import-error
 
     # Give the client context baton a suite of authentication
     # providers.h
@@ -71,7 +73,7 @@ class NotBranchError(SubversionException):
     pass
 
 
-class SvnRaTransport(object):
+class SvnRaTransport:
     """
     Open an ra connection to a Subversion repository.
     """
@@ -108,7 +110,7 @@ class SvnRaTransport(object):
             self.ra = ra
             svn.ra.reparent(self.ra, self.svn_url.encode('utf8'))
 
-    class Reporter(object):
+    class Reporter:
         def __init__(self, reporter_data):
             self._reporter, self._baton = reporter_data
 

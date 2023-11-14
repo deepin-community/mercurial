@@ -8,17 +8,19 @@
 	dh $@ --with python3,bash-completion
 
 PYVERS=$(shell py3versions -vs)
-PYVER_DEFAULT=$(shell py3versions -vd)
+
 include /usr/share/dpkg/architecture.mk
 
 override_dh_python3:
 	dh_python3 --shebang=/usr/bin/python3
 
-override_dh_auto_build:
-	$(MAKE) all PYTHON=python$(PYVER_DEFAULT)
-	$(MAKE) -C contrib/chg all
+override_dh_auto_build: $(PYVERS:%=build-python%)
+	$(MAKE) build-chg
 	# Do not start a line with a word with a dot in a manpage
 	sed -i -e 's,^[.]\(hgignore\|hg/hgrc\),\\fP\1,' doc/hg.1
+
+build-python%:
+	$(MAKE) all PYTHON=python$*
 
 ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
          NJOBS := $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
@@ -43,19 +45,20 @@ ifneq ($(or $(ARCH_IS_MIPS), $(ARCH_IS_KFREEBSD-i386), $(ARCH_IS_ARMEL), $(ARCH_
 		sed -i.deb-backup -e 's/sleep 1/sleep 2/' $(CURDIR)/tests/test-pull-pull-corruption.t
 endif
 
-	http_proxy='' dh_auto_test -- PYTHON=python$(PYVER_DEFAULT) TESTFLAGS="--verbose --timeout 1440 $(PARALLEL_TEST_JOBS) --blacklist $(CURDIR)/debian/mercurial.test_blacklist"
+	http_proxy='' dh_auto_test -- PYTHON=python3 TESTFLAGS="--verbose --timeout 1800 $(PARALLEL_TEST_JOBS) --blacklist $(CURDIR)/debian/mercurial.test_blacklist"
 	file-rename 's/\.deb-backup$$//' $(CURDIR)/tests/*
 	# run blacklisted tests but ignore their results
 	-cd tests && python3 run-tests.py --verbose `grep ^test ../debian/mercurial.test_blacklist`
 endif
 
 override_dh_auto_install: $(PYVERS:%=install-python%)
+	$(MAKE) install-chg DESTDIR=$(CURDIR)/debian/tmp PREFIX=/usr PYTHON=python3
 	# #961245: mercurial-git grabbed the hgext/git directory years
 	# ago, so don't install our experimental extension there for now
 	rm -rf debian/tmp/usr/lib/python*/*-packages/hgext/git
 
 install-python%:
-	python$* setup.py install --root $(CURDIR)/debian/tmp --install-layout=deb
+	dh_auto_install -- PREFIX=/usr PYTHON=python$*
 
 execute_after_dh_install:
 	if test -d $(CURDIR)/debian/mercurial ; then \

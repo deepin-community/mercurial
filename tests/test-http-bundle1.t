@@ -45,12 +45,7 @@ clone via stream
   no changes found
   updating to branch default
   4 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ hg verify -R copy
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 4 changes to 4 files
+  $ hg verify -R copy -q
 #endif
 
 try to clone via stream, should use pull instead
@@ -70,8 +65,10 @@ try to clone via stream but missing requirements, so should use pull instead
 
   $ cat > $TESTTMP/removesupportedformat.py << EOF
   > from mercurial import localrepo
-  > def extsetup(ui):
-  >     localrepo.localrepository.supportedformats.remove(b'generaldelta')
+  > def reposetup(ui, repo):
+  >     local = repo.local()
+  >     if local is not None:
+  >         local.supported.remove(b'generaldelta')
   > EOF
 
   $ hg clone --config extensions.rsf=$TESTTMP/removesupportedformat.py --stream http://localhost:$HGPORT/ copy3
@@ -97,12 +94,7 @@ clone via pull
   new changesets 8b6053c928fe
   updating to branch default
   4 files updated, 0 files merged, 0 files removed, 0 files unresolved
-  $ hg verify -R copy-pull
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 1 changesets with 4 changes to 4 files
+  $ hg verify -R copy-pull -q
   $ cd test
   $ echo bar > bar
   $ hg commit -A -d '1 0' -m 2

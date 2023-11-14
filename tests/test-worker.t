@@ -1,7 +1,6 @@
 Test UI worker interaction
 
   $ cat > t.py <<EOF
-  > from __future__ import absolute_import, print_function
   > import sys
   > import time
   > from mercurial import (
@@ -85,13 +84,11 @@ Known exception should be caught, but printed if --traceback is enabled
   [255]
 
   $ hg --config "extensions.t=$abspath" --config 'worker.numcpus=8' \
-  > test 100000.0 abort --traceback 2>&1 | egrep '(WorkerError|Abort)'
+  > test 100000.0 abort --traceback 2>&1 | grep -E '(WorkerError|Abort)'
       raise error.Abort(b'known exception')
-  mercurial.error.Abort: known exception (py3 !)
-  Abort: known exception (no-py3 !)
+  mercurial.error.Abort: known exception
       raise error.WorkerError(status)
-  WorkerError: 255 (no-py3 !)
-  mercurial.error.WorkerError: 255 (py3 !)
+  mercurial.error.WorkerError: 255
 
 Traceback must be printed for unknown exceptions
 
@@ -102,7 +99,6 @@ Traceback must be printed for unknown exceptions
 Workers should not do cleanups in all cases
 
   $ cat > $TESTTMP/detectcleanup.py <<EOF
-  > from __future__ import absolute_import
   > import atexit
   > import os
   > import sys
@@ -136,7 +132,6 @@ Workers should not do cleanups in all cases
 Do not crash on partially read result
 
   $ cat > $TESTTMP/detecttruncated.py <<EOF
-  > from __future__ import absolute_import
   > import os
   > import sys
   > import time

@@ -28,12 +28,7 @@ Setting up test
   1 files updated, 0 files merged, 2 files removed, 0 files unresolved
   $ hg mv afile anotherfile
   $ hg commit -m "0.3m"
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 9 changesets with 7 changes to 4 files
+  $ hg verify -q
   $ cd ..
   $ hg init empty
 
@@ -70,12 +65,7 @@ Verify empty
 
   $ hg -R empty heads
   [1]
-  $ hg -R empty verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 0 changesets with 0 changes to 0 files
+  $ hg -R empty verify -q
 
 #if repobundlerepo
 
@@ -292,32 +282,56 @@ Cannot produce streaming clone bundles with "hg bundle"
 
 packed1 is produced properly
 
-#if reporevlogstore
+
+#if reporevlogstore rust
 
   $ hg -R test debugcreatestreamclonebundle packed.hg
-  writing 2664 bytes for 6 files (no-zstd !)
-  writing 2665 bytes for 6 files (zstd !)
-  bundle requirements: generaldelta, revlogv1, sparserevlog (no-rust !)
-  bundle requirements: generaldelta, persistent-nodemap, revlogv1, sparserevlog (rust !)
+  writing 2665 bytes for 6 files
+  bundle requirements: generaldelta, revlog-compression-zstd, revlogv1, sparserevlog
 
   $ f -B 64 --size --sha1 --hexdump packed.hg
-  packed.hg: size=2840, sha1=12bf3eee3eb8a04c503ce2d29b48f0135c7edff5 (no-zstd !)
-  packed.hg: size=2841, sha1=8b645a65f49b0ae43042a9f3da56d4bfdf1c7f99 (zstd no-rust !)
-  packed.hg: size=2860, sha1=81d7a2e535892cda51e82c200f818de2cca828d3 (rust !)
+  packed.hg: size=2865, sha1=353d10311f4befa195d9a1ca4b8e26518115c702
   0000: 48 47 53 31 55 4e 00 00 00 00 00 00 00 06 00 00 |HGS1UN..........|
-  0010: 00 00 00 00 0a 68 00 23 67 65 6e 65 72 61 6c 64 |.....h.#generald| (no-zstd !)
-  0020: 65 6c 74 61 2c 72 65 76 6c 6f 67 76 31 2c 73 70 |elta,revlogv1,sp| (no-zstd !)
-  0030: 61 72 73 65 72 65 76 6c 6f 67 00 64 61 74 61 2f |arserevlog.data/| (no-zstd !)
-  0010: 00 00 00 00 0a 69 00 23 67 65 6e 65 72 61 6c 64 |.....i.#generald| (zstd no-rust !)
-  0020: 65 6c 74 61 2c 72 65 76 6c 6f 67 76 31 2c 73 70 |elta,revlogv1,sp| (zstd no-rust !)
-  0030: 61 72 73 65 72 65 76 6c 6f 67 00 64 61 74 61 2f |arserevlog.data/| (zstd no-rust !)
-  0010: 00 00 00 00 0a 69 00 36 67 65 6e 65 72 61 6c 64 |.....i.6generald| (rust !)
-  0020: 65 6c 74 61 2c 70 65 72 73 69 73 74 65 6e 74 2d |elta,persistent-| (rust !)
-  0030: 6e 6f 64 65 6d 61 70 2c 72 65 76 6c 6f 67 76 31 |nodemap,revlogv1| (rust !)
-
+  0010: 00 00 00 00 0a 69 00 3b 67 65 6e 65 72 61 6c 64 |.....i.;generald|
+  0020: 65 6c 74 61 2c 72 65 76 6c 6f 67 2d 63 6f 6d 70 |elta,revlog-comp|
+  0030: 72 65 73 73 69 6f 6e 2d 7a 73 74 64 2c 72 65 76 |ression-zstd,rev|
   $ hg debugbundle --spec packed.hg
-  none-packed1;requirements%3Dgeneraldelta%2Crevlogv1%2Csparserevlog (no-rust !)
-  none-packed1;requirements%3Dgeneraldelta%2Cpersistent-nodemap%2Crevlogv1%2Csparserevlog (rust !)
+  none-packed1;requirements%3Dgeneraldelta%2Crevlog-compression-zstd%2Crevlogv1%2Csparserevlog
+#endif
+
+#if reporevlogstore no-rust zstd
+
+  $ hg -R test debugcreatestreamclonebundle packed.hg
+  writing 2665 bytes for 6 files
+  bundle requirements: generaldelta, revlog-compression-zstd, revlogv1, sparserevlog
+
+  $ f -B 64 --size --sha1 --hexdump packed.hg
+  packed.hg: size=2865, sha1=353d10311f4befa195d9a1ca4b8e26518115c702
+  0000: 48 47 53 31 55 4e 00 00 00 00 00 00 00 06 00 00 |HGS1UN..........|
+  0010: 00 00 00 00 0a 69 00 3b 67 65 6e 65 72 61 6c 64 |.....i.;generald|
+  0020: 65 6c 74 61 2c 72 65 76 6c 6f 67 2d 63 6f 6d 70 |elta,revlog-comp|
+  0030: 72 65 73 73 69 6f 6e 2d 7a 73 74 64 2c 72 65 76 |ression-zstd,rev|
+  $ hg debugbundle --spec packed.hg
+  none-packed1;requirements%3Dgeneraldelta%2Crevlog-compression-zstd%2Crevlogv1%2Csparserevlog
+#endif
+
+#if reporevlogstore no-rust no-zstd
+
+  $ hg -R test debugcreatestreamclonebundle packed.hg
+  writing 2664 bytes for 6 files
+  bundle requirements: generaldelta, revlogv1, sparserevlog
+
+  $ f -B 64 --size --sha1 --hexdump packed.hg
+  packed.hg: size=2840, sha1=12bf3eee3eb8a04c503ce2d29b48f0135c7edff5
+  0000: 48 47 53 31 55 4e 00 00 00 00 00 00 00 06 00 00 |HGS1UN..........|
+  0010: 00 00 00 00 0a 68 00 23 67 65 6e 65 72 61 6c 64 |.....h.#generald|
+  0020: 65 6c 74 61 2c 72 65 76 6c 6f 67 76 31 2c 73 70 |elta,revlogv1,sp|
+  0030: 61 72 73 65 72 65 76 6c 6f 67 00 64 61 74 61 2f |arserevlog.data/|
+  $ hg debugbundle --spec packed.hg
+  none-packed1;requirements%3Dgeneraldelta%2Crevlogv1%2Csparserevlog
+#endif
+
+#if reporevlogstore
 
 generaldelta requirement is not listed in stream clone bundles unless used
 
@@ -326,25 +340,66 @@ generaldelta requirement is not listed in stream clone bundles unless used
   $ touch foo
   $ hg -q commit -A -m initial
   $ cd ..
+
+#endif
+
+#if reporevlogstore rust
+
   $ hg -R testnongd debugcreatestreamclonebundle packednongd.hg
   writing 301 bytes for 3 files
-  bundle requirements: revlogv1 (no-rust !)
-  bundle requirements: persistent-nodemap, revlogv1 (rust !)
+  bundle requirements: revlog-compression-zstd, revlogv1
 
   $ f -B 64 --size --sha1 --hexdump packednongd.hg
-  packednongd.hg: size=383, sha1=1d9c230238edd5d38907100b729ba72b1831fe6f (no-rust !)
-  packednongd.hg: size=402, sha1=d3cc1417f0e8142cf9340aaaa520b660ad3ec3ea (rust !)
+  packednongd.hg: size=407, sha1=0b8714422b785ba8eb98c916b41ffd5fb994c9b5
   0000: 48 47 53 31 55 4e 00 00 00 00 00 00 00 03 00 00 |HGS1UN..........|
-  0010: 00 00 00 00 01 2d 00 09 72 65 76 6c 6f 67 76 31 |.....-..revlogv1| (no-rust !)
-  0020: 00 64 61 74 61 2f 66 6f 6f 2e 69 00 36 34 0a 00 |.data/foo.i.64..| (no-rust !)
-  0030: 01 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 |................| (no-rust !)
-  0010: 00 00 00 00 01 2d 00 1c 70 65 72 73 69 73 74 65 |.....-..persiste| (rust !)
-  0020: 6e 74 2d 6e 6f 64 65 6d 61 70 2c 72 65 76 6c 6f |nt-nodemap,revlo| (rust !)
-  0030: 67 76 31 00 64 61 74 61 2f 66 6f 6f 2e 69 00 36 |gv1.data/foo.i.6| (rust !)
+  0010: 00 00 00 00 01 2d 00 21 72 65 76 6c 6f 67 2d 63 |.....-.!revlog-c|
+  0020: 6f 6d 70 72 65 73 73 69 6f 6e 2d 7a 73 74 64 2c |ompression-zstd,|
+  0030: 72 65 76 6c 6f 67 76 31 00 64 61 74 61 2f 66 6f |revlogv1.data/fo|
 
   $ hg debugbundle --spec packednongd.hg
-  none-packed1;requirements%3Drevlogv1 (no-rust !)
-  none-packed1;requirements%3Dpersistent-nodemap%2Crevlogv1 (rust !)
+  none-packed1;requirements%3Drevlog-compression-zstd%2Crevlogv1
+
+#endif
+
+#if reporevlogstore no-rust zstd
+
+  $ hg -R testnongd debugcreatestreamclonebundle packednongd.hg
+  writing 301 bytes for 3 files
+  bundle requirements: revlog-compression-zstd, revlogv1
+
+  $ f -B 64 --size --sha1 --hexdump packednongd.hg
+  packednongd.hg: size=407, sha1=0b8714422b785ba8eb98c916b41ffd5fb994c9b5
+  0000: 48 47 53 31 55 4e 00 00 00 00 00 00 00 03 00 00 |HGS1UN..........|
+  0010: 00 00 00 00 01 2d 00 21 72 65 76 6c 6f 67 2d 63 |.....-.!revlog-c|
+  0020: 6f 6d 70 72 65 73 73 69 6f 6e 2d 7a 73 74 64 2c |ompression-zstd,|
+  0030: 72 65 76 6c 6f 67 76 31 00 64 61 74 61 2f 66 6f |revlogv1.data/fo|
+
+  $ hg debugbundle --spec packednongd.hg
+  none-packed1;requirements%3Drevlog-compression-zstd%2Crevlogv1
+
+
+#endif
+
+#if reporevlogstore no-rust no-zstd
+
+  $ hg -R testnongd debugcreatestreamclonebundle packednongd.hg
+  writing 301 bytes for 3 files
+  bundle requirements: revlogv1
+
+  $ f -B 64 --size --sha1 --hexdump packednongd.hg
+  packednongd.hg: size=383, sha1=1d9c230238edd5d38907100b729ba72b1831fe6f
+  0000: 48 47 53 31 55 4e 00 00 00 00 00 00 00 03 00 00 |HGS1UN..........|
+  0010: 00 00 00 00 01 2d 00 09 72 65 76 6c 6f 67 76 31 |.....-..revlogv1|
+  0020: 00 64 61 74 61 2f 66 6f 6f 2e 69 00 36 34 0a 00 |.data/foo.i.64..|
+  0030: 01 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 |................|
+
+  $ hg debugbundle --spec packednongd.hg
+  none-packed1;requirements%3Drevlogv1
+
+
+#endif
+
+#if reporevlogstore
 
 Warning emitted when packed bundles contain secret changesets
 
@@ -355,11 +410,36 @@ Warning emitted when packed bundles contain secret changesets
   $ hg phase --force --secret -r .
   $ cd ..
 
+#endif
+
+#if reporevlogstore rust
+
   $ hg -R testsecret debugcreatestreamclonebundle packedsecret.hg
   (warning: stream clone bundle will contain secret revisions)
   writing 301 bytes for 3 files
-  bundle requirements: generaldelta, revlogv1, sparserevlog (no-rust !)
-  bundle requirements: generaldelta, persistent-nodemap, revlogv1, sparserevlog (rust !)
+  bundle requirements: generaldelta, revlog-compression-zstd, revlogv1, sparserevlog
+
+#endif
+
+#if reporevlogstore no-rust zstd
+
+  $ hg -R testsecret debugcreatestreamclonebundle packedsecret.hg
+  (warning: stream clone bundle will contain secret revisions)
+  writing 301 bytes for 3 files
+  bundle requirements: generaldelta, revlog-compression-zstd, revlogv1, sparserevlog
+
+#endif
+
+#if reporevlogstore no-rust no-zstd
+
+  $ hg -R testsecret debugcreatestreamclonebundle packedsecret.hg
+  (warning: stream clone bundle will contain secret revisions)
+  writing 301 bytes for 3 files
+  bundle requirements: generaldelta, revlogv1, sparserevlog
+
+#endif
+
+#if reporevlogstore
 
 Unpacking packed1 bundles with "hg unbundle" isn't allowed
 
@@ -376,7 +456,6 @@ packed1 can be consumed from debug command
 transaction)
 
   $ cat > $TESTTMP/showtip.py <<EOF
-  > from __future__ import absolute_import
   > 
   > def showtip(ui, repo, hooktype, **kwargs):
   >     ui.warn(b'%s: %s\n' % (hooktype, repo[b'tip'].hex()[:12]))
@@ -629,7 +708,7 @@ Unbundle incremental bundles into fresh empty in one go
   $ hg init empty
   $ hg -R test bundle --base null -r 0 ../0.hg
   1 changesets found
-  $ hg -R test bundle --base 0    -r 1 ../1.hg
+  $ hg -R test bundle --exact -r 1 ../1.hg
   1 changesets found
   $ hg -R empty unbundle -u ../0.hg ../1.hg
   adding changesets
@@ -716,7 +795,7 @@ test bundle with # in the filename (issue2154):
   $ hg incoming '../test#bundle.hg'
   comparing with ../test
   abort: unknown revision 'bundle.hg'
-  [255]
+  [10]
 
 note that percent encoding is not handled:
 
@@ -764,12 +843,7 @@ full history bundle, refuses to verify non-local repo
 
 but, regular verify must continue to work
 
-  $ hg -R orig verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 2 changesets with 2 changes to 2 files
+  $ hg -R orig verify -q
 
 #if repobundlerepo
 diff against bundle
@@ -850,12 +924,7 @@ bundle single branch
 
   $ hg clone -q -r0 . part2
   $ hg -q -R part2 pull bundle.hg
-  $ hg -R part2 verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 5 changes to 4 files
+  $ hg -R part2 verify -q
 #endif
 
 == Test bundling no commits
@@ -949,3 +1018,90 @@ Test the option that create slim bundle
 Test the option that create and no-delta's bundle
   $ hg bundle -a --config devel.bundle.delta=full ./full.hg
   3 changesets found
+
+
+Test the debug statistic when building a bundle
+-----------------------------------------------
+
+  $ hg bundle -a ./default.hg --config debug.bundling-stats=yes
+  3 changesets found
+  DEBUG-BUNDLING: revisions:                9
+  DEBUG-BUNDLING:   changelog:              3
+  DEBUG-BUNDLING:   manifest:               3
+  DEBUG-BUNDLING:   files:                  3 (for 3 revlogs)
+  DEBUG-BUNDLING: deltas:
+  DEBUG-BUNDLING:   from-storage:           2 (100% of available 2)
+  DEBUG-BUNDLING:   computed:               7
+  DEBUG-BUNDLING:     full:                 7 (100% of native 7)
+  DEBUG-BUNDLING:       changelog:          3 (100% of native 3)
+  DEBUG-BUNDLING:       manifests:          1 (100% of native 1)
+  DEBUG-BUNDLING:       files:              3 (100% of native 3)
+
+Test the debug output when applying delta
+-----------------------------------------
+
+  $ hg init foo
+  $ hg -R foo unbundle ./slim.hg \
+  > --config debug.revlog.debug-delta=yes \
+  > --config storage.revlog.reuse-external-delta=no \
+  > --config storage.revlog.reuse-external-delta-parent=no
+  adding changesets
+  DBG-DELTAS: CHANGELOG:   rev=0: delta-base=0 is-cached=1 - search-rounds=0 try-count=0 - delta-type=full   snap-depth=0 - p1-chain-length=-1 p2-chain-length=-1 - duration=* (glob)
+  DBG-DELTAS: CHANGELOG:   rev=1: delta-base=1 is-cached=1 - search-rounds=0 try-count=0 - delta-type=full   snap-depth=0 - p1-chain-length=0 p2-chain-length=-1 - duration=* (glob)
+  DBG-DELTAS: CHANGELOG:   rev=2: delta-base=2 is-cached=1 - search-rounds=0 try-count=0 - delta-type=full   snap-depth=0 - p1-chain-length=0 p2-chain-length=-1 - duration=* (glob)
+  adding manifests
+  DBG-DELTAS: MANIFESTLOG: rev=0: delta-base=0 is-cached=1 - search-rounds=0 try-count=0 - delta-type=full   snap-depth=0 - p1-chain-length=-1 p2-chain-length=-1 - duration=* (glob)
+  DBG-DELTAS: MANIFESTLOG: rev=1: delta-base=0 is-cached=1 - search-rounds=1 try-count=1 - delta-type=delta  snap-depth=0 - p1-chain-length=0 p2-chain-length=-1 - duration=* (glob)
+  DBG-DELTAS: MANIFESTLOG: rev=2: delta-base=1 is-cached=1 - search-rounds=1 try-count=1 - delta-type=delta  snap-depth=0 - p1-chain-length=1 p2-chain-length=-1 - duration=* (glob)
+  adding file changes
+  DBG-DELTAS: FILELOG:a:   rev=0: delta-base=0 is-cached=1 - search-rounds=0 try-count=0 - delta-type=full   snap-depth=0 - p1-chain-length=-1 p2-chain-length=-1 - duration=* (glob)
+  DBG-DELTAS: FILELOG:b:   rev=0: delta-base=0 is-cached=1 - search-rounds=0 try-count=0 - delta-type=full   snap-depth=0 - p1-chain-length=-1 p2-chain-length=-1 - duration=* (glob)
+  DBG-DELTAS: FILELOG:c:   rev=0: delta-base=0 is-cached=1 - search-rounds=0 try-count=0 - delta-type=full   snap-depth=0 - p1-chain-length=-1 p2-chain-length=-1 - duration=* (glob)
+  added 3 changesets with 3 changes to 3 files
+  new changesets 4fe08cd4693e:4652c276ac4f (3 drafts)
+  (run 'hg update' to get a working copy)
+
+
+Test the debug statistic when applying a bundle
+-----------------------------------------------
+
+  $ hg init bar
+  $ hg -R bar unbundle ./default.hg  --config debug.unbundling-stats=yes
+  adding changesets
+  adding manifests
+  adding file changes
+  DEBUG-UNBUNDLING: revisions:                9
+  DEBUG-UNBUNDLING:   changelog:              3             ( 33%)
+  DEBUG-UNBUNDLING:   manifests:              3             ( 33%)
+  DEBUG-UNBUNDLING:   files:                  3             ( 33%)
+  DEBUG-UNBUNDLING: total-time:      ?????????????? seconds (glob)
+  DEBUG-UNBUNDLING:   changelog:     ?????????????? seconds (???%) (glob)
+  DEBUG-UNBUNDLING:   manifests:     ?????????????? seconds (???%) (glob)
+  DEBUG-UNBUNDLING:   files:         ?????????????? seconds (???%) (glob)
+  DEBUG-UNBUNDLING: type-count:
+  DEBUG-UNBUNDLING:   changelog:
+  DEBUG-UNBUNDLING:     full:                 3
+  DEBUG-UNBUNDLING:       cached:             3             (100%)
+  DEBUG-UNBUNDLING:   manifests:
+  DEBUG-UNBUNDLING:     full:                 1
+  DEBUG-UNBUNDLING:       cached:             1             (100%)
+  DEBUG-UNBUNDLING:     delta:                2
+  DEBUG-UNBUNDLING:       cached:             2             (100%)
+  DEBUG-UNBUNDLING:   files:
+  DEBUG-UNBUNDLING:     full:                 3
+  DEBUG-UNBUNDLING:       cached:             3             (100%)
+  DEBUG-UNBUNDLING: type-time:
+  DEBUG-UNBUNDLING:   changelog:
+  DEBUG-UNBUNDLING:     full:        ?????????????? seconds (???% of total) (glob)
+  DEBUG-UNBUNDLING:       cached:    ?????????????? seconds (???% of total) (glob)
+  DEBUG-UNBUNDLING:   manifests:
+  DEBUG-UNBUNDLING:     full:        ?????????????? seconds (???% of total) (glob)
+  DEBUG-UNBUNDLING:       cached:    ?????????????? seconds (???% of total) (glob)
+  DEBUG-UNBUNDLING:     delta:       ?????????????? seconds (???% of total) (glob)
+  DEBUG-UNBUNDLING:       cached:    ?????????????? seconds (???% of total) (glob)
+  DEBUG-UNBUNDLING:   files:
+  DEBUG-UNBUNDLING:     full:        ?????????????? seconds (???% of total) (glob)
+  DEBUG-UNBUNDLING:       cached:    ?????????????? seconds (???% of total) (glob)
+  added 3 changesets with 3 changes to 3 files
+  new changesets 4fe08cd4693e:4652c276ac4f (3 drafts)
+  (run 'hg update' to get a working copy)

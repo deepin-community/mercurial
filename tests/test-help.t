@@ -165,6 +165,7 @@ the extension is unknown.
    hgweb         Configuring hgweb
    merge-tools   Merge Tools
    pager         Pager Support
+   rust          Rust in Mercurial
   
   Concepts:
   
@@ -295,6 +296,7 @@ the extension is unknown.
    hgweb         Configuring hgweb
    merge-tools   Merge Tools
    pager         Pager Support
+   rust          Rust in Mercurial
   
   Concepts:
   
@@ -642,7 +644,8 @@ Test command without options
       Note:
          'hg diff' may generate unexpected results for merges, as it will
          default to comparing against the working directory's first parent
-         changeset if no revisions are specified.
+         changeset if no revisions are specified.  To diff against the conflict
+         regions, you can use '--config diff.merge=yes'.
   
       By default, the working directory files are compared to its first parent.
       To see the differences from another revision, use --from. To see the
@@ -796,7 +799,7 @@ Disabled extension gets suggested
 
 Checking that help adapts based on the config:
 
-  $ hg help diff --config ui.tweakdefaults=true | egrep -e '^ *(-g|config)'
+  $ hg help diff --config ui.tweakdefaults=true | grep -E -e '^ *(-g|config)'
    -g --[no-]git            use git extended diff format (default: on from
                             config)
 
@@ -975,9 +978,20 @@ Test list of internal help commands
   $ hg help debug
   debug commands (internal and unsupported):
   
+   debug-delta-find
+                 display the computation to get to a valid delta for storing REV
    debug-repair-issue6528
                  find affected revisions and repair them. See issue6528 for more
                  details.
+   debug-revlog-index
+                 dump index data for a revlog
+   debug-revlog-stats
+                 display statistics about revlogs in the store
+   debug::stable-tail-sort
+                 display the stable-tail sort of the ancestors of a given node
+   debug::stable-tail-sort-leaps
+                 display the leaps in the stable-tail sort of a node, one per
+                 line
    debugancestor
                  find the ancestor revision of two revisions in a given index
    debugantivirusrunning
@@ -1026,7 +1040,6 @@ Test list of internal help commands
                  retrieves a bundle from a repo
    debugignore   display the combined ignore pattern and information about
                  ignored files
-   debugindex    dump index data for a storage primitive
    debugindexdot
                  dump an index DAG as a graphviz dot file
    debugindexstats
@@ -1121,6 +1134,7 @@ internals topic renders index of available sub-topics
        censor        Censor
        changegroups  Changegroups
        config        Config Registrar
+       dirstate-v2   dirstate-v2 file format
        extensions    Extension API
        mergestate    Mergestate
        requirements  Repository Requirements
@@ -1516,26 +1530,38 @@ Test section name with dot
       "commands.update.check"
           Determines what level of checking 'hg update' will perform before
           moving to a destination revision. Valid values are "abort", "none",
-          "linear", and "noconflict". "abort" always fails if the working
-          directory has uncommitted changes. "none" performs no checking, and
-          may result in a merge with uncommitted changes. "linear" allows any
-          update as long as it follows a straight line in the revision history,
-          and may trigger a merge with uncommitted changes. "noconflict" will
-          allow any update which would not trigger a merge with uncommitted
-          changes, if any are present. (default: "linear")
+          "linear", and "noconflict".
+  
+          - "abort" always fails if the working directory has uncommitted
+            changes.
+          - "none" performs no checking, and may result in a merge with
+            uncommitted changes.
+          - "linear" allows any update as long as it follows a straight line in
+            the revision history, and may trigger a merge with uncommitted
+            changes.
+          - "noconflict" will allow any update which would not trigger a merge
+            with uncommitted changes, if any are present.
+  
+          (default: "linear")
   
 
   $ hg help config.commands.update.check
       "commands.update.check"
           Determines what level of checking 'hg update' will perform before
           moving to a destination revision. Valid values are "abort", "none",
-          "linear", and "noconflict". "abort" always fails if the working
-          directory has uncommitted changes. "none" performs no checking, and
-          may result in a merge with uncommitted changes. "linear" allows any
-          update as long as it follows a straight line in the revision history,
-          and may trigger a merge with uncommitted changes. "noconflict" will
-          allow any update which would not trigger a merge with uncommitted
-          changes, if any are present. (default: "linear")
+          "linear", and "noconflict".
+  
+          - "abort" always fails if the working directory has uncommitted
+            changes.
+          - "none" performs no checking, and may result in a merge with
+            uncommitted changes.
+          - "linear" allows any update as long as it follows a straight line in
+            the revision history, and may trigger a merge with uncommitted
+            changes.
+          - "noconflict" will allow any update which would not trigger a merge
+            with uncommitted changes, if any are present.
+  
+          (default: "linear")
   
 
   $ hg help config.ommands.update.check
@@ -1559,7 +1585,7 @@ Help subsection:
 Show nested definitions
 ("profiling.type"[break]"ls"[break]"stat"[break])
 
-  $ hg help config.type | egrep '^$'|wc -l
+  $ hg help config.type | grep -E '^$'|wc -l
   \s*3 (re)
 
   $ hg help config.profiling.type.ls
@@ -1572,7 +1598,7 @@ Show nested definitions
 
 Separate sections from subsections
 
-  $ hg help config.format | egrep '^    ("|-)|^\s*$' | uniq
+  $ hg help config.format | grep -E '^    ("|-)|^\s*$' | uniq
       "format"
       --------
   
@@ -1582,9 +1608,25 @@ Separate sections from subsections
   
       "usefncache"
   
+      "use-dirstate-v2"
+  
+      "use-dirstate-v2.automatic-upgrade-of-mismatching-repositories"
+  
+      "use-dirstate-v2.automatic-upgrade-of-mismatching-repositories:quiet"
+  
+      "use-dirstate-tracked-hint"
+  
+      "use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories"
+  
+      "use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories:quiet"
+  
       "use-persistent-nodemap"
   
       "use-share-safe"
+  
+      "use-share-safe.automatic-upgrade-of-mismatching-repositories"
+  
+      "use-share-safe.automatic-upgrade-of-mismatching-repositories:quiet"
   
       "usestore"
   
@@ -1618,7 +1660,7 @@ note to use help -c for general hg help config:
 
 Test templating help
 
-  $ hg help templating | egrep '(desc|diffstat|firstline|nonempty)  '
+  $ hg help templating | grep -E '(desc|diffstat|firstline|nonempty)  '
       desc          String. The text of the changeset description.
       diffstat      String. Statistics of changes with the following format:
       firstline     Any text. Returns the first line of text.
@@ -1659,12 +1701,12 @@ Test help hooks
 
 help -c should only show debug --debug
 
-  $ hg help -c --debug|egrep debug|wc -l|egrep '^\s*0\s*$'
+  $ hg help -c --debug|grep -E debug|wc -l|grep -E '^\s*0\s*$'
   [1]
 
 help -c should only show deprecated for -v
 
-  $ hg help -c -v|egrep DEPRECATED|wc -l|egrep '^\s*0\s*$'
+  $ hg help -c -v|grep -E DEPRECATED|wc -l|grep -E '^\s*0\s*$'
   [1]
 
 Test -s / --system
@@ -1678,11 +1720,11 @@ Test -s / --system
 
 Test -e / -c / -k combinations
 
-  $ hg help -c|egrep '^[A-Z].*:|^ debug'
+  $ hg help -c|grep -E '^[A-Z].*:|^ debug'
   Commands:
-  $ hg help -e|egrep '^[A-Z].*:|^ debug'
+  $ hg help -e|grep -E '^[A-Z].*:|^ debug'
   Extensions:
-  $ hg help -k|egrep '^[A-Z].*:|^ debug'
+  $ hg help -k|grep -E '^[A-Z].*:|^ debug'
   Topics:
   Commands:
   Extensions:
@@ -1693,11 +1735,11 @@ Test -e / -c / -k combinations
   [10]
   $ hg help -e schemes |head -1
   schemes extension - extend schemes with shortcuts to repository swarms
-  $ hg help -c -k dates |egrep '^(Topics|Extensions|Commands):'
+  $ hg help -c -k dates |grep -E '^(Topics|Extensions|Commands):'
   Commands:
-  $ hg help -e -k a |egrep '^(Topics|Extensions|Commands):'
+  $ hg help -e -k a |grep -E '^(Topics|Extensions|Commands):'
   Extensions:
-  $ hg help -e -c -k date |egrep '^(Topics|Extensions|Commands):'
+  $ hg help -e -c -k date |grep -E '^(Topics|Extensions|Commands):'
   Extensions:
   Commands:
   $ hg help -c commit > /dev/null
@@ -1743,7 +1785,10 @@ Test keyword search help
   
   Extension Commands:
   
-   qclone clone main and patch repository at same time
+   admin::clone-bundles-clear   remove existing clone bundle caches
+   admin::clone-bundles-refresh generate clone bundles according to the
+                                configuration
+   qclone                       clone main and patch repository at same time
 
 Test unfound topic
 
@@ -1773,7 +1818,6 @@ Test omit indicating for help
   > 
   > This paragraph is never omitted, too (for extension)
   > '''
-  > from __future__ import absolute_import
   > from mercurial import commands, help
   > testtopic = br"""This paragraph is never omitted (for topic).
   > 
@@ -1899,6 +1943,17 @@ Test section lookup
          Revsets specifying bookmarks will not result in the bookmark being
          pushed.
   
+      "bookmarks.mode"
+        How bookmark will be dealt during the exchange. It support the following
+        value
+  
+        - "default": the default behavior, local and remote bookmarks are
+          "merged" on push/pull.
+        - "mirror": when pulling, replace local bookmarks by remote bookmarks.
+          This is useful to replicate a repository, or as an optimization.
+        - "ignore": ignore bookmarks during exchange. (This currently only
+          affect pulling)
+  
       The following special named paths exist:
   
       "default"
@@ -1941,7 +1996,7 @@ such str.lower().
 
   $ "$PYTHON" <<EOF
   > def escape(s):
-  >     return b''.join(b'\\u%x' % ord(uc) for uc in s.decode('cp932'))
+  >     return b''.join(br'\\u%x' % ord(uc) for uc in s.decode('cp932'))
   > # translation of "record" in ja_JP.cp932
   > upper = b"\x8bL\x98^"
   > # str.lower()-ed section name should be treated as different one
@@ -2125,8 +2180,11 @@ Test dynamic list of merge tools only shows up once
   
       ":union"
         Uses the internal non-interactive simple merge algorithm for merging
-        files. It will use both left and right sides for conflict regions. No
-        markers are inserted.
+        files. It will use both local and other sides for conflict regions by
+        adding local on top of other. No markers are inserted.
+  
+      ":union-other-first"
+        Like :union, but add other on top of local.
   
       Internal tools are always available and do not require a GUI but will by
       default not handle symlinks or binary files. See next section for detail
@@ -2399,6 +2457,13 @@ Dish up an empty repo; serve it cold.
   </a>
   </td><td>
   Specifying Revisions
+  </td></tr>
+  <tr><td>
+  <a href="/help/rust">
+  rust
+  </a>
+  </td><td>
+  Rust in Mercurial
   </td></tr>
   <tr><td>
   <a href="/help/scripting">
@@ -3564,6 +3629,13 @@ Sub-topic indexes rendered properly
   </a>
   </td><td>
   Config Registrar
+  </td></tr>
+  <tr><td>
+  <a href="/help/internals.dirstate-v2">
+  dirstate-v2
+  </a>
+  </td><td>
+  dirstate-v2 file format
   </td></tr>
   <tr><td>
   <a href="/help/internals.extensions">

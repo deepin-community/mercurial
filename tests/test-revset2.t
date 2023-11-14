@@ -320,7 +320,7 @@ test unknown revision in `_list`
 
   $ log '0|unknown'
   abort: unknown revision 'unknown'
-  [255]
+  [10]
 
 test integer range in `_list`
 
@@ -330,11 +330,11 @@ test integer range in `_list`
 
   $ log '-10|-11'
   abort: unknown revision '-11'
-  [255]
+  [10]
 
   $ log '9|10'
   abort: unknown revision '10'
-  [255]
+  [10]
 
 test '0000' != '0' in `_list`
 
@@ -590,7 +590,7 @@ we can use patterns when searching for tags
 
   $ log 'tag("1..*")'
   abort: tag '1..*' does not exist
-  [255]
+  [10]
   $ log 'tag("re:1..*")'
   6
   $ log 'tag("re:[0-9].[0-9]")'
@@ -601,16 +601,16 @@ we can use patterns when searching for tags
 
   $ log 'tag(unknown)'
   abort: tag 'unknown' does not exist
-  [255]
+  [10]
   $ log 'tag("re:unknown")'
   $ log 'present(tag("unknown"))'
   $ log 'present(tag("re:unknown"))'
   $ log 'branch(unknown)'
   abort: unknown revision 'unknown'
-  [255]
+  [10]
   $ log 'branch("literal:unknown")'
   abort: branch 'unknown' does not exist
-  [255]
+  [10]
   $ log 'branch("re:unknown")'
   $ log 'present(branch("unknown"))'
   $ log 'present(branch("re:unknown"))'
@@ -666,7 +666,7 @@ matching() should preserve the order of the input set:
 
   $ log 'named("unknown")'
   abort: namespace 'unknown' does not exist
-  [255]
+  [10]
   $ log 'named("re:unknown")'
   $ log 'present(named("unknown"))'
   $ log 'present(named("re:unknown"))'
@@ -759,7 +759,7 @@ parentrevspec
 
   $ log 'branchpoint()~-1'
   abort: revision in set has more than one child
-  [255]
+  [10]
 
 Bogus function gets suggestions
   $ log 'add()'
@@ -840,7 +840,7 @@ test usage in revpair (with "+")
 
   $ hg diff -r 'author("babar") or author("celeste")'
   abort: empty revision range
-  [255]
+  [10]
 
 aliases:
 
@@ -870,7 +870,7 @@ aliases:
   $ try m
   (symbol 'm')
   abort: unknown revision 'm'
-  [255]
+  [10]
 
   $ HGPLAINEXCEPT=revsetalias
   $ export HGPLAINEXCEPT
@@ -1061,7 +1061,7 @@ far away.
       (symbol 'max')
       (string '$1')))
   abort: unknown revision '$1'
-  [255]
+  [10]
 
 test scope of alias expansion: 'universe' is expanded prior to 'shadowall(0)',
 but 'all()' should never be substituted to '0()'.
@@ -1481,6 +1481,20 @@ prepare repository that has "default" branches of multiple roots
   $ hg init namedbranch
   $ cd namedbranch
 
+  $ log 'roots(.)'
+  -1
+  $ log 'roots(. or wdir())'
+  -1
+  $ log 'roots(wdir())'
+  2147483647
+  $ log 'sort(., -topo)'
+  -1
+  $ log 'sort(. or wdir(), -topo)'
+  -1
+  2147483647
+  $ log 'sort(wdir(), -topo)'
+  2147483647
+
   $ echo default0 >> a
   $ hg ci -Aqm0
   $ echo default1 >> a
@@ -1497,6 +1511,17 @@ prepare repository that has "default" branches of multiple roots
   $ hg ci -Aqm4
   $ echo default5 >> a
   $ hg ci -m5
+
+  $ log 'roots(. or wdir())'
+  5
+  $ log 'roots(wdir())'
+  2147483647
+  $ log 'sort(. or wdir() or .^, -topo)'
+  4
+  5
+  2147483647
+  $ log 'sort(wdir(), -topo)'
+  2147483647
 
 "null" revision belongs to "default" branch (issue4683)
 
@@ -1601,7 +1626,7 @@ loading it
   > EOF
 
   $ hg debugrevspec "custom1()"
-  *** failed to import extension custompredicate from $TESTTMP/custompredicate.py: intentional failure of loading extension
+  *** failed to import extension "custompredicate" from $TESTTMP/custompredicate.py: intentional failure of loading extension
   hg: parse error: unknown identifier: custom1
   [10]
 

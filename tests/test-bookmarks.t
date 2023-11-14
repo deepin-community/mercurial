@@ -185,22 +185,22 @@ but "literal:." is not since "." seems not a literal bookmark:
 
   $ hg log -r 'bookmark("literal:.")'
   abort: bookmark '.' does not exist
-  [255]
+  [10]
 
 "." should fail if there's no active bookmark:
 
   $ hg bookmark --inactive
   $ hg log -r 'bookmark(.)'
   abort: no active bookmark
-  [255]
+  [10]
   $ hg log -r 'present(bookmark(.))'
 
   $ hg log -r 'bookmark(unknown)'
   abort: bookmark 'unknown' does not exist
-  [255]
+  [10]
   $ hg log -r 'bookmark("literal:unknown")'
   abort: bookmark 'unknown' does not exist
-  [255]
+  [10]
   $ hg log -r 'bookmark("re:unknown")'
   $ hg log -r 'present(bookmark("literal:unknown"))'
   $ hg log -r 'present(bookmark("re:unknown"))'
@@ -278,7 +278,7 @@ rename bookmark using . with no active bookmark
   $ hg book -i rename-me
   $ hg book -m . renamed
   abort: no active bookmark
-  [255]
+  [10]
   $ hg up -q Y
   $ hg book -d rename-me
 
@@ -298,7 +298,7 @@ delete bookmark using . with no active bookmark
   $ hg book -i delete-me
   $ hg book -d .
   abort: no active bookmark
-  [255]
+  [10]
   $ hg up -q Y
   $ hg book -d delete-me
 
@@ -575,8 +575,9 @@ test rollback
 
   $ echo foo > f1
   $ hg bookmark tmp-rollback
-  $ hg ci -Amr
+  $ hg add .
   adding f1
+  $ hg ci -mr
   $ hg bookmarks
      X2                        1:925d80f479bb
      Y                         2:db815d6d32e6
@@ -1069,7 +1070,6 @@ ensure changelog is written before bookmarks
   $ echo a > a
 
   $ cat > $TESTTMP/pausefinalize.py <<EOF
-  > from __future__ import absolute_import
   > import os
   > import time
   > from mercurial import extensions, localrepo
@@ -1126,8 +1126,6 @@ repositories visible to an external hook.
   $ hg add a
   $ hg commit -m '#0'
   $ hg --config hooks.pretxnclose="sh $TESTTMP/savepending.sh" bookmarks INVISIBLE
-  transaction abort!
-  rollback completed
   abort: pretxnclose hook exited with status 1
   [40]
   $ cp .hg/bookmarks.pending.saved .hg/bookmarks.pending
@@ -1159,8 +1157,6 @@ repositories visible to an external hook.
      x  y                      2:db815d6d32e6
   @unrelated
   no bookmarks set
-  transaction abort!
-  rollback completed
   abort: pretxnclose hook exited with status 1
   [40]
 
@@ -1243,8 +1239,6 @@ add hooks:
 attempt to create on a default changeset
 
   $ hg bookmark -r 81dcce76aa0b NEW
-  transaction abort!
-  rollback completed
   abort: pretxnclose-bookmark.force-public hook exited with status 1
   [40]
 
@@ -1255,7 +1249,5 @@ create on a public changeset
 move to the other branch
 
   $ hg bookmark -f -r 125c9a1d6df6 NEW
-  transaction abort!
-  rollback completed
   abort: pretxnclose-bookmark.force-forward hook exited with status 1
   [40]

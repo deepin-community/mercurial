@@ -1,0 +1,15 @@
+---
+ tests/test-clone-stream.t |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/tests/test-clone-stream.t
++++ b/tests/test-clone-stream.t
+@@ -572,7 +572,7 @@ Clone with background file closing enabl
+   bundle2-input-part: total payload size 120079 (no-zstd !)
+   transferred 98.9 KB in * seconds (* */sec) (glob) (zstd !)
+   bundle2-input-part: total payload size 117240 (zstd no-bigendian !)
+-  bundle2-input-part: total payload size 116138 (zstd bigendian !)
++  bundle2-input-part: total payload size 117235 (zstd bigendian !)
+   bundle2-input-part: "listkeys" (params: 1 mandatory) supported
+   bundle2-input-bundle: 2 parts total
+   checking for updated bookmarks

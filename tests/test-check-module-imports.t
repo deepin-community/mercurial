@@ -1,4 +1,4 @@
-#require test-repo
+#require test-repo hg10
 
   $ . "$TESTDIR/helpers-testrepo.sh"
   $ import_checker="$TESTDIR"/../contrib/import-checker.py
@@ -41,4 +41,5 @@ will likely receive warnings about a direct import.
   > -X tests/test-demandimport.py \
   > -X tests/test-imports-checker.t \
   > -X tests/test-verify-repo-operations.py \
+  > -X tests/test-extension.t \
   > | sed 's-\\-/-g' | "$PYTHON" "$import_checker" -

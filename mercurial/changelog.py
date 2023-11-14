@@ -5,7 +5,6 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
 from .i18n import _
 from .node import (
@@ -92,7 +91,7 @@ def stripdesc(desc):
     return b'\n'.join([l.rstrip() for l in desc.splitlines()]).strip(b'\n')
 
 
-class appender(object):
+class appender:
     """the changelog index must be updated last on disk, so we use this class
     to delay writes to it"""
 
@@ -162,7 +161,7 @@ class appender(object):
         return self.fp.__exit__(*args)
 
 
-class _divertopener(object):
+class _divertopener:
     def __init__(self, opener, target):
         self._opener = opener
         self._target = target
@@ -189,7 +188,7 @@ def _delayopener(opener, target, buf):
 
 
 @attr.s
-class _changelogrevision(object):
+class _changelogrevision:
     # Extensions might modify _defaultextra, so let the constructor below pass
     # it in
     extra = attr.ib()
@@ -205,7 +204,7 @@ class _changelogrevision(object):
     branchinfo = attr.ib(default=(_defaultextra[b'branch'], False))
 
 
-class changelogrevision(object):
+class changelogrevision:
     """Holds results of a parsed changelog revision.
 
     Changelog revisions consist of multiple pieces of data, including
@@ -482,7 +481,7 @@ class changelog(revlog.revlog):
             self._delaybuf = None
         self._divert = False
         # split when we're done
-        self._enforceinlinesize(tr)
+        self._enforceinlinesize(tr, side_write=False)
 
     def _writepending(self, tr):
         """create a file containing the unfinalized state for
@@ -513,9 +512,9 @@ class changelog(revlog.revlog):
 
         return False
 
-    def _enforceinlinesize(self, tr):
+    def _enforceinlinesize(self, tr, side_write=True):
         if not self._delayed:
-            revlog.revlog._enforceinlinesize(self, tr)
+            revlog.revlog._enforceinlinesize(self, tr, side_write=side_write)
 
     def read(self, nodeorrev):
         """Obtain data from a parsed changelog revision.

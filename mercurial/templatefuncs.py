@@ -5,8 +5,8 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
+import binascii
 import re
 
 from .i18n import _
@@ -50,8 +50,8 @@ templatefunc = registrar.templatefunc(funcs)
 
 @templatefunc(b'date(date[, fmt])')
 def date(context, mapping, args):
-    """Format a date. See :hg:`help dates` for formatting
-    strings. The default is a Unix date format, including the timezone:
+    """Format a date. The format string uses the Python strftime format.
+    The default is a Unix date format, including the timezone:
     "Mon Sep 04 15:13:13 2006 0700"."""
     if not (1 <= len(args) <= 2):
         # i18n: "date" is a keyword
@@ -89,7 +89,7 @@ def dict_(context, mapping, args):
 
     data.update(
         (k, evalfuncarg(context, mapping, v))
-        for k, v in pycompat.iteritems(args[b'kwargs'])
+        for k, v in args[b'kwargs'].items()
     )
     return templateutil.hybriddict(data)
 
@@ -770,7 +770,7 @@ def shortest(context, mapping, args):
     elif len(hexnode) == hexnodelen:
         try:
             node = bin(hexnode)
-        except TypeError:
+        except binascii.Error:
             return hexnode
     else:
         try:
@@ -911,7 +911,7 @@ def word(context, mapping, args):
 
 def loadfunction(ui, extname, registrarobj):
     """Load template function from specified registrarobj"""
-    for name, func in pycompat.iteritems(registrarobj._table):
+    for name, func in registrarobj._table.items():
         funcs[name] = func
 
 

@@ -6,3 +6,4 @@ debian/cacerts.rc etc/mercurial/hgrc.d/
 debian/hgrc etc/mercurial/
 debian/tmp/usr/lib
 contrib/packaging/debian/default-tools.rc etc/mercurial/hgrc.d/
+debian/tmp/usr/share

@@ -1,17 +1,37 @@
+# Don't run pipelines on branch "merge", since we're fast-forward only.
+# Gitlab sees a new branch (since e.g. `topic/stable/my-topic` becomes
+# `branch/stable`), but the hash hasn't changed. There is no reason to
+# re-run the CI in our case, since we haven't built up any specific automation.
+# Right now it's just wasted CI and developer time.
+# One can still run the pipeline manually via the web interface,
+# like in the case of releases, to make *extra* sure that the actual branch
+# has succeeded.
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^branch\/.*/ && $CI_PIPELINE_SOURCE != "web"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: always
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      when: always
+
 stages:
   - tests
-  - phabricator
 
 image: registry.heptapod.net/mercurial/ci-images/mercurial-core:$HG_CI_IMAGE_TAG
 
 variables:
     PYTHON: python
     TEST_HGMODULEPOLICY: "allow"
-    HG_CI_IMAGE_TAG: "latest"
+    HG_CI_IMAGE_TAG: "v1.0"
     TEST_HGTESTS_ALLOW_NETIO: "0"
 
 .all_template: &all
-  when: always
+  when: on_success
 
 .runtests_template: &runtests
     <<: *all
@@ -27,54 +47,29 @@ variables:
       - clang-format --version
     script:
         - echo "python used, $PYTHON"
+        - $PYTHON --version
         - echo "$RUNTEST_ARGS"
         - HGTESTS_ALLOW_NETIO="$TEST_HGTESTS_ALLOW_NETIO" HGMODULEPOLICY="$TEST_HGMODULEPOLICY" "$PYTHON" tests/run-tests.py --color=always $RUNTEST_ARGS
 
-checks-py2:
-    <<: *runtests
-    variables:
-        RUNTEST_ARGS: "--time --test-list /tmp/check-tests.txt"
-
-checks-py3:
+checks:
     <<: *runtests
     variables:
         RUNTEST_ARGS: "--time --test-list /tmp/check-tests.txt"
         PYTHON: python3
+        CI_CLEVER_CLOUD_FLAVOR: S
 
-rust-cargo-test-py2: &rust_cargo_test
+rust-cargo-test:
     <<: *all
     stage: tests
     script:
         - echo "python used, $PYTHON"
         - make rust-tests
-
-rust-cargo-test-py3:
-    stage: tests
-    <<: *rust_cargo_test
+        - make cargo-clippy
     variables:
         PYTHON: python3
+        CI_CLEVER_CLOUD_FLAVOR: S
 
-phabricator-refresh:
-    stage: phabricator
-    variables:
-      DEFAULT_COMMENT: ":white_check_mark: refresh by Heptapod after a successful CI run (:octopus: :green_heart:)"
-      STABLE_COMMENT: ":white_check_mark: refresh by Heptapod after a successful CI run (:octopus: :green_heart:)\n⚠ This patch is intended for stable ⚠\n{image https://media.giphy.com/media/nYI8SmmChYXK0/source.gif}"
-    script:
-      - |
-        if [ `hg branch` == "stable" ]; then
-            ./contrib/phab-refresh-stack.sh --comment "$STABLE_COMMENT";
-        else
-            ./contrib/phab-refresh-stack.sh --comment "$DEFAULT_COMMENT";
-        fi
-
-test-py2:
-    <<: *runtests
-    variables:
-        RUNTEST_ARGS: " --no-rust --blacklist /tmp/check-tests.txt"
-        TEST_HGMODULEPOLICY: "c"
-        TEST_HGTESTS_ALLOW_NETIO: "1"
-
-test-py3:
+test-c:
     <<: *runtests
     variables:
         RUNTEST_ARGS: " --no-rust --blacklist /tmp/check-tests.txt"
@@ -82,27 +77,14 @@ test-py3:
         TEST_HGMODULEPOLICY: "c"
         TEST_HGTESTS_ALLOW_NETIO: "1"
 
-test-py2-pure:
-    <<: *runtests
-    variables:
-        RUNTEST_ARGS: "--pure --blacklist /tmp/check-tests.txt"
-        TEST_HGMODULEPOLICY: "py"
-
-test-py3-pure:
+test-pure:
     <<: *runtests
     variables:
         RUNTEST_ARGS: "--pure --blacklist /tmp/check-tests.txt"
         PYTHON: python3
         TEST_HGMODULEPOLICY: "py"
 
-test-py2-rust:
-    <<: *runtests
-    variables:
-        HGWITHRUSTEXT: cpython
-        RUNTEST_ARGS: "--rust --blacklist /tmp/check-tests.txt"
-        TEST_HGMODULEPOLICY: "rust+c"
-
-test-py3-rust:
+test-rust:
     <<: *runtests
     variables:
         HGWITHRUSTEXT: cpython
@@ -110,7 +92,7 @@ test-py3-rust:
         PYTHON: python3
         TEST_HGMODULEPOLICY: "rust+c"
 
-test-py3-rhg:
+test-rhg:
     <<: *runtests
     variables:
         HGWITHRUSTEXT: cpython
@@ -118,32 +100,27 @@ test-py3-rhg:
         PYTHON: python3
         TEST_HGMODULEPOLICY: "rust+c"
 
-test-py2-chg:
-    <<: *runtests
-    variables:
-        RUNTEST_ARGS: "--blacklist /tmp/check-tests.txt --chg"
-        TEST_HGMODULEPOLICY: "c"
-
-test-py3-chg:
+test-chg:
     <<: *runtests
     variables:
         PYTHON: python3
         RUNTEST_ARGS: "--blacklist /tmp/check-tests.txt --chg"
         TEST_HGMODULEPOLICY: "c"
 
-check-pytype-py3:
+check-pytype:
     extends: .runtests_template
     before_script:
       - hg clone . /tmp/mercurial-ci/ --noupdate --config phases.publish=no
       - hg -R /tmp/mercurial-ci/ update `hg log --rev '.' --template '{node}'`
       - cd /tmp/mercurial-ci/
       - make local PYTHON=$PYTHON
-      - $PYTHON -m pip install --user -U pytype==2021.04.15
+      - $PYTHON -m pip install --user -U libcst==0.3.20 pytype==2022.11.18
+      - ./contrib/setup-pytype.sh
+    script:
+      - echo "Entering script section"
+      - sh contrib/check-pytype.sh
     variables:
-        RUNTEST_ARGS: " --allow-slow-tests tests/test-check-pytype.t"
-        HGTEST_SLOWTIMEOUT: "3600"
         PYTHON: python3
-        TEST_HGMODULEPOLICY: "c"
 
 # `sh.exe --login` sets a couple of extra environment variables that are defined
 # in the MinGW shell, but switches CWD to /home/$username.  The previous value
@@ -169,7 +146,7 @@ check-pytype-py3:
 
         - C:/MinGW/msys/1.0/bin/sh.exe --login -c 'cd "$OLDPWD" && HGTESTS_ALLOW_NETIO="$TEST_HGTESTS_ALLOW_NETIO" HGMODULEPOLICY="$TEST_HGMODULEPOLICY" $PYTHON tests/run-tests.py --color=always $RUNTEST_ARGS'
 
-windows-py3:
+windows:
     <<: *windows_runtests
     tags:
       - windows
@@ -178,7 +155,7 @@ windows-py3:
         RUNTEST_ARGS: "--blacklist C:/Temp/check-tests.txt"
         PYTHON: py -3
 
-windows-py3-pyox:
+windows-pyox:
     <<: *windows_runtests
     tags:
       - windows

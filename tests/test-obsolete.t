@@ -169,10 +169,6 @@ check that heads does not report them
   5:5601fb93a350 (draft) [tip ] add new_3_c
   $ hg heads --hidden
   5:5601fb93a350 (draft) [tip ] add new_3_c
-  4:ca819180edb9 (draft *obsolete*) [ ] add new_2_c [rewritten as 5:5601fb93a350]
-  3:cdbce2fbb163 (draft *obsolete*) [ ] add new_c [rewritten as 4:ca819180edb9]
-  2:245bde4270cd (draft *obsolete*) [ ] add original_c [rewritten as 3:cdbce2fbb163]
-
 
 check that summary does not report them
 
@@ -193,7 +189,7 @@ check that summary does not report them
    add new_3_c
   branch: default
   commit: (clean)
-  update: 3 new changesets, 4 branch heads (merge)
+  update: (current)
   phases: 6 draft
   remote: 3 outgoing
 
@@ -203,11 +199,11 @@ check that various commands work well with filtering
   5:5601fb93a350 (draft) [tip ] add new_3_c
   $ hg log -r 6
   abort: unknown revision '6'
-  [255]
+  [10]
   $ hg log -r 4
   abort: hidden revision '4' was rewritten as: 5601fb93a350
   (use --hidden to access hidden revisions)
-  [255]
+  [10]
   $ hg debugrevspec 'rev(6)'
   $ hg debugrevspec 'rev(4)'
   $ hg debugrevspec 'null'
@@ -1237,23 +1233,23 @@ check changeset with instabilities
 
 check explanation for an orphan, phase-divergent and content-divergent changeset
 
-  $ get-with-headers.py localhost:$HGPORT 'rev/50c51b361e60?style=paper' | egrep '(orphan|phase-divergent|content-divergent):'
+  $ get-with-headers.py localhost:$HGPORT 'rev/50c51b361e60?style=paper' | grep -E '(orphan|phase-divergent|content-divergent):'
    <td>orphan:  obsolete parent <a href="/rev/3de5eca88c00?style=paper">3de5eca88c00</a><br>
   phase-divergent:  immutable predecessor <a href="/rev/245bde4270cd?style=paper">245bde4270cd</a><br>
   content-divergent: <a href="/rev/6f9641995072?style=paper">6f9641995072</a> (draft) predecessor <a href="/rev/245bde4270cd?style=paper">245bde4270cd</a></td>
-  $ get-with-headers.py localhost:$HGPORT 'rev/50c51b361e60?style=coal' | egrep '(orphan|phase-divergent|content-divergent):'
+  $ get-with-headers.py localhost:$HGPORT 'rev/50c51b361e60?style=coal' | grep -E '(orphan|phase-divergent|content-divergent):'
    <td>orphan:  obsolete parent <a href="/rev/3de5eca88c00?style=coal">3de5eca88c00</a><br>
   phase-divergent:  immutable predecessor <a href="/rev/245bde4270cd?style=coal">245bde4270cd</a><br>
   content-divergent: <a href="/rev/6f9641995072?style=coal">6f9641995072</a> (draft) predecessor <a href="/rev/245bde4270cd?style=coal">245bde4270cd</a></td>
-  $ get-with-headers.py localhost:$HGPORT 'rev/50c51b361e60?style=gitweb' | egrep '(orphan|phase-divergent|content-divergent):'
+  $ get-with-headers.py localhost:$HGPORT 'rev/50c51b361e60?style=gitweb' | grep -E '(orphan|phase-divergent|content-divergent):'
   <td>orphan:  obsolete parent <a class="list" href="/rev/3de5eca88c00?style=gitweb">3de5eca88c00</a></td>
   <td>phase-divergent:  immutable predecessor <a class="list" href="/rev/245bde4270cd?style=gitweb">245bde4270cd</a></td>
   <td>content-divergent: <a class="list" href="/rev/6f9641995072?style=gitweb">6f9641995072</a> (draft) predecessor <a class="list" href="/rev/245bde4270cd?style=gitweb">245bde4270cd</a></td>
-  $ get-with-headers.py localhost:$HGPORT 'rev/50c51b361e60?style=monoblue' | egrep '(orphan|phase-divergent|content-divergent):'
+  $ get-with-headers.py localhost:$HGPORT 'rev/50c51b361e60?style=monoblue' | grep -E '(orphan|phase-divergent|content-divergent):'
   <dd>orphan:  obsolete parent <a href="/rev/3de5eca88c00?style=monoblue">3de5eca88c00</a></dd>
   <dd>phase-divergent:  immutable predecessor <a href="/rev/245bde4270cd?style=monoblue">245bde4270cd</a></dd>
   <dd>content-divergent: <a href="/rev/6f9641995072?style=monoblue">6f9641995072</a> (draft) predecessor <a href="/rev/245bde4270cd?style=monoblue">245bde4270cd</a></dd>
-  $ get-with-headers.py localhost:$HGPORT 'rev/50c51b361e60?style=spartan' | egrep '(orphan|phase-divergent|content-divergent):'
+  $ get-with-headers.py localhost:$HGPORT 'rev/50c51b361e60?style=spartan' | grep -E '(orphan|phase-divergent|content-divergent):'
   <td class="unstable">orphan:  obsolete parent <a href="/rev/3de5eca88c00?style=spartan">3de5eca88c00</a></td>
   <td class="unstable">phase-divergent:  immutable predecessor <a href="/rev/245bde4270cd?style=spartan">245bde4270cd</a></td>
   <td class="unstable">content-divergent: <a href="/rev/6f9641995072?style=spartan">6f9641995072</a> (draft) predecessor <a href="/rev/245bde4270cd?style=spartan">245bde4270cd</a></td>
@@ -1469,7 +1465,6 @@ Test issue 4506
 Test heads computation on pending index changes with obsolescence markers
   $ cd ..
   $ cat >$TESTTMP/test_extension.py  << EOF
-  > from __future__ import absolute_import
   > from mercurial.i18n import _
   > from mercurial import cmdutil, pycompat, registrar
   > from mercurial.utils import stringutil
@@ -1503,7 +1498,6 @@ Test cache consistency for the visible filter
 bookmarks change
   $ cd ..
   $ cat >$TESTTMP/test_extension.py  << EOF
-  > from __future__ import absolute_import, print_function
   > import weakref
   > from mercurial import (
   >   bookmarks,
@@ -1544,7 +1538,7 @@ bookmarks change
   $ hg log -r 13bedc178fce
   abort: hidden revision '13bedc178fce' was rewritten as: a9b1f8652753
   (use --hidden to access hidden revisions)
-  [255]
+  [10]
 
 Empty out the test extension, as it isn't compatible with later parts
 of the test.
@@ -1606,7 +1600,7 @@ Test ability to pull changeset with locally applying obsolescence markers
   
   $ hg debugbundle .hg/strip-backup/e008cf283490-*-backup.hg
   Stream params: {Compression: BZ}
-  changegroup -- {nbchanges: 1, version: 02} (mandatory: True)
+  changegroup -- {nbchanges: 1, version: 03} (mandatory: True)
       e008cf2834908e5d6b0f792a9d4b0e2272260fb8
   cache:rev-branch-cache -- {} (mandatory: False)
   phase-heads -- {} (mandatory: True)
@@ -1649,7 +1643,7 @@ Testing that strip remove markers:
   
   $ hg debugbundle .hg/strip-backup/e016b03fd86f-*-backup.hg
   Stream params: {Compression: BZ}
-  changegroup -- {nbchanges: 2, version: 02} (mandatory: True)
+  changegroup -- {nbchanges: 2, version: 03} (mandatory: True)
       e016b03fd86fcccc54817d120b90b751aaf367d6
       b0551702f918510f01ae838ab03a463054c67b46
   cache:rev-branch-cache -- {} (mandatory: False)

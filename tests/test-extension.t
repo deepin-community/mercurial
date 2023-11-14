@@ -1,16 +1,4 @@
 Test basic extension support
-  $ cat > unflush.py <<EOF
-  > import sys
-  > from mercurial import pycompat
-  > if pycompat.ispy3:
-  >     # no changes required
-  >     sys.exit(0)
-  > with open(sys.argv[1], 'rb') as f:
-  >     data = f.read()
-  > with open(sys.argv[1], 'wb') as f:
-  >     f.write(data.replace(b', flush=True', b''))
-  > EOF
-
   $ cat > foobar.py <<EOF
   > import os
   > from mercurial import commands, exthelper, registrar
@@ -150,7 +138,6 @@ module/__init__.py-style
 Check that extensions are loaded in phases:
 
   $ cat > foo.py <<EOF
-  > from __future__ import print_function
   > import os
   > from mercurial import exthelper
   > from mercurial.utils import procutil
@@ -190,7 +177,6 @@ Check that extensions are loaded in phases:
   > def custompredicate(repo, subset, x):
   >     return smartset.baseset([r for r in subset if r in {0}])
   > EOF
-  $ "$PYTHON" $TESTTMP/unflush.py foo.py
 
   $ cp foo.py bar.py
   $ echo 'foo = foo.py' >> $HGRCPATH
@@ -295,7 +281,6 @@ limit mark, regardless of importing module or not.)
   $ echo "s = 'libroot/mod/ambig.py'" > $TESTTMP/libroot/mod/ambig.py
 
   $ cat > $TESTTMP/libroot/mod/ambigabs.py <<NO_CHECK_EOF
-  > from __future__ import absolute_import, print_function
   > import ambig # should load "libroot/ambig.py"
   > s = ambig.s
   > NO_CHECK_EOF
@@ -304,27 +289,9 @@ limit mark, regardless of importing module or not.)
   > def extsetup(ui):
   >     print('ambigabs.s=%s' % ambigabs.s, flush=True)
   > NO_CHECK_EOF
-  $ "$PYTHON" $TESTTMP/unflush.py loadabs.py
   $ (PYTHONPATH=${PYTHONPATH}${PATHSEP}${TESTTMP}/libroot; hg --config extensions.loadabs=loadabs.py root)
   ambigabs.s=libroot/ambig.py
   $TESTTMP/a
-
-#if no-py3
-  $ cat > $TESTTMP/libroot/mod/ambigrel.py <<NO_CHECK_EOF
-  > from __future__ import print_function
-  > import ambig # should load "libroot/mod/ambig.py"
-  > s = ambig.s
-  > NO_CHECK_EOF
-  $ cat > loadrel.py <<NO_CHECK_EOF
-  > import mod.ambigrel as ambigrel
-  > def extsetup(ui):
-  >     print('ambigrel.s=%s' % ambigrel.s, flush=True)
-  > NO_CHECK_EOF
-  $ "$PYTHON" $TESTTMP/unflush.py loadrel.py
-  $ (PYTHONPATH=${PYTHONPATH}${PATHSEP}${TESTTMP}/libroot; hg --config extensions.loadrel=loadrel.py root)
-  ambigrel.s=libroot/mod/ambig.py
-  $TESTTMP/a
-#endif
 
 Check absolute/relative import of extension specific modules
 
@@ -340,7 +307,6 @@ Check absolute/relative import of extension specific modules
   > s = b'this is extroot.sub1.baz'
   > NO_CHECK_EOF
   $ cat > $TESTTMP/extroot/__init__.py <<NO_CHECK_EOF
-  > from __future__ import absolute_import
   > s = b'this is extroot.__init__'
   > from . import foo
   > def extsetup(ui):
@@ -376,39 +342,6 @@ Check absolute/relative import of extension specific modules
   (extroot) from extroot.bar import s: this is extroot.bar
   (extroot) import extroot.bar in func(): this is extroot.bar
   $TESTTMP/a
-
-#if no-py3
-  $ rm "$TESTTMP"/extroot/foo.*
-  $ rm -Rf "$TESTTMP/extroot/__pycache__"
-  $ cat > $TESTTMP/extroot/foo.py <<NO_CHECK_EOF
-  > # test relative import
-  > buf = []
-  > def func():
-  >     # "not locals" case
-  >     import bar
-  >     buf.append('import bar in func(): %s' % bar.s)
-  >     return '\n(extroot) '.join(buf)
-  > # "fromlist == ('*',)" case
-  > from bar import *
-  > buf.append('from bar import *: %s' % s)
-  > # "not fromlist" and "if '.' in name" case
-  > import sub1.baz
-  > buf.append('import sub1.baz: %s' % sub1.baz.s)
-  > # "not fromlist" and NOT "if '.' in name" case
-  > import sub1
-  > buf.append('import sub1: %s' % sub1.s)
-  > # NOT "not fromlist" and NOT "level != -1" case
-  > from bar import s
-  > buf.append('from bar import s: %s' % s)
-  > NO_CHECK_EOF
-  $ hg --config extensions.extroot=$TESTTMP/extroot root
-  (extroot) from bar import *: this is extroot.bar
-  (extroot) import sub1.baz: this is extroot.sub1.baz
-  (extroot) import sub1: this is extroot.sub1.__init__
-  (extroot) from bar import s: this is extroot.bar
-  (extroot) import bar in func(): this is extroot.bar
-  $TESTTMP/a
-#endif
 
 #if demandimport
 
@@ -453,7 +386,6 @@ importing with "absolute_import" feature isn't tested, because "level
   > detail = b"this is extlibroot.recursedown.abs.used"
   > NO_CHECK_EOF
   $ cat > $TESTTMP/extlibroot/recursedown/abs/__init__.py <<NO_CHECK_EOF
-  > from __future__ import absolute_import
   > from extlibroot.recursedown.abs.used import detail
   > NO_CHECK_EOF
 
@@ -467,7 +399,6 @@ importing with "absolute_import" feature isn't tested, because "level
   > NO_CHECK_EOF
 
   $ cat > $TESTTMP/extlibroot/recursedown/__init__.py <<NO_CHECK_EOF
-  > from __future__ import absolute_import
   > from extlibroot.recursedown.abs import detail as absdetail
   > from .legacy import detail as legacydetail
   > NO_CHECK_EOF
@@ -481,11 +412,9 @@ the submodule 'used' should be somehow accessible. (issue5617)
   > detail = b"this is extlibroot.shadowing.used"
   > NO_CHECK_EOF
   $ cat > $TESTTMP/extlibroot/shadowing/proxied.py <<NO_CHECK_EOF
-  > from __future__ import absolute_import
   > from extlibroot.shadowing.used import detail
   > NO_CHECK_EOF
   $ cat > $TESTTMP/extlibroot/shadowing/__init__.py <<NO_CHECK_EOF
-  > from __future__ import absolute_import
   > from .used import detail as used
   > NO_CHECK_EOF
 
@@ -514,7 +443,6 @@ works as expected in "level > 1" case.
   > detail = b"this is absextroot.relimportee"
   > NO_CHECK_EOF
   $ cat > $TESTTMP/absextroot/xsub1/xsub2/relimporter.py <<NO_CHECK_EOF
-  > from __future__ import absolute_import
   > from mercurial import pycompat
   > from ... import relimportee
   > detail = b"this relimporter imports %r" % (
@@ -525,7 +453,6 @@ Setup modules, which actually import extension local modules at
 runtime.
 
   $ cat > $TESTTMP/absextroot/absolute.py << NO_CHECK_EOF
-  > from __future__ import absolute_import
   > 
   > # import extension local modules absolutely (level = 0)
   > from absextroot.xsub1.xsub2 import used, unused
@@ -539,7 +466,6 @@ runtime.
   > NO_CHECK_EOF
 
   $ cat > $TESTTMP/absextroot/relative.py << NO_CHECK_EOF
-  > from __future__ import absolute_import
   > 
   > # import extension local modules relatively (level == 1)
   > from .xsub1.xsub2 import used, unused
@@ -559,7 +485,6 @@ runtime.
 Setup main procedure of extension.
 
   $ cat > $TESTTMP/absextroot/__init__.py <<NO_CHECK_EOF
-  > from __future__ import absolute_import
   > from mercurial import registrar
   > cmdtable = {}
   > command = registrar.command(cmdtable)
@@ -649,9 +574,9 @@ Python 3's lazy importer verifies modules exist before returning the lazy
 module stub. Our custom lazy importer for Python 2 always returns a stub.
 
   $ (PYTHONPATH=${PYTHONPATH}${PATHSEP}${TESTTMP}; hg --config extensions.checkrelativity=$TESTTMP/checkrelativity.py checkrelativity) || true
-  *** failed to import extension checkrelativity from $TESTTMP/checkrelativity.py: No module named 'extlibroot.lsub1.lsub2.notexist' (py3 !)
-  hg: unknown command 'checkrelativity' (py3 !)
-  (use 'hg help' for a list of commands) (py3 !)
+  *** failed to import extension "checkrelativity" from $TESTTMP/checkrelativity.py: No module named 'extlibroot.lsub1.lsub2.notexist'
+  hg: unknown command 'checkrelativity'
+  (use 'hg help' for a list of commands)
 
 #endif
 
@@ -673,6 +598,7 @@ Even though the extension fails during uisetup, hg is still basically usable:
       uisetup(ui)
     File "$TESTTMP/baduisetup.py", line 2, in uisetup
       1 / 0
+      ~~^~~ (py311 !)
   ZeroDivisionError: * by zero (glob)
   *** failed to set up extension baduisetup: * by zero (glob)
   Mercurial Distributed SCM (version *) (glob)
@@ -1449,7 +1375,7 @@ accessed.
     throw  external  1.0.0
 
 No declared supported version, extension complains:
-  $ hg --config extensions.throw=throw.py throw 2>&1 | egrep '^\*\*'
+  $ hg --config extensions.throw=throw.py throw 2>&1 | grep -E '^\*\*'
   ** Unknown exception encountered with possibly-broken third-party extension "throw" 1.0.0
   ** which supports versions unknown of Mercurial.
   ** Please disable "throw" and try your action again.
@@ -1461,7 +1387,7 @@ No declared supported version, extension complains:
 empty declaration of supported version, extension complains (but doesn't choke if
 the value is improperly a str instead of bytes):
   $ echo "testedwith = ''" >> throw.py
-  $ hg --config extensions.throw=throw.py throw 2>&1 | egrep '^\*\*'
+  $ hg --config extensions.throw=throw.py throw 2>&1 | grep -E '^\*\*'
   ** Unknown exception encountered with possibly-broken third-party extension "throw" 1.0.0
   ** which supports versions unknown of Mercurial.
   ** Please disable "throw" and try your action again.
@@ -1475,7 +1401,7 @@ improperly a str instead of bytes):
   $ echo 'buglink = "http://example.com/bts"' >> throw.py
   $ rm -f throw.pyc throw.pyo
   $ rm -Rf __pycache__
-  $ hg --config extensions.throw=throw.py throw 2>&1 | egrep '^\*\*'
+  $ hg --config extensions.throw=throw.py throw 2>&1 | grep -E '^\*\*'
   ** Unknown exception encountered with possibly-broken third-party extension "throw" 1.0.0
   ** which supports versions unknown of Mercurial.
   ** Please disable "throw" and try your action again.
@@ -1492,7 +1418,7 @@ If the extensions declare outdated versions, accuse the older extension first:
   $ rm -f throw.pyc throw.pyo
   $ rm -Rf __pycache__
   $ hg --config extensions.throw=throw.py --config extensions.older=older.py \
-  >   throw 2>&1 | egrep '^\*\*'
+  >   throw 2>&1 | grep -E '^\*\*'
   ** Unknown exception encountered with possibly-broken third-party extension "older" (version N/A)
   ** which supports versions 1.9 of Mercurial.
   ** Please disable "older" and try your action again.
@@ -1506,7 +1432,7 @@ One extension only tested with older, one only with newer versions:
   $ rm -f older.pyc older.pyo
   $ rm -Rf __pycache__
   $ hg --config extensions.throw=throw.py --config extensions.older=older.py \
-  >   throw 2>&1 | egrep '^\*\*'
+  >   throw 2>&1 | grep -E '^\*\*'
   ** Unknown exception encountered with possibly-broken third-party extension "older" (version N/A)
   ** which supports versions 1.9 of Mercurial.
   ** Please disable "older" and try your action again.
@@ -1520,7 +1446,7 @@ Older extension is tested with current version, the other only with newer:
   $ rm -f older.pyc older.pyo
   $ rm -Rf __pycache__
   $ hg --config extensions.throw=throw.py --config extensions.older=older.py \
-  >   throw 2>&1 | egrep '^\*\*'
+  >   throw 2>&1 | grep -E '^\*\*'
   ** Unknown exception encountered with possibly-broken third-party extension "throw" 1.0.0
   ** which supports versions 2.1 of Mercurial.
   ** Please disable "throw" and try your action again.
@@ -1531,7 +1457,7 @@ Older extension is tested with current version, the other only with newer:
 
 Ability to point to a different point
   $ hg --config extensions.throw=throw.py --config extensions.older=older.py \
-  >   --config ui.supportcontact='Your Local Goat Lenders' throw 2>&1 | egrep '^\*\*'
+  >   --config ui.supportcontact='Your Local Goat Lenders' throw 2>&1 | grep -E '^\*\*'
   ** unknown exception encountered, please report by visiting
   ** Your Local Goat Lenders
   ** Python * (glob)
@@ -1546,7 +1472,7 @@ Declare the version as supporting this hg version, show regular bts link:
   > fi
   $ rm -f throw.pyc throw.pyo
   $ rm -Rf __pycache__
-  $ hg --config extensions.throw=throw.py throw 2>&1 | egrep '^\*\*'
+  $ hg --config extensions.throw=throw.py throw 2>&1 | grep -E '^\*\*'
   ** unknown exception encountered, please report by visiting
   ** https://mercurial-scm.org/wiki/BugTracker
   ** Python * (glob)
@@ -1558,7 +1484,7 @@ Patch version is ignored during compatibility check
   $ echo "util.version = lambda:b'3.2.2'" >> throw.py
   $ rm -f throw.pyc throw.pyo
   $ rm -Rf __pycache__
-  $ hg --config extensions.throw=throw.py throw 2>&1 | egrep '^\*\*'
+  $ hg --config extensions.throw=throw.py throw 2>&1 | grep -E '^\*\*'
   ** unknown exception encountered, please report by visiting
   ** https://mercurial-scm.org/wiki/BugTracker
   ** Python * (glob)
@@ -1669,7 +1595,7 @@ Refuse to load extensions with minimum version requirements
   > util.version = lambda: b'3.6'
   > minimumhgversion = b'3.7'
   > EOF
-  $ hg --config extensions.minversion=minversion2.py version 2>&1 | egrep '\(third'
+  $ hg --config extensions.minversion=minversion2.py version 2>&1 | grep -E '\(third'
   (third party extension minversion requires version 3.7 or newer of Mercurial (current: 3.6); disabling)
 
 Can load version that is only off by point release
@@ -1679,7 +1605,7 @@ Can load version that is only off by point release
   > util.version = lambda: b'3.6.1'
   > minimumhgversion = b'3.6'
   > EOF
-  $ hg --config extensions.minversion=minversion3.py version 2>&1 | egrep '\(third'
+  $ hg --config extensions.minversion=minversion3.py version 2>&1 | grep -E '\(third'
   [1]
 
 Can load minimum version identical to current
@@ -1689,8 +1615,28 @@ Can load minimum version identical to current
   > util.version = lambda: b'3.5'
   > minimumhgversion = b'3.5'
   > EOF
-  $ hg --config extensions.minversion=minversion3.py version 2>&1 | egrep '\(third'
+  $ hg --config extensions.minversion=minversion3.py version 2>&1 | grep -E '\(third'
   [1]
+
+Don't explode on py3 with a bad version number (both str vs bytes, and not enough
+parts)
+
+  $ cat > minversion4.py << EOF
+  > from mercurial import util
+  > util.version = lambda: b'3.5'
+  > minimumhgversion = '3'
+  > EOF
+  $ hg --config extensions.minversion=minversion4.py version -v
+  Mercurial Distributed SCM (version 3.5)
+  (see https://mercurial-scm.org for more information)
+  
+  Copyright (C) 2005-* Olivia Mackall and others (glob)
+  This is free software; see the source for copying conditions. There is NO
+  warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+  
+  Enabled extensions:
+  
+    minversion  external  
 
 Restore HGRCPATH
 
@@ -1862,7 +1808,7 @@ Prohibit registration of commands that don't use @command (issue5137)
   > EOF
 
   $ hg deprecatedcmd > /dev/null
-  *** failed to import extension deprecatedcmd from $TESTTMP/deprecated/deprecatedcmd.py: missing attributes: norepo, optionalrepo, inferrepo
+  *** failed to import extension "deprecatedcmd" from $TESTTMP/deprecated/deprecatedcmd.py: missing attributes: norepo, optionalrepo, inferrepo
   *** (use @command decorator to register 'deprecatedcmd')
   hg: unknown command 'deprecatedcmd'
   (use 'hg help' for a list of commands)
@@ -1871,7 +1817,7 @@ Prohibit registration of commands that don't use @command (issue5137)
  the extension shouldn't be loaded at all so the mq works:
 
   $ hg qseries --config extensions.mq= > /dev/null
-  *** failed to import extension deprecatedcmd from $TESTTMP/deprecated/deprecatedcmd.py: missing attributes: norepo, optionalrepo, inferrepo
+  *** failed to import extension "deprecatedcmd" from $TESTTMP/deprecated/deprecatedcmd.py: missing attributes: norepo, optionalrepo, inferrepo
   *** (use @command decorator to register 'deprecatedcmd')
 
   $ cd ..
@@ -1905,7 +1851,6 @@ Prohibit the use of unicode strings as the default value of options
   $ hg init $TESTTMP/opt-unicode-default
 
   $ cat > $TESTTMP/test_unicode_default_value.py << EOF
-  > from __future__ import print_function
   > from mercurial import registrar
   > cmdtable = {}
   > command = registrar.command(cmdtable)
@@ -1913,14 +1858,121 @@ Prohibit the use of unicode strings as the default value of options
   > def ext(*args, **opts):
   >     print(opts[b'opt'], flush=True)
   > EOF
-  $ "$PYTHON" $TESTTMP/unflush.py $TESTTMP/test_unicode_default_value.py
   $ cat > $TESTTMP/opt-unicode-default/.hg/hgrc << EOF
   > [extensions]
   > test_unicode_default_value = $TESTTMP/test_unicode_default_value.py
   > EOF
   $ hg -R $TESTTMP/opt-unicode-default dummy
-  *** failed to import extension test_unicode_default_value from $TESTTMP/test_unicode_default_value.py: unicode *'value' found in cmdtable.dummy (glob)
+  *** failed to import extension "test_unicode_default_value" from $TESTTMP/test_unicode_default_value.py: unicode 'value' found in cmdtable.dummy
   *** (use b'' to make it byte string)
   hg: unknown command 'dummy'
   (did you mean summary?)
   [10]
+
+Check the mandatory extension feature
+-------------------------------------
+
+  $ hg init mandatory-extensions
+  $ cat > $TESTTMP/mandatory-extensions/.hg/good.py << EOF
+  > pass
+  > EOF
+  $ cat > $TESTTMP/mandatory-extensions/.hg/bad.py << EOF
+  > raise RuntimeError("babar")
+  > EOF
+  $ cat > $TESTTMP/mandatory-extensions/.hg/syntax.py << EOF
+  > def (
+  > EOF
+
+Check that the good one load :
+
+  $ cat > $TESTTMP/mandatory-extensions/.hg/hgrc << EOF
+  > [extensions]
+  > good = $TESTTMP/mandatory-extensions/.hg/good.py
+  > EOF
+
+  $ hg -R mandatory-extensions id
+  000000000000 tip
+
+Make it mandatory to load
+
+  $ cat >> $TESTTMP/mandatory-extensions/.hg/hgrc << EOF
+  > good:required = yes
+  > EOF
+
+  $ hg -R mandatory-extensions id
+  000000000000 tip
+
+Check that the bad one does not load
+
+  $ cat >> $TESTTMP/mandatory-extensions/.hg/hgrc << EOF
+  > bad = $TESTTMP/mandatory-extensions/.hg/bad.py
+  > EOF
+
+  $ hg -R mandatory-extensions id
+  *** failed to import extension "bad" from $TESTTMP/mandatory-extensions/.hg/bad.py: babar
+  000000000000 tip
+
+Make it mandatory to load
+
+  $ cat >> $TESTTMP/mandatory-extensions/.hg/hgrc << EOF
+  > bad:required = yes
+  > EOF
+
+  $ hg -R mandatory-extensions id
+  abort: failed to import extension "bad" from $TESTTMP/mandatory-extensions/.hg/bad.py: babar
+  (loading of this extension was required, see `hg help config.extensions` for details)
+  [255]
+
+Make it not mandatory to load
+
+  $ cat >> $TESTTMP/mandatory-extensions/.hg/hgrc << EOF
+  > bad:required = no
+  > EOF
+
+  $ hg -R mandatory-extensions id
+  *** failed to import extension "bad" from $TESTTMP/mandatory-extensions/.hg/bad.py: babar
+  000000000000 tip
+
+Same check with the syntax error one
+
+  $ cat >> $TESTTMP/mandatory-extensions/.hg/hgrc << EOF
+  > bad = !
+  > syntax = $TESTTMP/mandatory-extensions/.hg/syntax.py
+  > syntax:required = yes
+  > EOF
+
+  $ hg -R mandatory-extensions id
+  abort: failed to import extension "syntax" from $TESTTMP/mandatory-extensions/.hg/syntax.py: invalid syntax (*syntax.py, line 1) (glob)
+  (loading of this extension was required, see `hg help config.extensions` for details)
+  [255]
+
+Same check with a missing one
+
+  $ cat >> $TESTTMP/mandatory-extensions/.hg/hgrc << EOF
+  > syntax = !
+  > syntax:required =
+  > missing = foo/bar/baz/I/do/not/exist/
+  > missing:required = yes
+  > EOF
+
+  $ hg -R mandatory-extensions id
+  abort: failed to import extension "missing" from foo/bar/baz/I/do/not/exist/: [Errno 2] $ENOENT$: 'foo/bar/baz/I/do/not/exist'
+  (loading of this extension was required, see `hg help config.extensions` for details)
+  [255]
+
+Have a "default" setting for the suboption:
+
+  $ cat > $TESTTMP/mandatory-extensions/.hg/hgrc << EOF
+  > [extensions]
+  > bad = $TESTTMP/mandatory-extensions/.hg/bad.py
+  > bad:required = no
+  > good = $TESTTMP/mandatory-extensions/.hg/good.py
+  > syntax = $TESTTMP/mandatory-extensions/.hg/syntax.py
+  > *:required = yes
+  > EOF
+
+  $ hg -R mandatory-extensions id
+  *** failed to import extension "bad" from $TESTTMP/mandatory-extensions/.hg/bad.py: babar
+  abort: failed to import extension "syntax" from $TESTTMP/mandatory-extensions/.hg/syntax.py: invalid syntax (*syntax.py, line 1) (glob)
+  (loading of this extension was required, see `hg help config.extensions` for details)
+  [255]

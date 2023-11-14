@@ -6,7 +6,6 @@
 # GNU General Public License version 2 or any later version.
 
 """recreates hardlinks between repository clones"""
-from __future__ import absolute_import
 
 import os
 import stat
@@ -68,8 +67,8 @@ def relink(ui, repo, origin=None, **opts):
 
     if origin is None and b'default-relink' in ui.paths:
         origin = b'default-relink'
-    path, __ = urlutil.get_unique_pull_path(b'relink', repo, ui, origin)
-    src = hg.repository(repo.baseui, path)
+    path = urlutil.get_unique_pull_path_obj(b'relink', ui, origin)
+    src = hg.repository(repo.baseui, path.loc)
     ui.status(_(b'relinking %s to %s\n') % (src.store.path, repo.store.path))
     if repo.root == src.root:
         ui.status(_(b'there is nothing to relink\n'))

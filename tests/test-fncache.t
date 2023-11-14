@@ -4,7 +4,6 @@ An extension which will set fncache chunksize to 1 byte to make sure that logic
 does not break
 
   $ cat > chunksize.py <<EOF
-  > from __future__ import absolute_import
   > from mercurial import store
   > store.fncache_chunksize = 1
   > EOF
@@ -50,12 +49,7 @@ Testing a.i.hg/c:
 
 Testing verify:
 
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 3 changes to 3 files
+  $ hg verify -q
 
   $ rm .hg/store/fncache
 
@@ -67,6 +61,7 @@ Testing verify:
    warning: revlog 'data/a.i' not in fncache!
    warning: revlog 'data/a.i.hg/c.i' not in fncache!
    warning: revlog 'data/a.i/b.i' not in fncache!
+  checking dirstate
   checked 3 changesets with 3 changes to 3 files
   3 warnings encountered!
   hint: run "hg debugrebuildfncache" to recover from corrupt fncache
@@ -79,12 +74,7 @@ Follow the hint to make sure it works
   adding data/a.i/b.i
   3 items added, 0 removed from fncache
 
-  $ hg verify
-  checking changesets
-  checking manifests
-  crosschecking files in changesets and manifests
-  checking files
-  checked 3 changesets with 3 changes to 3 files
+  $ hg verify -q
 
   $ cd ..
 
@@ -100,6 +90,7 @@ Non store repo:
   .hg
   .hg/00changelog.i
   .hg/00manifest.i
+  .hg/branch
   .hg/cache
   .hg/cache/branch2-served
   .hg/cache/rbc-names-v1
@@ -113,13 +104,9 @@ Non store repo:
   .hg/phaseroots
   .hg/requires
   .hg/undo
-  .hg/undo.backup.dirstate
+  .hg/undo.backup.branch.bck
   .hg/undo.backupfiles
-  .hg/undo.bookmarks
-  .hg/undo.branch
   .hg/undo.desc
-  .hg/undo.dirstate
-  .hg/undo.phaseroots
   .hg/wcache
   .hg/wcache/checkisexec (execbit !)
   .hg/wcache/checklink (symlink !)
@@ -138,6 +125,7 @@ Non fncache repo:
   $ find .hg | sort
   .hg
   .hg/00changelog.i
+  .hg/branch
   .hg/cache
   .hg/cache/branch2-served
   .hg/cache/rbc-names-v1
@@ -153,14 +141,11 @@ Non fncache repo:
   .hg/store/data/tst.d.hg
   .hg/store/data/tst.d.hg/_foo.i
   .hg/store/phaseroots
+  .hg/store/requires
   .hg/store/undo
   .hg/store/undo.backupfiles
-  .hg/store/undo.phaseroots
-  .hg/undo.backup.dirstate
-  .hg/undo.bookmarks
-  .hg/undo.branch
+  .hg/undo.backup.branch.bck
   .hg/undo.desc
-  .hg/undo.dirstate
   .hg/wcache
   .hg/wcache/checkisexec (execbit !)
   .hg/wcache/checklink (symlink !)
@@ -231,7 +216,6 @@ Encoding of reserved / long paths in the store
 Aborting lock does not prevent fncache writes
 
   $ cat > exceptionext.py <<EOF
-  > from __future__ import absolute_import
   > import os
   > from mercurial import commands, error, extensions
   > 
@@ -278,7 +262,6 @@ Aborting lock does not prevent fncache writes
 Aborting transaction prevents fncache change
 
   $ cat > ../exceptionext.py <<EOF
-  > from __future__ import absolute_import
   > import os
   > from mercurial import commands, error, extensions, localrepo
   > 
@@ -314,8 +297,8 @@ Clean cached version
 Aborted transactions can be recovered later
 
   $ cat > ../exceptionext.py <<EOF
-  > from __future__ import absolute_import
   > import os
+  > import signal
   > from mercurial import (
   >   commands,
   >   error,
@@ -327,19 +310,14 @@ Aborted transactions can be recovered later
   > def trwrapper(orig, self, *args, **kwargs):
   >     tr = orig(self, *args, **kwargs)
   >     def fail(tr):
-  >         raise error.Abort(b"forced transaction failure")
+  >         os.kill(os.getpid(), signal.SIGKILL)
   >     # zzz prefix to ensure it sorted after store.write
   >     tr.addfinalize(b'zzz-forcefails', fail)
   >     return tr
   > 
-  > def abortwrapper(orig, self, *args, **kwargs):
-  >     raise error.Abort(b"forced transaction failure")
-  > 
   > def uisetup(ui):
   >     extensions.wrapfunction(localrepo.localrepository, 'transaction',
   >                             trwrapper)
-  >     extensions.wrapfunction(transaction.transaction, '_abort',
-  >                             abortwrapper)
   > 
   > cmdtable = {}
   > 
@@ -351,8 +329,12 @@ Clean cached versions
 
   $ hg up -q 1
   $ touch z
-  $ hg ci -qAm z 2>/dev/null
-  [255]
+# Cannot rely on the return code value as chg use a different one.
+# So we use a `|| echo` trick
+# XXX-CHG fixing chg behavior would be nice here.
+  $ hg ci -qAm z || echo "He's Dead, Jim." 2>/dev/null
+  *Killed* (glob) (?)
+  He's Dead, Jim.
   $ cat .hg/store/fncache | sort
   data/y.i
   data/z.i
@@ -362,6 +344,7 @@ Clean cached versions
   checking manifests
   crosschecking files in changesets and manifests
   checking files
+  checking dirstate
   checked 1 changesets with 1 changes to 1 files
   $ cat .hg/store/fncache
   data/y.i
@@ -482,7 +465,6 @@ The cache should not loaded when committing changes to existing files, or when u
 changesets that only contain changes to existing files:
 
   $ cat > fncacheloadwarn.py << EOF
-  > from __future__ import absolute_import
   > from mercurial import extensions, localrepo
   > 
   > def extsetup(ui):
@@ -530,6 +512,7 @@ Unbundling should follow the same rules; existing files should not cause a load:
 
 (loading during the clone is expected)
   $ hg clone -q . tobundle
+  fncache load triggered!
   fncache load triggered!
   fncache load triggered!
 

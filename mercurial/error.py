@@ -11,7 +11,6 @@ This allows us to catch exceptions at higher levels without forcing
 imports.
 """
 
-from __future__ import absolute_import
 
 import difflib
 
@@ -31,6 +30,7 @@ if pycompat.TYPE_CHECKING:
 
 
 def _tobytes(exc):
+    # type: (...) -> bytes
     """Byte-stringify exception in the same way as BaseException_str()"""
     if not exc.args:
         return b''
@@ -39,7 +39,7 @@ def _tobytes(exc):
     return b'(%s)' % b', '.join(b"'%s'" % pycompat.bytestr(a) for a in exc.args)
 
 
-class Hint(object):
+class Hint:
     """Mix-in to provide a hint of an error
 
     This should come first in the inheritance list to consume a hint and
@@ -47,7 +47,7 @@ class Hint(object):
     """
 
     def __init__(self, *args, **kw):
-        self.hint = kw.pop('hint', None)
+        self.hint = kw.pop('hint', None)  # type: Optional[bytes]
         super(Hint, self).__init__(*args, **kw)
 
 
@@ -68,13 +68,12 @@ class Error(Hint, Exception):
     def __bytes__(self):
         return self.message
 
-    if pycompat.ispy3:
-
-        def __str__(self):
-            # the output would be unreadable if the message was translated,
-            # but do not replace it with encoding.strfromlocal(), which
-            # may raise another exception.
-            return pycompat.sysstr(self.__bytes__())
+    def __str__(self):
+        # type: () -> str
+        # the output would be unreadable if the message was translated,
+        # but do not replace it with encoding.strfromlocal(), which
+        # may raise another exception.
+        return pycompat.sysstr(self.__bytes__())
 
     def format(self):
         # type: () -> bytes
@@ -105,6 +104,7 @@ class RevlogError(StorageError):
 
 class SidedataHashError(RevlogError):
     def __init__(self, key, expected, got):
+        # type: (int, bytes, bytes) -> None
         self.hint = None
         self.sidedatakey = key
         self.expecteddigest = expected
@@ -117,6 +117,7 @@ class FilteredIndexError(IndexError):
 
 class LookupError(RevlogError, KeyError):
     def __init__(self, name, index, message):
+        # type: (bytes, bytes, bytes) -> None
         self.name = name
         self.index = index
         # this can't be called 'message' because at least some installs of
@@ -154,7 +155,7 @@ class CommandError(Exception):
     """Exception raised on errors in parsing the command line."""
 
     def __init__(self, command, message):
-        # type: (bytes, bytes) -> None
+        # type: (Optional[bytes], bytes) -> None
         self.command = command
         self.message = message
         super(CommandError, self).__init__()
@@ -343,6 +344,7 @@ class OutOfBandError(RemoteError):
     """Exception raised when a remote repo reports failure"""
 
     def __init__(self, message=None, hint=None):
+        # type: (Optional[bytes], Optional[bytes]) -> None
         from .i18n import _
 
         if message:
@@ -380,6 +382,14 @@ class ParseError(Abort):
 
 
 class PatchError(Exception):
+    __bytes__ = _tobytes
+
+
+class PatchParseError(PatchError):
+    __bytes__ = _tobytes
+
+
+class PatchApplicationError(PatchError):
     __bytes__ = _tobytes
 
 
@@ -636,6 +646,13 @@ class UnsupportedBundleSpecification(Exception):
 
 class CorruptedState(Exception):
     """error raised when a command is not able to read its state from file"""
+
+    __bytes__ = _tobytes
+
+
+class CorruptedDirstate(Exception):
+    """error raised the dirstate appears corrupted on-disk. It may be due to
+    a dirstate version mismatch (i.e. expecting v2 and finding v1 on disk)."""
 
     __bytes__ = _tobytes
 

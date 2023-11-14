@@ -5,7 +5,6 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
 import functools
 import re
@@ -30,7 +29,7 @@ def loadconfigtable(ui, extname, configtable):
         knownitems.update(items)
 
 
-class configitem(object):
+class configitem:
     """represent a known config item
 
     :section: the official config section where to find this item,
@@ -585,6 +584,23 @@ coreconfigitem(
     default=b'',
 )
 coreconfigitem(
+    b'debug',
+    b'revlog.debug-delta',
+    default=False,
+)
+# display extra information about the bundling process
+coreconfigitem(
+    b'debug',
+    b'bundling-stats',
+    default=False,
+)
+# display extra information about the unbundling process
+coreconfigitem(
+    b'debug',
+    b'unbundling-stats',
+    default=False,
+)
+coreconfigitem(
     b'defaults',
     b'.*',
     default=None,
@@ -600,6 +616,10 @@ coreconfigitem(
     b'bundle2.debug',
     default=False,
 )
+# which kind of delta to put in the bundled changegroup. Possible value
+# - '': use default behavior
+# - p1: force to always use delta against p1
+# - full: force to always use full content
 coreconfigitem(
     b'devel',
     b'bundle.delta',
@@ -636,6 +656,15 @@ coreconfigitem(
     b'deprec-warn',
     default=False,
 )
+# possible values:
+# - auto (the default)
+# - force-append
+# - force-new
+coreconfigitem(
+    b'devel',
+    b'dirstate.v2.data_update_mode',
+    default="auto",
+)
 coreconfigitem(
     b'devel',
     b'disableloaddefaultcerts',
@@ -663,15 +692,53 @@ coreconfigitem(
     b'servercafile',
     default=b'',
 )
+# This config option is intended for use in tests only. It is a giant
+# footgun to kill security. Don't define it.
 coreconfigitem(
     b'devel',
-    b'serverexactprotocol',
+    b'server-insecure-exact-protocol',
     default=b'',
 )
 coreconfigitem(
     b'devel',
     b'serverrequirecert',
     default=False,
+)
+# Makes the status algorithm wait for the existence of this file
+# (or until a timeout of `devel.sync.status.pre-dirstate-write-file-timeout`
+# seconds) before taking the lock and writing the dirstate.
+# Status signals that it's ready to wait by creating a file
+# with the same name + `.waiting`.
+# Useful when testing race conditions.
+coreconfigitem(
+    b'devel',
+    b'sync.status.pre-dirstate-write-file',
+    default=None,
+)
+coreconfigitem(
+    b'devel',
+    b'sync.status.pre-dirstate-write-file-timeout',
+    default=2,
+)
+coreconfigitem(
+    b'devel',
+    b'sync.dirstate.post-docket-read-file',
+    default=None,
+)
+coreconfigitem(
+    b'devel',
+    b'sync.dirstate.post-docket-read-file-timeout',
+    default=2,
+)
+coreconfigitem(
+    b'devel',
+    b'sync.dirstate.pre-read-file',
+    default=None,
+)
+coreconfigitem(
+    b'devel',
+    b'sync.dirstate.pre-read-file-timeout',
+    default=2,
 )
 coreconfigitem(
     b'devel',
@@ -729,6 +796,14 @@ coreconfigitem(
     b'devel',
     b'discovery.exchange-heads',
     default=True,
+)
+# If devel.debug.abort-update is True, then any merge with the working copy,
+# e.g. [hg update], will be aborted after figuring out what needs to be done,
+# but before spawning the parallel worker
+coreconfigitem(
+    b'devel',
+    b'debug.abort-update',
+    default=False,
 )
 # If discovery.grow-sample is False, the sample size used in set discovery will
 # not be increased through the process
@@ -900,12 +975,19 @@ coreconfigitem(
 coreconfigitem(
     b'experimental',
     b'changegroup3',
-    default=False,
+    default=True,
 )
 coreconfigitem(
     b'experimental',
     b'changegroup4',
     default=False,
+)
+
+# might remove rank configuration once the computation has no impact
+coreconfigitem(
+    b'experimental',
+    b'changelog-v2.compute-rank',
+    default=True,
 )
 coreconfigitem(
     b'experimental',
@@ -955,11 +1037,6 @@ coreconfigitem(
 coreconfigitem(
     b'experimental',
     b'directaccess.revnums',
-    default=False,
-)
-coreconfigitem(
-    b'experimental',
-    b'dirstate-tree.in-memory',
     default=False,
 )
 coreconfigitem(
@@ -1047,11 +1124,6 @@ coreconfigitem(
 )
 coreconfigitem(
     b'experimental',
-    b'mergetempdirprefix',
-    default=None,
-)
-coreconfigitem(
-    b'experimental',
     b'mmapindexthreshold',
     default=None,
 )
@@ -1104,16 +1176,6 @@ coreconfigitem(
     b'experimental',
     b'hook-track-tags',
     default=False,
-)
-coreconfigitem(
-    b'experimental',
-    b'httppeer.advertise-v2',
-    default=False,
-)
-coreconfigitem(
-    b'experimental',
-    b'httppeer.v2-encoder-order',
-    default=None,
 )
 coreconfigitem(
     b'experimental',
@@ -1186,6 +1248,11 @@ coreconfigitem(
 )
 coreconfigitem(
     b'experimental',
+    b'server.allow-hidden-access',
+    default=list,
+)
+coreconfigitem(
+    b'experimental',
     b'server.filesdata.recommended-batch-size',
     default=50000,
 )
@@ -1216,11 +1283,6 @@ coreconfigitem(
 )
 coreconfigitem(
     b'experimental',
-    b'sshserver.support-v2',
-    default=False,
-)
-coreconfigitem(
-    b'experimental',
     b'sparse-read',
     default=False,
 )
@@ -1236,6 +1298,11 @@ coreconfigitem(
 )
 coreconfigitem(
     b'experimental',
+    b'stream-v3',
+    default=False,
+)
+coreconfigitem(
+    b'experimental',
     b'treemanifest',
     default=False,
 )
@@ -1246,23 +1313,8 @@ coreconfigitem(
 )
 coreconfigitem(
     b'experimental',
-    b'sshpeer.advertise-v2',
-    default=False,
-)
-coreconfigitem(
-    b'experimental',
-    b'web.apiserver',
-    default=False,
-)
-coreconfigitem(
-    b'experimental',
-    b'web.api.http-v2',
-    default=False,
-)
-coreconfigitem(
-    b'experimental',
-    b'web.api.debugreflect',
-    default=False,
+    b'web.full-garbage-collection-rate',
+    default=1,  # still forcing a full collection on each request
 )
 coreconfigitem(
     b'experimental',
@@ -1281,8 +1333,14 @@ coreconfigitem(
 )
 coreconfigitem(
     b'extensions',
-    b'.*',
+    b'[^:]*',
     default=None,
+    generic=True,
+)
+coreconfigitem(
+    b'extensions',
+    b'[^:]*:required',
+    default=False,
     generic=True,
 )
 coreconfigitem(
@@ -1306,7 +1364,44 @@ coreconfigitem(
     # Enable this dirstate format *when creating a new repository*.
     # Which format to use for existing repos is controlled by .hg/requires
     b'format',
-    b'exp-dirstate-v2',
+    b'use-dirstate-v2',
+    default=False,
+    experimental=True,
+    alias=[(b'format', b'exp-rc-dirstate-v2')],
+)
+coreconfigitem(
+    b'format',
+    b'use-dirstate-v2.automatic-upgrade-of-mismatching-repositories',
+    default=False,
+    experimental=True,
+)
+coreconfigitem(
+    b'format',
+    b'use-dirstate-v2.automatic-upgrade-of-mismatching-repositories:quiet',
+    default=False,
+    experimental=True,
+)
+coreconfigitem(
+    b'format',
+    b'use-dirstate-tracked-hint',
+    default=False,
+    experimental=True,
+)
+coreconfigitem(
+    b'format',
+    b'use-dirstate-tracked-hint.version',
+    default=1,
+    experimental=True,
+)
+coreconfigitem(
+    b'format',
+    b'use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories',
+    default=False,
+    experimental=True,
+)
+coreconfigitem(
+    b'format',
+    b'use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories:quiet',
     default=False,
     experimental=True,
 )
@@ -1351,10 +1446,10 @@ coreconfigitem(
 )
 # Experimental TODOs:
 #
-# * Same as for evlogv2 (but for the reduction of the number of files)
+# * Same as for revlogv2 (but for the reduction of the number of files)
+# * Actually computing the rank of changesets
 # * Improvement to investigate
 #   - storing .hgtags fnode
-#   - storing `rank` of changesets
 #   - storing branch related identifier
 
 coreconfigitem(
@@ -1404,12 +1499,50 @@ coreconfigitem(
 coreconfigitem(
     b'format',
     b'use-share-safe',
-    default=False,
+    default=True,
 )
 coreconfigitem(
     b'format',
-    b'internal-phase',
+    b'use-share-safe.automatic-upgrade-of-mismatching-repositories',
     default=False,
+    experimental=True,
+)
+coreconfigitem(
+    b'format',
+    b'use-share-safe.automatic-upgrade-of-mismatching-repositories:quiet',
+    default=False,
+    experimental=True,
+)
+
+# Moving this on by default means we are confident about the scaling of phases.
+# This is not garanteed to be the case at the time this message is written.
+coreconfigitem(
+    b'format',
+    b'use-internal-phase',
+    default=False,
+    experimental=True,
+)
+# The interaction between the archived phase and obsolescence markers needs to
+# be sorted out before wider usage of this are to be considered.
+#
+# At the time this message is written, behavior when archiving obsolete
+# changeset differ significantly from stripping. As part of stripping, we also
+# remove the obsolescence marker associated to the stripped changesets,
+# revealing the precedecessors changesets when applicable. When archiving, we
+# don't touch the obsolescence markers, keeping everything hidden. This can
+# result in quite confusing situation for people combining exchanging draft
+# with the archived phases. As some markers needed by others may be skipped
+# during exchange.
+coreconfigitem(
+    b'format',
+    b'exp-archived-phase',
+    default=False,
+    experimental=True,
+)
+coreconfigitem(
+    b'shelve',
+    b'store',
+    default=b'internal',
     experimental=True,
 )
 coreconfigitem(
@@ -1592,6 +1725,59 @@ coreconfigitem(
     default=False,
 )
 coreconfigitem(
+    b'merge',
+    b'disable-partial-tools',
+    default=False,
+    experimental=True,
+)
+coreconfigitem(
+    b'partial-merge-tools',
+    b'.*',
+    default=None,
+    generic=True,
+    experimental=True,
+)
+coreconfigitem(
+    b'partial-merge-tools',
+    br'.*\.patterns',
+    default=dynamicdefault,
+    generic=True,
+    priority=-1,
+    experimental=True,
+)
+coreconfigitem(
+    b'partial-merge-tools',
+    br'.*\.executable$',
+    default=dynamicdefault,
+    generic=True,
+    priority=-1,
+    experimental=True,
+)
+coreconfigitem(
+    b'partial-merge-tools',
+    br'.*\.order',
+    default=0,
+    generic=True,
+    priority=-1,
+    experimental=True,
+)
+coreconfigitem(
+    b'partial-merge-tools',
+    br'.*\.args',
+    default=b"$local $base $other",
+    generic=True,
+    priority=-1,
+    experimental=True,
+)
+coreconfigitem(
+    b'partial-merge-tools',
+    br'.*\.disable',
+    default=False,
+    generic=True,
+    priority=-1,
+    experimental=True,
+)
+coreconfigitem(
     b'merge-tools',
     b'.*',
     default=None,
@@ -1676,6 +1862,13 @@ coreconfigitem(
 )
 coreconfigitem(
     b'merge-tools',
+    br'.*\.regappend$',
+    default=b"",
+    generic=True,
+    priority=-1,
+)
+coreconfigitem(
+    b'merge-tools',
     br'.*\.symlink$',
     default=False,
     generic=True,
@@ -1719,7 +1912,37 @@ coreconfigitem(
 )
 coreconfigitem(
     b'paths',
-    b'.*',
+    b'[^:]*',
+    default=None,
+    generic=True,
+)
+coreconfigitem(
+    b'paths',
+    b'.*:bookmarks.mode',
+    default='default',
+    generic=True,
+)
+coreconfigitem(
+    b'paths',
+    b'.*:multi-urls',
+    default=False,
+    generic=True,
+)
+coreconfigitem(
+    b'paths',
+    b'.*:pushrev',
+    default=None,
+    generic=True,
+)
+coreconfigitem(
+    b'paths',
+    b'.*:pushurl',
+    default=None,
+    generic=True,
+)
+coreconfigitem(
+    b'paths',
+    b'.*:pulled-delta-reuse-policy',
     default=None,
     generic=True,
 )
@@ -1880,6 +2103,13 @@ coreconfigitem(
     default=b'skip',
     experimental=True,
 )
+# experimental as long as format.use-dirstate-v2 is.
+coreconfigitem(
+    b'storage',
+    b'dirstate-v2.slow-path',
+    default=b"abort",
+    experimental=True,
+)
 coreconfigitem(
     b'storage',
     b'new-repo-backend',
@@ -1891,6 +2121,11 @@ coreconfigitem(
     b'revlog.optimize-delta-parent-choice',
     default=True,
     alias=[(b'format', b'aggressivemergedeltas')],
+)
+coreconfigitem(
+    b'storage',
+    b'revlog.delta-parent-search.candidate-group-chunk-size',
+    default=20,
 )
 coreconfigitem(
     b'storage',
@@ -1915,6 +2150,7 @@ coreconfigitem(
     b'revlog.reuse-external-delta',
     default=True,
 )
+# This option is True unless `format.generaldelta` is set.
 coreconfigitem(
     b'storage',
     b'revlog.reuse-external-delta-parent',
@@ -1994,7 +2230,7 @@ coreconfigitem(
 coreconfigitem(
     b'server',
     b'pullbundle',
-    default=False,
+    default=True,
 )
 coreconfigitem(
     b'server',
@@ -2064,6 +2300,16 @@ coreconfigitem(
 coreconfigitem(
     b'share',
     b'safe-mismatch.source-safe.warn',
+    default=True,
+)
+coreconfigitem(
+    b'share',
+    b'safe-mismatch.source-not-safe:verbose-upgrade',
+    default=True,
+)
+coreconfigitem(
+    b'share',
+    b'safe-mismatch.source-safe:verbose-upgrade',
     default=True,
 )
 coreconfigitem(
@@ -2269,7 +2515,7 @@ coreconfigitem(
 coreconfigitem(
     b'ui',
     b'large-file-limit',
-    default=10000000,
+    default=10 * (2 ** 20),
 )
 coreconfigitem(
     b'ui',
@@ -2430,7 +2676,7 @@ coreconfigitem(
 coreconfigitem(
     b'verify',
     b'skipflags',
-    default=None,
+    default=0,
 )
 coreconfigitem(
     b'web',
@@ -2721,4 +2967,18 @@ coreconfigitem(
     b'rebase',
     b'experimental.inmemory',
     default=False,
+)
+
+# This setting controls creation of a rebase_source extra field
+# during rebase. When False, no such field is created. This is
+# useful eg for incrementally converting changesets and then
+# rebasing them onto an existing repo.
+# WARNING: this is an advanced setting reserved for people who know
+# exactly what they are doing. Misuse of this setting can easily
+# result in obsmarker cycles and a vivid headache.
+coreconfigitem(
+    b'rebase',
+    b'store-source',
+    default=True,
+    experimental=True,
 )

@@ -20,7 +20,7 @@ Suggest Debian packages for some optional dependencies.
 
 --- a/hgext/bugzilla.py
 +++ b/hgext/bugzilla.py
-@@ -504,7 +504,8 @@ class bzmysql(bzaccess):
+@@ -503,7 +503,8 @@ class bzmysql(bzaccess):
              bzmysql._MySQLdb = mysql
          except ImportError as err:
              raise error.Abort(
@@ -32,7 +32,7 @@ Suggest Debian packages for some optional dependencies.
          bzaccess.__init__(self, ui)
 --- a/hgext/convert/bzr.py
 +++ b/hgext/convert/bzr.py
-@@ -64,7 +64,8 @@ class bzr_source(common.converter_source
+@@ -71,7 +71,8 @@ class bzr_source(common.converter_source
              # access breezy stuff
              bzrdir
          except NameError:
@@ -44,7 +44,7 @@ Suggest Debian packages for some optional dependencies.
          self._checkrepotype(path)
 --- a/hgext/convert/common.py
 +++ b/hgext/convert/common.py
-@@ -111,14 +111,15 @@ class MissingTool(Exception):
+@@ -89,14 +89,15 @@ class MissingTool(Exception):
      pass
  
  
@@ -64,7 +64,7 @@ Suggest Debian packages for some optional dependencies.
  class NoRepo(Exception):
 --- a/hgext/convert/cvs.py
 +++ b/hgext/convert/cvs.py
-@@ -48,7 +48,7 @@ class convert_cvs(converter_source):
+@@ -46,7 +46,7 @@ class convert_cvs(converter_source):
          if not os.path.exists(cvs):
              raise NoRepo(_(b"%s does not look like a CVS checkout") % path)
  
@@ -75,7 +75,7 @@ Suggest Debian packages for some optional dependencies.
          self.files = {}
 --- a/hgext/convert/darcs.py
 +++ b/hgext/convert/darcs.py
-@@ -53,7 +53,7 @@ class darcs_source(common.converter_sour
+@@ -35,7 +35,7 @@ class darcs_source(common.converter_sour
          if not os.path.exists(os.path.join(path, b'_darcs')):
              raise NoRepo(_(b"%s does not look like a darcs repository") % path)
  
@@ -86,7 +86,7 @@ Suggest Debian packages for some optional dependencies.
              raise error.Abort(
 --- a/hgext/convert/git.py
 +++ b/hgext/convert/git.py
-@@ -101,7 +101,7 @@ class convert_git(common.converter_sourc
+@@ -100,7 +100,7 @@ class convert_git(common.converter_sourc
          else:
              self.simopt = []
  
@@ -97,7 +97,7 @@ Suggest Debian packages for some optional dependencies.
          self.submodules = []
 --- a/hgext/convert/gnuarch.py
 +++ b/hgext/convert/gnuarch.py
-@@ -57,7 +57,8 @@ class gnuarch_source(common.converter_so
+@@ -56,7 +56,8 @@ class gnuarch_source(common.converter_so
              if procutil.findexe(b'tla'):
                  self.execmd = b'tla'
              else:
@@ -109,7 +109,7 @@ Suggest Debian packages for some optional dependencies.
  
 --- a/hgext/convert/monotone.py
 +++ b/hgext/convert/monotone.py
-@@ -87,7 +87,7 @@ class monotone_source(common.converter_s
+@@ -86,7 +86,7 @@ class monotone_source(common.converter_s
          self.files = None
          self.dirs = None
  
@@ -120,7 +120,7 @@ Suggest Debian packages for some optional dependencies.
          if self.automatestdio:
 --- a/hgext/convert/subversion.py
 +++ b/hgext/convert/subversion.py
-@@ -494,7 +494,8 @@ class svn_source(converter_source):
+@@ -477,7 +477,8 @@ class svn_source(converter_source):
                  _(b"%s does not look like a Subversion repository") % url
              )
          if svn is None:
@@ -130,7 +130,7 @@ Suggest Debian packages for some optional dependencies.
  
          try:
              version = svn.core.SVN_VER_MAJOR, svn.core.SVN_VER_MINOR
-@@ -504,14 +505,16 @@ class svn_source(converter_source):
+@@ -487,14 +488,16 @@ class svn_source(converter_source):
                          b'Subversion python bindings %d.%d found, '
                          b'1.4 or later required'
                      )
@@ -149,7 +149,7 @@ Suggest Debian packages for some optional dependencies.
              )
  
          self.lastrevs = {}
-@@ -1436,6 +1439,8 @@ class svn_sink(converter_sink, commandli
+@@ -1425,6 +1428,8 @@ class svn_sink(converter_sink, commandli
          return self.join(b'hg-authormap')
  
      def __init__(self, ui, repotype, path):
@@ -160,7 +160,7 @@ Suggest Debian packages for some optional dependencies.
          commandline.__init__(self, ui, b'svn')
 --- a/mercurial/sslutil.py
 +++ b/mercurial/sslutil.py
-@@ -199,7 +199,8 @@ def _hostsettings(ui, hostname):
+@@ -207,7 +207,8 @@ def _hostsettings(ui, hostname):
                  cafile = util.expandpath(cafile)
                  if not os.path.exists(cafile):
                      raise error.Abort(

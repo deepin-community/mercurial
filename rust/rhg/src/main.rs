@@ -1,77 +1,99 @@
 extern crate log;
-use crate::ui::Ui;
-use clap::App;
-use clap::AppSettings;
-use clap::Arg;
-use clap::ArgMatches;
+use crate::error::CommandError;
+use crate::ui::{local_to_utf8, Ui};
+use clap::{command, Arg, ArgMatches};
 use format_bytes::{format_bytes, join};
-use hg::config::{Config, ConfigSource};
-use hg::exit_codes;
+use hg::config::{Config, ConfigSource, PlainInfo};
 use hg::repo::{Repo, RepoError};
 use hg::utils::files::{get_bytes_from_os_str, get_path_from_bytes};
 use hg::utils::SliceExt;
+use hg::{exit_codes, requirements};
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::ffi::OsString;
+use std::os::unix::prelude::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
 
 mod blackbox;
+mod color;
 mod error;
 mod ui;
-use error::CommandError;
+pub mod utils {
+    pub mod path_utils;
+}
 
 fn main_with_result(
+    argv: Vec<OsString>,
     process_start_time: &blackbox::ProcessStartTime,
     ui: &ui::Ui,
     repo: Result<&Repo, &NoRepoInCwdError>,
     config: &Config,
 ) -> Result<(), CommandError> {
-    check_extensions(config)?;
+    check_unsupported(config, repo)?;
 
-    let app = App::new("rhg")
-        .global_setting(AppSettings::AllowInvalidUtf8)
-        .global_setting(AppSettings::DisableVersion)
-        .setting(AppSettings::SubcommandRequired)
-        .setting(AppSettings::VersionlessSubcommands)
+    let app = command!()
+        .subcommand_required(true)
         .arg(
-            Arg::with_name("repository")
+            Arg::new("repository")
                 .help("repository root directory")
-                .short("-R")
-                .long("--repository")
+                .short('R')
                 .value_name("REPO")
-                .takes_value(true)
                 // Both ok: `hg -R ./foo log` or `hg log -R ./foo`
                 .global(true),
         )
         .arg(
-            Arg::with_name("config")
+            Arg::new("config")
                 .help("set/override config option (use 'section.name=value')")
-                .long("--config")
                 .value_name("CONFIG")
-                .takes_value(true)
                 .global(true)
+                .long("config")
                 // Ok: `--config section.key1=val --config section.key2=val2`
-                .multiple(true)
                 // Not ok: `--config section.key1=val section.key2=val2`
-                .number_of_values(1),
+                .action(clap::ArgAction::Append),
         )
         .arg(
-            Arg::with_name("cwd")
+            Arg::new("cwd")
                 .help("change working directory")
-                .long("--cwd")
                 .value_name("DIR")
-                .takes_value(true)
+                .long("cwd")
+                .global(true),
+        )
+        .arg(
+            Arg::new("color")
+                .help("when to colorize (boolean, always, auto, never, or debug)")
+                .value_name("TYPE")
+                .long("color")
                 .global(true),
         )
         .version("0.0.1");
     let app = add_subcommand_args(app);
 
-    let matches = app.clone().get_matches_safe()?;
+    let matches = app.try_get_matches_from(argv.iter())?;
 
-    let (subcommand_name, subcommand_matches) = matches.subcommand();
+    let (subcommand_name, subcommand_args) =
+        matches.subcommand().expect("subcommand required");
+
+    // Mercurial allows users to define "defaults" for commands, fallback
+    // if a default is detected for the current command
+    let defaults = config.get_str(b"defaults", subcommand_name.as_bytes());
+    if defaults?.is_some() {
+        let msg = "`defaults` config set";
+        return Err(CommandError::unsupported(msg));
+    }
+
+    for prefix in ["pre", "post", "fail"].iter() {
+        // Mercurial allows users to define generic hooks for commands,
+        // fallback if any are detected
+        let item = format!("{}-{}", prefix, subcommand_name);
+        let hook_for_command = config.get_str(b"hooks", item.as_bytes())?;
+        if hook_for_command.is_some() {
+            let msg = format!("{}-{} hook defined", prefix, subcommand_name);
+            return Err(CommandError::unsupported(msg));
+        }
+    }
     let run = subcommand_run_fn(subcommand_name)
-        .expect("unknown subcommand name from clap despite AppSettings::SubcommandRequired");
-    let subcommand_args = subcommand_matches
-        .expect("no subcommand arguments from clap despite AppSettings::SubcommandRequired");
+        .expect("unknown subcommand name from clap despite Command::subcommand_required");
 
     let invocation = CliInvocation {
         ui,
@@ -79,30 +101,53 @@ fn main_with_result(
         config,
         repo,
     };
-    let blackbox = blackbox::Blackbox::new(&invocation, process_start_time)?;
-    blackbox.log_command_start();
-    let result = run(&invocation);
-    blackbox.log_command_end(exit_code(
-        &result,
-        // TODO: show a warning or combine with original error if `get_bool`
-        // returns an error
-        config
-            .get_bool(b"ui", b"detailed-exit-code")
-            .unwrap_or(false),
-    ));
-    result
+
+    if let Ok(repo) = repo {
+        // We don't support subrepos, fallback if the subrepos file is present
+        if repo.working_directory_vfs().join(".hgsub").exists() {
+            let msg = "subrepos (.hgsub is present)";
+            return Err(CommandError::unsupported(msg));
+        }
+    }
+
+    if config.is_extension_enabled(b"blackbox") {
+        let blackbox =
+            blackbox::Blackbox::new(&invocation, process_start_time)?;
+        blackbox.log_command_start(argv.iter());
+        let result = run(&invocation);
+        blackbox.log_command_end(
+            argv.iter(),
+            exit_code(
+                &result,
+                // TODO: show a warning or combine with original error if
+                // `get_bool` returns an error
+                config
+                    .get_bool(b"ui", b"detailed-exit-code")
+                    .unwrap_or(false),
+            ),
+        );
+        result
+    } else {
+        run(&invocation)
+    }
 }
 
-fn main() {
+fn rhg_main(argv: Vec<OsString>) -> ! {
     // Run this first, before we find out if the blackbox extension is even
     // enabled, in order to include everything in-between in the duration
     // measurements. Reading config files can be slow if they’re on NFS.
     let process_start_time = blackbox::ProcessStartTime::now();
 
     env_logger::init();
-    let ui = ui::Ui::new();
 
-    let early_args = EarlyArgs::parse(std::env::args_os());
+    // Make sure nothing in a future version of `rhg` sets the global
+    // threadpool before we can cap default threads. (This is also called
+    // in core because Python uses the same code path, we're adding a
+    // redundant check.)
+    hg::utils::cap_default_rayon_threads()
+        .expect("Rayon threadpool already initialized");
+
+    let early_args = EarlyArgs::parse(&argv);
 
     let initial_current_dir = early_args.cwd.map(|cwd| {
         let cwd = get_path_from_bytes(&cwd);
@@ -113,8 +158,9 @@ fn main() {
             })
             .unwrap_or_else(|error| {
                 exit(
+                    &argv,
                     &None,
-                    &ui,
+                    &Ui::new_infallible(&Config::empty()),
                     OnUnsupported::Abort,
                     Err(CommandError::abort(format!(
                         "abort: {}: '{}'",
@@ -134,8 +180,9 @@ fn main() {
             let on_unsupported = OnUnsupported::Abort;
 
             exit(
+                &argv,
                 &initial_current_dir,
-                &ui,
+                &Ui::new_infallible(&Config::empty()),
                 on_unsupported,
                 Err(error.into()),
                 false,
@@ -143,12 +190,13 @@ fn main() {
         });
 
     non_repo_config
-        .load_cli_args_config(early_args.config)
+        .load_cli_args(early_args.config, early_args.color)
         .unwrap_or_else(|error| {
             exit(
+                &argv,
                 &initial_current_dir,
-                &ui,
-                OnUnsupported::from_config(&ui, &non_repo_config),
+                &Ui::new_infallible(&non_repo_config),
+                OnUnsupported::from_config(&non_repo_config),
                 Err(error.into()),
                 non_repo_config
                     .get_bool(b"ui", b"detailed-exit-code")
@@ -162,11 +210,12 @@ fn main() {
                 // Same as `_matchscheme` in `mercurial/util.py`
                 regex::bytes::Regex::new("^[a-zA-Z0-9+.\\-]+:").unwrap();
         }
-        if SCHEME_RE.is_match(&repo_path_bytes) {
+        if SCHEME_RE.is_match(repo_path_bytes) {
             exit(
+                &argv,
                 &initial_current_dir,
-                &ui,
-                OnUnsupported::from_config(&ui, &non_repo_config),
+                &Ui::new_infallible(&non_repo_config),
+                OnUnsupported::from_config(&non_repo_config),
                 Err(CommandError::UnsupportedFeature {
                     message: format_bytes!(
                         b"URL-like --repository {}",
@@ -181,7 +230,7 @@ fn main() {
             )
         }
     }
-    let repo_arg = early_args.repo.unwrap_or(Vec::new());
+    let repo_arg = early_args.repo.unwrap_or_default();
     let repo_path: Option<PathBuf> = {
         if repo_arg.is_empty() {
             None
@@ -212,7 +261,7 @@ fn main() {
             let non_repo_config_val = {
                 let non_repo_val = non_repo_config.get(b"paths", &repo_arg);
                 match &non_repo_val {
-                    Some(val) if val.len() > 0 => home::home_dir()
+                    Some(val) if !val.is_empty() => home::home_dir()
                         .unwrap_or_else(|| PathBuf::from("~"))
                         .join(get_path_from_bytes(val))
                         .canonicalize()
@@ -228,7 +277,7 @@ fn main() {
                 Some(val) => {
                     let local_config_val = val.get(b"paths", &repo_arg);
                     match &local_config_val {
-                        Some(val) if val.len() > 0 => {
+                        Some(val) if !val.is_empty() => {
                             // presence of a local_config assures that
                             // current_dir
                             // wont result in an Error
@@ -242,10 +291,29 @@ fn main() {
                     }
                 }
             };
-            config_val.or(Some(get_path_from_bytes(&repo_arg).to_path_buf()))
+            config_val
+                .or_else(|| Some(get_path_from_bytes(&repo_arg).to_path_buf()))
         }
     };
 
+    let simple_exit =
+        |ui: &Ui, config: &Config, result: Result<(), CommandError>| -> ! {
+            exit(
+                &argv,
+                &initial_current_dir,
+                ui,
+                OnUnsupported::from_config(config),
+                result,
+                // TODO: show a warning or combine with original error if
+                // `get_bool` returns an error
+                non_repo_config
+                    .get_bool(b"ui", b"detailed-exit-code")
+                    .unwrap_or(false),
+            )
+        };
+    let early_exit = |config: &Config, error: CommandError| -> ! {
+        simple_exit(&Ui::new_infallible(config), config, Err(error))
+    };
     let repo_result = match Repo::find(&non_repo_config, repo_path.to_owned())
     {
         Ok(repo) => Ok(repo),
@@ -253,17 +321,7 @@ fn main() {
             // Not finding a repo is not fatal yet, if `-R` was not given
             Err(NoRepoInCwdError { cwd: at })
         }
-        Err(error) => exit(
-            &initial_current_dir,
-            &ui,
-            OnUnsupported::from_config(&ui, &non_repo_config),
-            Err(error.into()),
-            // TODO: show a warning or combine with original error if
-            // `get_bool` returns an error
-            non_repo_config
-                .get_bool(b"ui", b"detailed-exit-code")
-                .unwrap_or(false),
-        ),
+        Err(error) => early_exit(&non_repo_config, error.into()),
     };
 
     let config = if let Ok(repo) = &repo_result {
@@ -271,25 +329,50 @@ fn main() {
     } else {
         &non_repo_config
     };
-    let on_unsupported = OnUnsupported::from_config(&ui, config);
+
+    let mut config_cow = Cow::Borrowed(config);
+    config_cow.to_mut().apply_plain(PlainInfo::from_env());
+    if !ui::plain(Some("tweakdefaults"))
+        && config_cow
+            .as_ref()
+            .get_bool(b"ui", b"tweakdefaults")
+            .unwrap_or_else(|error| early_exit(config, error.into()))
+    {
+        config_cow.to_mut().tweakdefaults()
+    };
+    let config = config_cow.as_ref();
+    let ui = Ui::new(config)
+        .unwrap_or_else(|error| early_exit(config, error.into()));
+
+    if let Ok(true) = config.get_bool(b"rhg", b"fallback-immediately") {
+        exit(
+            &argv,
+            &initial_current_dir,
+            &ui,
+            OnUnsupported::Fallback {
+                executable: config
+                    .get(b"rhg", b"fallback-executable")
+                    .map(ToOwned::to_owned),
+            },
+            Err(CommandError::unsupported(
+                "`rhg.fallback-immediately is true`",
+            )),
+            false,
+        )
+    }
 
     let result = main_with_result(
+        argv.iter().map(|s| s.to_owned()).collect(),
         &process_start_time,
         &ui,
         repo_result.as_ref(),
         config,
     );
-    exit(
-        &initial_current_dir,
-        &ui,
-        on_unsupported,
-        result,
-        // TODO: show a warning or combine with original error if `get_bool`
-        // returns an error
-        config
-            .get_bool(b"ui", b"detailed-exit-code")
-            .unwrap_or(false),
-    )
+    simple_exit(&ui, config, result)
+}
+
+fn main() -> ! {
+    rhg_main(std::env::args_os().collect())
 }
 
 fn exit_code(
@@ -299,8 +382,7 @@ fn exit_code(
     match result {
         Ok(()) => exit_codes::OK,
         Err(CommandError::Abort {
-            message: _,
-            detailed_exit_code,
+            detailed_exit_code, ..
         }) => {
             if use_detailed_exit_code {
                 *detailed_exit_code
@@ -309,16 +391,19 @@ fn exit_code(
             }
         }
         Err(CommandError::Unsuccessful) => exit_codes::UNSUCCESSFUL,
-
         // Exit with a specific code and no error message to let a potential
         // wrapper script fallback to Python-based Mercurial.
         Err(CommandError::UnsupportedFeature { .. }) => {
             exit_codes::UNIMPLEMENTED
         }
+        Err(CommandError::InvalidFallback { .. }) => {
+            exit_codes::INVALID_FALLBACK
+        }
     }
 }
 
-fn exit(
+fn exit<'a>(
+    original_args: &'a [OsString],
     initial_current_dir: &Option<PathBuf>,
     ui: &Ui,
     mut on_unsupported: OnUnsupported,
@@ -327,13 +412,27 @@ fn exit(
 ) -> ! {
     if let (
         OnUnsupported::Fallback { executable },
-        Err(CommandError::UnsupportedFeature { .. }),
+        Err(CommandError::UnsupportedFeature { message }),
     ) = (&on_unsupported, &result)
     {
-        let mut args = std::env::args_os();
-        let executable_path = get_path_from_bytes(&executable);
+        let mut args = original_args.iter();
+        let executable = match executable {
+            None => {
+                exit_no_fallback(
+                    ui,
+                    OnUnsupported::Abort,
+                    Err(CommandError::abort(
+                        "abort: 'rhg.on-unsupported=fallback' without \
+                                'rhg.fallback-executable' set.",
+                    )),
+                    false,
+                );
+            }
+            Some(executable) => executable,
+        };
+        let executable_path = get_path_from_bytes(executable);
         let this_executable = args.next().expect("exepcted argv[0] to exist");
-        if executable_path == &PathBuf::from(this_executable) {
+        if executable_path == *this_executable {
             // Avoid spawning infinitely many processes until resource
             // exhaustion.
             let _ = ui.write_stderr(&format_bytes!(
@@ -343,25 +442,39 @@ fn exit(
             ));
             on_unsupported = OnUnsupported::Abort
         } else {
-            // `args` is now `argv[1..]` since we’ve already consumed `argv[0]`
+            log::debug!("falling back (see trace-level log)");
+            log::trace!("{}", local_to_utf8(message));
+            if let Err(err) = which::which(executable_path) {
+                exit_no_fallback(
+                    ui,
+                    OnUnsupported::Abort,
+                    Err(CommandError::InvalidFallback {
+                        path: executable.to_owned(),
+                        err: err.to_string(),
+                    }),
+                    use_detailed_exit_code,
+                )
+            }
+            // `args` is now `argv[1..]` since we’ve already consumed
+            // `argv[0]`
             let mut command = Command::new(executable_path);
             command.args(args);
             if let Some(initial) = initial_current_dir {
                 command.current_dir(initial);
             }
-            let result = command.status();
-            match result {
-                Ok(status) => std::process::exit(
-                    status.code().unwrap_or(exit_codes::ABORT),
-                ),
-                Err(error) => {
-                    let _ = ui.write_stderr(&format_bytes!(
-                        b"tried to fall back to a '{}' sub-process but got error {}\n",
-                        executable, format_bytes::Utf8(error)
-                    ));
-                    on_unsupported = OnUnsupported::Abort
-                }
-            }
+            // We don't use subprocess because proper signal handling is harder
+            // and we don't want to keep `rhg` around after a fallback anyway.
+            // For example, if `rhg` is run in the background and falls back to
+            // `hg` which, in turn, waits for a signal, we'll get stuck if
+            // we're doing plain subprocess.
+            //
+            // If `exec` returns, we can only assume our process is very broken
+            // (see its documentation), so only try to forward the error code
+            // when exiting.
+            let err = command.exec();
+            std::process::exit(
+                err.raw_os_error().unwrap_or(exit_codes::ABORT),
+            );
         }
     }
     exit_no_fallback(ui, on_unsupported, result, use_detailed_exit_code)
@@ -376,14 +489,14 @@ fn exit_no_fallback(
     match &result {
         Ok(_) => {}
         Err(CommandError::Unsuccessful) => {}
-        Err(CommandError::Abort {
-            message,
-            detailed_exit_code: _,
-        }) => {
+        Err(CommandError::Abort { message, hint, .. }) => {
+            // Ignore errors when writing to stderr, we’re already exiting
+            // with failure code so there’s not much more we can do.
             if !message.is_empty() {
-                // Ignore errors when writing to stderr, we’re already exiting
-                // with failure code so there’s not much more we can do.
                 let _ = ui.write_stderr(&format_bytes!(b"{}\n", message));
+            }
+            if let Some(hint) = hint {
+                let _ = ui.write_stderr(&format_bytes!(b"({})\n", hint));
             }
         }
         Err(CommandError::UnsupportedFeature { message }) => {
@@ -398,6 +511,13 @@ fn exit_no_fallback(
                 OnUnsupported::Fallback { .. } => unreachable!(),
             }
         }
+        Err(CommandError::InvalidFallback { path, err }) => {
+            let _ = ui.write_stderr(&format_bytes!(
+                b"abort: invalid fallback '{}': {}\n",
+                path,
+                err.as_bytes(),
+            ));
+        }
     }
     std::process::exit(exit_code(&result, use_detailed_exit_code))
 }
@@ -410,7 +530,7 @@ macro_rules! subcommands {
             )+
         }
 
-        fn add_subcommand_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
+        fn add_subcommand_args(app: clap::Command) -> clap::Command {
             app
             $(
                 .subcommand(commands::$command::args())
@@ -434,6 +554,8 @@ subcommands! {
     cat
     debugdata
     debugrequirements
+    debugignorerhg
+    debugrhgsparse
     files
     root
     config
@@ -442,7 +564,7 @@ subcommands! {
 
 pub struct CliInvocation<'a> {
     ui: &'a Ui,
-    subcommand_args: &'a ArgMatches<'a>,
+    subcommand_args: &'a ArgMatches,
     config: &'a Config,
     /// References inside `Result` is a bit peculiar but allow
     /// `invocation.repo?` to work out with `&CliInvocation` since this
@@ -463,6 +585,8 @@ struct NoRepoInCwdError {
 struct EarlyArgs {
     /// Values of all `--config` arguments. (Possibly none)
     config: Vec<Vec<u8>>,
+    /// Value of all the `--color` argument, if any.
+    color: Option<Vec<u8>>,
     /// Value of the `-R` or `--repository` argument, if any.
     repo: Option<Vec<u8>>,
     /// Value of the `--cwd` argument, if any.
@@ -470,9 +594,10 @@ struct EarlyArgs {
 }
 
 impl EarlyArgs {
-    fn parse(args: impl IntoIterator<Item = OsString>) -> Self {
+    fn parse<'a>(args: impl IntoIterator<Item = &'a OsString>) -> Self {
         let mut args = args.into_iter().map(get_bytes_from_os_str);
         let mut config = Vec::new();
+        let mut color = None;
         let mut repo = None;
         let mut cwd = None;
         // Use `while let` instead of `for` so that we can also call
@@ -484,6 +609,14 @@ impl EarlyArgs {
                 }
             } else if let Some(value) = arg.drop_prefix(b"--config=") {
                 config.push(value.to_owned())
+            }
+
+            if arg == b"--color" {
+                if let Some(value) = args.next() {
+                    color = Some(value)
+                }
+            } else if let Some(value) = arg.drop_prefix(b"--color=") {
+                color = Some(value.to_owned())
             }
 
             if arg == b"--cwd" {
@@ -504,7 +637,12 @@ impl EarlyArgs {
                 repo = Some(value.to_owned())
             }
         }
-        Self { config, repo, cwd }
+        Self {
+            config,
+            color,
+            repo,
+            cwd,
+        }
     }
 }
 
@@ -518,13 +656,13 @@ enum OnUnsupported {
     /// Silently exit with code 252.
     AbortSilent,
     /// Try running a Python implementation
-    Fallback { executable: Vec<u8> },
+    Fallback { executable: Option<Vec<u8>> },
 }
 
 impl OnUnsupported {
     const DEFAULT: Self = OnUnsupported::Abort;
 
-    fn from_config(ui: &Ui, config: &Config) -> Self {
+    fn from_config(config: &Config) -> Self {
         match config
             .get(b"rhg", b"on-unsupported")
             .map(|value| value.to_ascii_lowercase())
@@ -535,18 +673,7 @@ impl OnUnsupported {
             Some(b"fallback") => OnUnsupported::Fallback {
                 executable: config
                     .get(b"rhg", b"fallback-executable")
-                    .unwrap_or_else(|| {
-                        exit_no_fallback(
-                            ui,
-                            Self::Abort,
-                            Err(CommandError::abort(
-                                "abort: 'rhg.on-unsupported=fallback' without \
-                                'rhg.fallback-executable' set."
-                            )),
-                            false,
-                        )
-                    })
-                    .to_owned(),
+                    .map(|x| x.to_owned()),
             },
             None => Self::DEFAULT,
             Some(_) => {
@@ -557,27 +684,59 @@ impl OnUnsupported {
     }
 }
 
-const SUPPORTED_EXTENSIONS: &[&[u8]] = &[b"blackbox", b"share"];
+/// The `*` extension is an edge-case for config sub-options that apply to all
+/// extensions. For now, only `:required` exists, but that may change in the
+/// future.
+const SUPPORTED_EXTENSIONS: &[&[u8]] = &[
+    b"blackbox",
+    b"share",
+    b"sparse",
+    b"narrow",
+    b"*",
+    b"strip",
+    b"rebase",
+];
 
 fn check_extensions(config: &Config) -> Result<(), CommandError> {
-    let enabled = config.get_section_keys(b"extensions");
+    if let Some(b"*") = config.get(b"rhg", b"ignored-extensions") {
+        // All extensions are to be ignored, nothing to do here
+        return Ok(());
+    }
+
+    let enabled: HashSet<&[u8]> = config
+        .iter_section(b"extensions")
+        .filter_map(|(extension, value)| {
+            if value == b"!" {
+                // Filter out disabled extensions
+                return None;
+            }
+            // Ignore extension suboptions. Only `required` exists for now.
+            // `rhg` either supports an extension or doesn't, so it doesn't
+            // make sense to consider the loading of an extension.
+            let actual_extension =
+                extension.split_2(b':').unwrap_or((extension, b"")).0;
+            Some(actual_extension)
+        })
+        .collect();
 
     let mut unsupported = enabled;
     for supported in SUPPORTED_EXTENSIONS {
         unsupported.remove(supported);
     }
 
-    if let Some(ignored_list) =
-        config.get_simple_list(b"rhg", b"ignored-extensions")
+    if let Some(ignored_list) = config.get_list(b"rhg", b"ignored-extensions")
     {
         for ignored in ignored_list {
-            unsupported.remove(ignored);
+            unsupported.remove(ignored.as_slice());
         }
     }
 
     if unsupported.is_empty() {
         Ok(())
     } else {
+        let mut unsupported: Vec<_> = unsupported.into_iter().collect();
+        // Sort the extensions to get a stable output
+        unsupported.sort();
         Err(CommandError::UnsupportedFeature {
             message: format_bytes!(
                 b"extensions: {} (consider adding them to 'rhg.ignored-extensions' config)",
@@ -585,4 +744,89 @@ fn check_extensions(config: &Config) -> Result<(), CommandError> {
             ),
         })
     }
+}
+
+/// Array of tuples of (auto upgrade conf, feature conf, local requirement)
+#[allow(clippy::type_complexity)]
+const AUTO_UPGRADES: &[((&str, &str), (&str, &str), &str)] = &[
+    (
+        ("format", "use-share-safe.automatic-upgrade-of-mismatching-repositories"),
+        ("format", "use-share-safe"),
+        requirements::SHARESAFE_REQUIREMENT,
+    ),
+    (
+        ("format", "use-dirstate-tracked-hint.automatic-upgrade-of-mismatching-repositories"),
+        ("format", "use-dirstate-tracked-hint"),
+        requirements::DIRSTATE_TRACKED_HINT_V1,
+    ),
+    (
+        ("format", "use-dirstate-v2.automatic-upgrade-of-mismatching-repositories"),
+        ("format", "use-dirstate-v2"),
+        requirements::DIRSTATE_V2_REQUIREMENT,
+    ),
+];
+
+/// Mercurial allows users to automatically upgrade their repository.
+/// `rhg` does not have the ability to upgrade yet, so fallback if an upgrade
+/// is needed.
+fn check_auto_upgrade(
+    config: &Config,
+    reqs: &HashSet<String>,
+) -> Result<(), CommandError> {
+    for (upgrade_conf, feature_conf, local_req) in AUTO_UPGRADES.iter() {
+        let auto_upgrade = config
+            .get_bool(upgrade_conf.0.as_bytes(), upgrade_conf.1.as_bytes())?;
+
+        if auto_upgrade {
+            let want_it = config.get_bool(
+                feature_conf.0.as_bytes(),
+                feature_conf.1.as_bytes(),
+            )?;
+            let have_it = reqs.contains(*local_req);
+
+            let action = match (want_it, have_it) {
+                (true, false) => Some("upgrade"),
+                (false, true) => Some("downgrade"),
+                _ => None,
+            };
+            if let Some(action) = action {
+                let message = format!(
+                    "automatic {} {}.{}",
+                    action, upgrade_conf.0, upgrade_conf.1
+                );
+                return Err(CommandError::unsupported(message));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_unsupported(
+    config: &Config,
+    repo: Result<&Repo, &NoRepoInCwdError>,
+) -> Result<(), CommandError> {
+    check_extensions(config)?;
+
+    if std::env::var_os("HG_PENDING").is_some() {
+        // TODO: only if the value is `== repo.working_directory`?
+        // What about relative v.s. absolute paths?
+        Err(CommandError::unsupported("$HG_PENDING"))?
+    }
+
+    if let Ok(repo) = repo {
+        if repo.has_subrepos()? {
+            Err(CommandError::unsupported("sub-repositories"))?
+        }
+        check_auto_upgrade(config, repo.requirements())?;
+    }
+
+    if config.has_non_empty_section(b"encode") {
+        Err(CommandError::unsupported("[encode] config"))?
+    }
+
+    if config.has_non_empty_section(b"decode") {
+        Err(CommandError::unsupported("[decode] config"))?
+    }
+
+    Ok(())
 }

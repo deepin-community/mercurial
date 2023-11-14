@@ -147,7 +147,7 @@ Changing branch of an obsoleted changeset
   $ hg branch -r 4 foobar
   abort: hidden revision '4' was rewritten as: 7c1991464886
   (use --hidden to access hidden revisions)
-  [255]
+  [10]
 
   $ hg branch -r 4 --hidden foobar
   abort: cannot change branch of 3938acfb5c0f, as that creates content-divergence with 7c1991464886
@@ -185,6 +185,7 @@ Make sure bookmark movement is correct
   changed branch on 2 changesets
   updating the branch cache
   invalid branch cache (served): tip differs
+  invalid branch cache (served.hidden): tip differs
 
   $ hg glog -r '(.^)::'
   @  9:de1404b45a69 Added e
@@ -211,7 +212,7 @@ Make sure phase handling is correct
   secret                        11:38a9b2d53f98
   foo                            7:8a4729a5e2b8
   wat                            9:de1404b45a69 (inactive)
-  default                        2:28ad74487de9 (inactive)
+  default                        1:29becc82797a (inactive)
   $ hg branch
   secret
 

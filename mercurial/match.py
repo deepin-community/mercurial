@@ -5,7 +5,6 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import, print_function
 
 import bisect
 import copy
@@ -31,6 +30,7 @@ allpatternkinds = (
     b're',
     b'glob',
     b'path',
+    b'filepath',
     b'relglob',
     b'relpath',
     b'relre',
@@ -182,6 +182,8 @@ def match(
     're:<regexp>' - a regular expression
     'path:<path>' - a path relative to repository root, which is matched
                     recursively
+    'filepath:<path>' - an exact path to a single file, relative to the
+                        repository root
     'rootfilesin:<path>' - a path relative to repository root, which is
                     matched non-recursively (will not match subdirectories)
     'relglob:<glob>' - an unrooted glob (*.c matches C files in all dirs)
@@ -197,14 +199,14 @@ def match(
     ...     return match(util.localpath(root), *args, **kwargs)
 
     Usually a patternmatcher is returned:
-    >>> _match(b'/foo', b'.', [b're:.*\.c$', b'path:foo/a', b'*.py'])
-    <patternmatcher patterns='.*\\.c$|foo/a(?:/|$)|[^/]*\\.py$'>
+    >>> _match(b'/foo', b'.', [br're:.*\.c$', b'path:foo/a', b'*.py'])
+    <patternmatcher patterns='[^/]*\\.py$|foo/a(?:/|$)|.*\\.c$'>
 
     Combining 'patterns' with 'include' (resp. 'exclude') gives an
     intersectionmatcher (resp. a differencematcher):
-    >>> type(_match(b'/foo', b'.', [b're:.*\.c$'], include=[b'path:lib']))
+    >>> type(_match(b'/foo', b'.', [br're:.*\.c$'], include=[b'path:lib']))
     <class 'mercurial.match.intersectionmatcher'>
-    >>> type(_match(b'/foo', b'.', [b're:.*\.c$'], exclude=[b'path:build']))
+    >>> type(_match(b'/foo', b'.', [br're:.*\.c$'], exclude=[b'path:build']))
     <class 'mercurial.match.differencematcher'>
 
     Notice that, if 'patterns' is empty, an alwaysmatcher is returned:
@@ -213,7 +215,7 @@ def match(
 
     The 'default' argument determines which kind of pattern is assumed if a
     pattern has no prefix:
-    >>> _match(b'/foo', b'.', [b'.*\.c$'], default=b're')
+    >>> _match(b'/foo', b'.', [br'.*\.c$'], default=b're')
     <patternmatcher patterns='.*\\.c$'>
     >>> _match(b'/foo', b'.', [b'main.py'], default=b'relpath')
     <patternmatcher patterns='main\\.py(?:/|$)'>
@@ -224,7 +226,7 @@ def match(
     name) matches againset one of the patterns given at initialization. There
     are two ways of doing this check.
 
-    >>> m = _match(b'/foo', b'', [b're:.*\.c$', b'relpath:a'])
+    >>> m = _match(b'/foo', b'', [br're:.*\.c$', b'relpath:a'])
 
     1. Calling the matcher with a file name returns True if any pattern
     matches that file name:
@@ -335,10 +337,18 @@ def _donormalize(patterns, default, root, cwd, auditor=None, warn=None):
     """Convert 'kind:pat' from the patterns list to tuples with kind and
     normalized and rooted patterns and with listfiles expanded."""
     kindpats = []
+    kinds_to_normalize = (
+        b'relglob',
+        b'path',
+        b'filepath',
+        b'rootfilesin',
+        b'rootglob',
+    )
+
     for kind, pat in [_patsplit(p, default) for p in patterns]:
         if kind in cwdrelativepatternkinds:
             pat = pathutil.canonpath(root, cwd, pat, auditor=auditor)
-        elif kind in (b'relglob', b'path', b'rootfilesin', b'rootglob'):
+        elif kind in kinds_to_normalize:
             pat = util.normpath(pat)
         elif kind in (b'listfile', b'listfile0'):
             try:
@@ -369,7 +379,7 @@ def _donormalize(patterns, default, root, cwd, auditor=None, warn=None):
                     % (
                         pat,
                         inst.message,
-                    )  # pytype: disable=unsupported-operands
+                    )
                 )
             except IOError as inst:
                 if warn:
@@ -383,7 +393,7 @@ def _donormalize(patterns, default, root, cwd, auditor=None, warn=None):
     return kindpats
 
 
-class basematcher(object):
+class basematcher:
     def __init__(self, badfn=None):
         if badfn is not None:
             self.bad = badfn
@@ -584,10 +594,7 @@ def path_or_parents_in_set(path, prefix_set):
     if b'' in prefix_set:
         return True
 
-    if pycompat.ispy3:
-        sl = ord(b'/')
-    else:
-        sl = '/'
+    sl = ord(b'/')
 
     # We already checked that path isn't in prefix_set exactly, so
     # `path[len(pf)] should never raise IndexError.
@@ -618,7 +625,7 @@ class patternmatcher(basematcher):
     True
 
     >>> m.files()
-    ['', 'foo/a', 'b', '']
+    [b'', b'foo/a', b'', b'b']
     >>> m.exact(b'foo/a')
     True
     >>> m.exact(b'b')
@@ -629,10 +636,16 @@ class patternmatcher(basematcher):
 
     def __init__(self, root, kindpats, badfn=None):
         super(patternmatcher, self).__init__(badfn)
+        kindpats.sort()
 
         self._files = _explicitfiles(kindpats)
         self._prefix = _prefix(kindpats)
-        self._pats, self.matchfn = _buildmatch(kindpats, b'$', root)
+        self._pats, self._matchfn = _buildmatch(kindpats, b'$', root)
+
+    def matchfn(self, fn):
+        if fn in self._fileset:
+            return True
+        return self._matchfn(fn)
 
     @propertycache
     def _dirs(self):
@@ -663,7 +676,7 @@ class patternmatcher(basematcher):
 # This is basically a reimplementation of pathutil.dirs that stores the
 # children instead of just a count of them, plus a small optional optimization
 # to avoid some directories we don't need.
-class _dirchildren(object):
+class _dirchildren:
     def __init__(self, paths, onlyinclude=None):
         self._dirs = {}
         self._onlyinclude = onlyinclude or []
@@ -1327,6 +1340,9 @@ def _globre(pat):
     return res
 
 
+FLAG_RE = util.re.compile(br'^\(\?([aiLmsux]+)\)(.*)')
+
+
 def _regex(kind, pat, globsuffix):
     """Convert a (normalized) pattern of any kind into a
     regular expression.
@@ -1335,6 +1351,10 @@ def _regex(kind, pat, globsuffix):
         return b''
     if kind == b're':
         return pat
+    if kind == b'filepath':
+        raise error.ProgrammingError(
+            "'filepath:' patterns should not be converted to a regex"
+        )
     if kind in (b'path', b'relpath'):
         if pat == b'.':
             return b''
@@ -1355,9 +1375,15 @@ def _regex(kind, pat, globsuffix):
             return b'.*' + globre[len(b'[^/]*') :] + globsuffix
         return b'(?:|.*/)' + globre + globsuffix
     if kind == b'relre':
-        if pat.startswith(b'^'):
-            return pat
-        return b'.*' + pat
+        flag = None
+        m = FLAG_RE.match(pat)
+        if m:
+            flag, pat = m.groups()
+        if not pat.startswith(b'^'):
+            pat = b'.*' + pat
+        if flag is not None:
+            pat = br'(?%s:%s)' % (flag, pat)
+        return pat
     if kind in (b'glob', b'rootglob'):
         return _globre(pat) + globsuffix
     raise error.ProgrammingError(b'not a regex pattern: %s:%s' % (kind, pat))
@@ -1433,7 +1459,14 @@ def _buildregexmatch(kindpats, globsuffix):
     """
     try:
         allgroups = []
-        regexps = [_regex(k, p, globsuffix) for (k, p, s) in kindpats]
+        regexps = []
+        exact = set()
+        for (kind, pattern, _source) in kindpats:
+            if kind == b'filepath':
+                exact.add(pattern)
+                continue
+            regexps.append(_regex(kind, pattern, globsuffix))
+
         fullregexp = _joinregexes(regexps)
 
         startidx = 0
@@ -1458,9 +1491,20 @@ def _buildregexmatch(kindpats, globsuffix):
             allgroups.append(_joinregexes(group))
             allmatchers = [_rematcher(g) for g in allgroups]
             func = lambda s: any(m(s) for m in allmatchers)
-        return fullregexp, func
+
+        actualfunc = func
+        if exact:
+            # An empty regex will always match, so only call the regex if
+            # there were any actual patterns to match.
+            if not regexps:
+                actualfunc = lambda s: s in exact
+            else:
+                actualfunc = lambda s: s in exact or func(s)
+        return fullregexp, actualfunc
     except re.error:
         for k, p, s in kindpats:
+            if k == b'filepath':
+                continue
             try:
                 _rematcher(_regex(k, p, globsuffix))
             except re.error:
@@ -1491,7 +1535,7 @@ def _patternrootsanddirs(kindpats):
                     break
                 root.append(p)
             r.append(b'/'.join(root))
-        elif kind in (b'relpath', b'path'):
+        elif kind in (b'relpath', b'path', b'filepath'):
             if pat == b'.':
                 pat = b''
             r.append(pat)
@@ -1615,7 +1659,7 @@ def readpatternfile(filepath, warn, sourceinfo=False):
     patterns = []
 
     fp = open(filepath, b'rb')
-    for lineno, line in enumerate(util.iterfile(fp), start=1):
+    for lineno, line in enumerate(fp, start=1):
         if b"#" in line:
             global _commentre
             if not _commentre:
@@ -1642,7 +1686,7 @@ def readpatternfile(filepath, warn, sourceinfo=False):
             continue
 
         linesyntax = syntax
-        for s, rels in pycompat.iteritems(syntaxes):
+        for s, rels in syntaxes.items():
             if line.startswith(rels):
                 linesyntax = rels
                 line = line[len(rels) :]

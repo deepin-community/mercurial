@@ -6,7 +6,7 @@ Create a repository:
   devel.all-warnings=true
   devel.default-date=0 0
   extensions.fsmonitor= (fsmonitor !)
-  format.exp-dirstate-v2=1 (dirstate-v2 !)
+  format.use-dirstate-v2=1 (dirstate-v2 !)
   largefiles.usercache=$TESTTMP/.cache/largefiles
   lfs.usercache=$TESTTMP/.cache/lfs
   ui.slash=True
@@ -15,6 +15,7 @@ Create a repository:
   ui.merge=internal:merge
   ui.mergemarkers=detailed
   ui.promptecho=True
+  ui.ssh=* (glob)
   ui.timeout.warn=15
   web.address=localhost
   web\.ipv6=(?:True|False) (re)
@@ -39,7 +40,7 @@ Writes to stdio succeed and fail appropriately
   A a
 
   $ hg status >/dev/full
-  abort: No space left on device
+  abort: No space left on device* (glob)
   [255]
 #endif
 
@@ -54,12 +55,13 @@ Writes to stdio succeed and fail appropriately
 On Python 3, stdio may be None:
 
   $ hg debuguiprompt --config ui.interactive=true 0<&-
-   abort: Bad file descriptor
+   abort: Bad file descriptor (no-rhg !)
+   abort: response expected (rhg !)
   [255]
   $ hg version -q 0<&-
   Mercurial Distributed SCM * (glob)
 
-#if py3
+#if py3 no-rhg
   $ hg version -q 1>&-
   abort: Bad file descriptor
   [255]
@@ -119,6 +121,7 @@ Verify should succeed:
   checking manifests
   crosschecking files in changesets and manifests
   checking files
+  checking dirstate
   checked 1 changesets with 1 changes to 1 files
 
 Repository root:
@@ -238,15 +241,16 @@ Invalid ui.message-output option:
 Underlying message streams should be updated when ui.fout/ferr are set:
 
   $ cat <<'EOF' > capui.py
-  > from mercurial import pycompat, registrar
+  > import io
+  > from mercurial import registrar
   > cmdtable = {}
   > command = registrar.command(cmdtable)
   > @command(b'capui', norepo=True)
   > def capui(ui):
   >     out = ui.fout
-  >     ui.fout = pycompat.bytesio()
+  >     ui.fout = io.BytesIO()
   >     ui.status(b'status\n')
-  >     ui.ferr = pycompat.bytesio()
+  >     ui.ferr = io.BytesIO()
   >     ui.warn(b'warn\n')
   >     out.write(b'stdout: %s' % ui.fout.getvalue())
   >     out.write(b'stderr: %s' % ui.ferr.getvalue())

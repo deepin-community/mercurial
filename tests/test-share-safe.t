@@ -19,7 +19,7 @@ prepare source repo
   $ hg init source
   $ cd source
   $ cat .hg/requires
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   share-safe
   $ cat .hg/store/requires
   dotencode
@@ -30,7 +30,7 @@ prepare source repo
   store
   $ hg debugrequirements
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   revlogv1
@@ -54,13 +54,13 @@ Create a shared repo and check the requirements are shared and read correctly
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ cd shared1
   $ cat .hg/requires
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   share-safe
   shared
 
   $ hg debugrequirements -R ../source
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   revlogv1
@@ -70,7 +70,7 @@ Create a shared repo and check the requirements are shared and read correctly
 
   $ hg debugrequirements
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   revlogv1
@@ -225,7 +225,7 @@ Disable zstd related tests because its not present on pure version
   
   requirements
      preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-dirstate-v2 !)
-     preserved: dotencode, exp-dirstate-v2, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (dirstate-v2 !)
+     preserved: dotencode, use-dirstate-v2, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (dirstate-v2 !)
      added: revlog-compression-zstd
   
   processed revlogs:
@@ -244,7 +244,8 @@ Disable zstd related tests because its not present on pure version
   $ echo "use-persistent-nodemap=True" >> .hg/hgrc
 
   $ hg debugupgraderepo --run -q -R ../shared1
-  abort: cannot upgrade repository; unsupported source requirement: shared
+  abort: cannot use these actions on a share repository: persistent-nodemap
+  (upgrade the main repository directly)
   [255]
 
   $ hg debugupgraderepo --run -q
@@ -253,8 +254,8 @@ Disable zstd related tests because its not present on pure version
   requirements
      preserved: dotencode, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-zstd no-dirstate-v2 !)
      preserved: dotencode, fncache, generaldelta, revlog-compression-zstd, revlogv1, share-safe, sparserevlog, store (zstd no-dirstate-v2 !)
-     preserved: dotencode, exp-dirstate-v2, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-zstd dirstate-v2 !)
-     preserved: dotencode, exp-dirstate-v2, fncache, generaldelta, revlog-compression-zstd, revlogv1, share-safe, sparserevlog, store (zstd dirstate-v2 !)
+     preserved: dotencode, use-dirstate-v2, fncache, generaldelta, revlogv1, share-safe, sparserevlog, store (no-zstd dirstate-v2 !)
+     preserved: dotencode, use-dirstate-v2, fncache, generaldelta, revlog-compression-zstd, revlogv1, share-safe, sparserevlog, store (zstd dirstate-v2 !)
      added: persistent-nodemap
   
   processed revlogs:
@@ -327,7 +328,7 @@ Test that upgrading using debugupgraderepo works
   $ cd non-share-safe
   $ hg debugrequirements
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   revlogv1
@@ -346,7 +347,7 @@ Create a share before upgrading
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ hg debugrequirements -R nss-share
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   revlogv1
@@ -360,29 +361,23 @@ Upgrade
   $ hg debugupgraderepo -q
   requirements
      preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-dirstate-v2 !)
-     preserved: dotencode, exp-dirstate-v2, fncache, generaldelta, revlogv1, sparserevlog, store (dirstate-v2 !)
+     preserved: dotencode, use-dirstate-v2, fncache, generaldelta, revlogv1, sparserevlog, store (dirstate-v2 !)
      added: share-safe
   
-  processed revlogs:
-    - all-filelogs
-    - changelog
-    - manifest
+  no revlogs to process
   
   $ hg debugupgraderepo --run
   upgrade will perform the following actions:
   
   requirements
      preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-dirstate-v2 !)
-     preserved: dotencode, exp-dirstate-v2, fncache, generaldelta, revlogv1, sparserevlog, store (dirstate-v2 !)
+     preserved: dotencode, use-dirstate-v2, fncache, generaldelta, revlogv1, sparserevlog, store (dirstate-v2 !)
      added: share-safe
   
   share-safe
      Upgrades a repository to share-safe format so that future shares of this repository share its requirements and configs.
   
-  processed revlogs:
-    - all-filelogs
-    - changelog
-    - manifest
+  no revlogs to process
   
   beginning upgrade...
   repository locked and read-only
@@ -394,7 +389,7 @@ Upgrade
 
   $ hg debugrequirements
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   revlogv1
@@ -403,7 +398,7 @@ Upgrade
   store
 
   $ cat .hg/requires
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   share-safe
 
   $ cat .hg/store/requires
@@ -454,26 +449,20 @@ Test that downgrading works too
   $ hg debugupgraderepo -q
   requirements
      preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-dirstate-v2 !)
-     preserved: dotencode, exp-dirstate-v2, fncache, generaldelta, revlogv1, sparserevlog, store (dirstate-v2 !)
+     preserved: dotencode, use-dirstate-v2, fncache, generaldelta, revlogv1, sparserevlog, store (dirstate-v2 !)
      removed: share-safe
   
-  processed revlogs:
-    - all-filelogs
-    - changelog
-    - manifest
+  no revlogs to process
   
   $ hg debugupgraderepo --run
   upgrade will perform the following actions:
   
   requirements
      preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-dirstate-v2 !)
-     preserved: dotencode, exp-dirstate-v2, fncache, generaldelta, revlogv1, sparserevlog, store (dirstate-v2 !)
+     preserved: dotencode, use-dirstate-v2, fncache, generaldelta, revlogv1, sparserevlog, store (dirstate-v2 !)
      removed: share-safe
   
-  processed revlogs:
-    - all-filelogs
-    - changelog
-    - manifest
+  no revlogs to process
   
   beginning upgrade...
   repository locked and read-only
@@ -485,7 +474,7 @@ Test that downgrading works too
 
   $ hg debugrequirements
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   revlogv1
@@ -494,7 +483,7 @@ Test that downgrading works too
 
   $ cat .hg/requires
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   revlogv1
@@ -532,8 +521,17 @@ Testing automatic downgrade of shares when config is set
   [255]
   $ rm ../ss-share/.hg/wlock
 
+  $ cp -R ../ss-share ../ss-share-bck
   $ hg log -GT "{node}: {desc}\n" -R ../ss-share --config share.safe-mismatch.source-not-safe=downgrade-abort
   repository downgraded to not use share-safe mode
+  @  f63db81e6dde1d9c78814167f77fb1fb49283f4f: added bar
+  |
+  o  f3ba8b99bb6f897c87bbc1c07b75c6ddf43a4f77: added foo
+  
+  $ rm -rf ../ss-share
+  $ mv ../ss-share-bck ../ss-share
+
+  $ hg log -GT "{node}: {desc}\n" -R ../ss-share --config share.safe-mismatch.source-not-safe=downgrade-abort --config share.safe-mismatch.source-not-safe:verbose-upgrade=no
   @  f63db81e6dde1d9c78814167f77fb1fb49283f4f: added bar
   |
   o  f3ba8b99bb6f897c87bbc1c07b75c6ddf43a4f77: added foo
@@ -553,18 +551,15 @@ Testing automatic upgrade of shares when config is set
   
   requirements
      preserved: dotencode, fncache, generaldelta, revlogv1, sparserevlog, store (no-dirstate-v2 !)
-     preserved: dotencode, exp-dirstate-v2, fncache, generaldelta, revlogv1, sparserevlog, store (dirstate-v2 !)
+     preserved: dotencode, use-dirstate-v2, fncache, generaldelta, revlogv1, sparserevlog, store (dirstate-v2 !)
      added: share-safe
   
-  processed revlogs:
-    - all-filelogs
-    - changelog
-    - manifest
+  no revlogs to process
   
   repository upgraded to share safe mode, existing shares will still work in old non-safe mode. Re-share existing shares to use them in safe mode New shares will be created in safe mode.
   $ hg debugrequirements
   dotencode
-  exp-dirstate-v2 (dirstate-v2 !)
+  dirstate-v2 (dirstate-v2 !)
   fncache
   generaldelta
   revlogv1
@@ -602,8 +597,16 @@ Check that if lock is taken, upgrade fails but read operation are successful
   [255]
 
   $ rm ../nss-share/.hg/wlock
+  $ cp -R ../nss-share ../nss-share-bck
   $ hg log -GT "{node}: {desc}\n" -R ../nss-share --config share.safe-mismatch.source-safe=upgrade-abort
   repository upgraded to use share-safe mode
+  @  f63db81e6dde1d9c78814167f77fb1fb49283f4f: added bar
+  |
+  o  f3ba8b99bb6f897c87bbc1c07b75c6ddf43a4f77: added foo
+  
+  $ rm -rf ../nss-share
+  $ mv ../nss-share-bck ../nss-share
+  $ hg log -GT "{node}: {desc}\n" -R ../nss-share --config share.safe-mismatch.source-safe=upgrade-abort --config share.safe-mismatch.source-safe:verbose-upgrade=no
   @  f63db81e6dde1d9c78814167f77fb1fb49283f4f: added bar
   |
   o  f3ba8b99bb6f897c87bbc1c07b75c6ddf43a4f77: added foo
@@ -617,3 +620,36 @@ Test that unshare works
   |
   o  f3ba8b99bb6f897c87bbc1c07b75c6ddf43a4f77: added foo
   
+
+Test automatique upgrade/downgrade of main-repository
+------------------------------------------------------
+
+create an initial repository
+
+  $ hg init auto-upgrade \
+  > --config format.use-share-safe=no
+  $ hg debugbuilddag -R auto-upgrade --new-file .+5
+  $ hg -R auto-upgrade update
+  6 files updated, 0 files merged, 0 files removed, 0 files unresolved
+  $ hg debugformat -R auto-upgrade | grep share-safe
+  share-safe:          no
+
+upgrade it to share-safe automatically
+
+  $ hg status -R auto-upgrade \
+  >     --config format.use-share-safe.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-share-safe=yes
+  automatically upgrading repository to the `share-safe` feature
+  (see `hg help config.format.use-share-safe` for details)
+  $ hg debugformat -R auto-upgrade | grep share-safe
+  share-safe:         yes
+
+downgrade it from share-safe automatically
+
+  $ hg status -R auto-upgrade \
+  >     --config format.use-share-safe.automatic-upgrade-of-mismatching-repositories=yes \
+  >     --config format.use-share-safe=no
+  automatically downgrading repository from the `share-safe` feature
+  (see `hg help config.format.use-share-safe` for details)
+  $ hg debugformat -R auto-upgrade | grep share-safe
+  share-safe:          no

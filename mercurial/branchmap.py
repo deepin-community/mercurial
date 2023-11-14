@@ -5,7 +5,6 @@
 # This software may be used and distributed according to the terms of the
 # GNU General Public License version 2 or any later version.
 
-from __future__ import absolute_import
 
 import struct
 
@@ -17,6 +16,7 @@ from .node import (
 from . import (
     encoding,
     error,
+    obsolete,
     pycompat,
     scmutil,
     util,
@@ -62,7 +62,7 @@ pack_into = struct.pack_into
 unpack_from = struct.unpack_from
 
 
-class BranchMapCache(object):
+class BranchMapCache:
     """mapping of filtered views of repo with their branchcache"""
 
     def __init__(self):
@@ -119,7 +119,7 @@ class BranchMapCache(object):
         clbranchinfo = cl.branchinfo
         rbheads = []
         closed = set()
-        for bheads in pycompat.itervalues(remotebranchmap):
+        for bheads in remotebranchmap.values():
             rbheads += bheads
             for h in bheads:
                 r = clrev(h)
@@ -149,10 +149,17 @@ class BranchMapCache(object):
     def clear(self):
         self._per_filter.clear()
 
+    def write_delayed(self, repo):
+        unfi = repo.unfiltered()
+        for filtername, cache in self._per_filter.items():
+            if cache._delayed:
+                repo = unfi.filtered(filtername)
+                cache.write(repo)
+
 
 def _unknownnode(node):
     """raises ValueError when branchcache found a node which does not exists"""
-    raise ValueError('node %s does not exist' % pycompat.sysstr(hex(node)))
+    raise ValueError('node %s does not exist' % node.hex())
 
 
 def _branchcachedesc(repo):
@@ -162,7 +169,7 @@ def _branchcachedesc(repo):
         return b'branch cache'
 
 
-class branchcache(object):
+class branchcache:
     """A dict like object that hold branches heads cache.
 
     This cache is used to avoid costly computations to determine all the
@@ -177,7 +184,7 @@ class branchcache(object):
 
     The first line is used to check if the cache is still valid. If the
     branch cache is for a filtered repo view, an optional third hash is
-    included that hashes the hashes of all filtered revisions.
+    included that hashes the hashes of all filtered and obsolete revisions.
 
     The open/closed state is represented by a single letter 'o' or 'c'.
     This field can be used to avoid changelog reads when determining if a
@@ -199,6 +206,7 @@ class branchcache(object):
         has a given node or not. If it's not provided, we assume that every node
         we have exists in changelog"""
         self._repo = repo
+        self._delayed = False
         if tipnode is None:
             self.tipnode = repo.nullid
         else:
@@ -262,7 +270,7 @@ class branchcache(object):
         return key in self._entries
 
     def iteritems(self):
-        for k, v in pycompat.iteritems(self._entries):
+        for k, v in self._entries.items():
             self._verifybranch(k)
             yield k, v
 
@@ -343,16 +351,25 @@ class branchcache(object):
         return filename
 
     def validfor(self, repo):
-        """Is the cache content valid regarding a repo
+        """check that cache contents are valid for (a subset of) this repo
 
-        - False when cached tipnode is unknown or if we detect a strip.
-        - True when cache is up to date or a subset of current repo."""
+        - False when the order of changesets changed or if we detect a strip.
+        - True when cache is up-to-date for the current repo or its subset."""
         try:
-            return (self.tipnode == repo.changelog.node(self.tiprev)) and (
-                self.filteredhash == scmutil.filteredhash(repo, self.tiprev)
-            )
+            node = repo.changelog.node(self.tiprev)
         except IndexError:
+            # changesets were stripped and now we don't even have enough to
+            # find tiprev
             return False
+        if self.tipnode != node:
+            # tiprev doesn't correspond to tipnode: repo was stripped, or this
+            # repo has a different order of changesets
+            return False
+        tiphash = scmutil.filteredhash(repo, self.tiprev, needobsolete=True)
+        # hashes don't match if this repo view has a different set of filtered
+        # revisions (e.g. due to phase changes) or obsolete revisions (e.g.
+        # history was rewritten)
+        return self.filteredhash == tiphash
 
     def _branchtip(self, heads):
         """Return tuple with last open head in heads and false,
@@ -383,13 +400,13 @@ class branchcache(object):
         return heads
 
     def iterbranches(self):
-        for bn, heads in pycompat.iteritems(self):
+        for bn, heads in self.items():
             yield (bn, heads) + self._branchtip(heads)
 
     def iterheads(self):
         """returns all the heads"""
         self._verifyall()
-        return pycompat.itervalues(self._entries)
+        return self._entries.values()
 
     def copy(self):
         """return an deep copy of the branchcache object"""
@@ -403,23 +420,30 @@ class branchcache(object):
         )
 
     def write(self, repo):
+        tr = repo.currenttransaction()
+        if not getattr(tr, 'finalized', True):
+            # Avoid premature writing.
+            #
+            # (The cache warming setup by localrepo will update the file later.)
+            self._delayed = True
+            return
         try:
-            f = repo.cachevfs(self._filename(repo), b"w", atomictemp=True)
-            cachekey = [hex(self.tipnode), b'%d' % self.tiprev]
-            if self.filteredhash is not None:
-                cachekey.append(hex(self.filteredhash))
-            f.write(b" ".join(cachekey) + b'\n')
-            nodecount = 0
-            for label, nodes in sorted(pycompat.iteritems(self._entries)):
-                label = encoding.fromlocal(label)
-                for node in nodes:
-                    nodecount += 1
-                    if node in self._closednodes:
-                        state = b'c'
-                    else:
-                        state = b'o'
-                    f.write(b"%s %s %s\n" % (hex(node), state, label))
-            f.close()
+            filename = self._filename(repo)
+            with repo.cachevfs(filename, b"w", atomictemp=True) as f:
+                cachekey = [hex(self.tipnode), b'%d' % self.tiprev]
+                if self.filteredhash is not None:
+                    cachekey.append(hex(self.filteredhash))
+                f.write(b" ".join(cachekey) + b'\n')
+                nodecount = 0
+                for label, nodes in sorted(self._entries.items()):
+                    label = encoding.fromlocal(label)
+                    for node in nodes:
+                        nodecount += 1
+                        if node in self._closednodes:
+                            state = b'c'
+                        else:
+                            state = b'o'
+                        f.write(b"%s %s %s\n" % (hex(node), state, label))
             repo.ui.log(
                 b'branchcache',
                 b'wrote %s with %d labels and %d nodes\n',
@@ -427,6 +451,7 @@ class branchcache(object):
                 len(self._entries),
                 nodecount,
             )
+            self._delayed = False
         except (IOError, OSError, error.Abort) as inst:
             # Abort may be raised by read only opener, so log and continue
             repo.ui.debug(
@@ -462,7 +487,10 @@ class branchcache(object):
         # use the faster unfiltered parent accessor.
         parentrevs = repo.unfiltered().changelog.parentrevs
 
-        for branch, newheadrevs in pycompat.iteritems(newbranches):
+        # Faster than using ctx.obsolete()
+        obsrevs = obsolete.getrevs(repo, b'obsolete')
+
+        for branch, newheadrevs in newbranches.items():
             # For every branch, compute the new branchheads.
             # A branchhead is a revision such that no descendant is on
             # the same branch.
@@ -498,10 +526,15 @@ class branchcache(object):
             #   checks can be skipped. Otherwise, the ancestors of the
             #   "uncertain" set are removed from branchheads.
             #   This computation is heavy and avoided if at all possible.
-            bheads = self._entries.setdefault(branch, [])
+            bheads = self._entries.get(branch, [])
             bheadset = {cl.rev(node) for node in bheads}
             uncertain = set()
             for newrev in sorted(newheadrevs):
+                if newrev in obsrevs:
+                    # We ignore obsolete changesets as they shouldn't be
+                    # considered heads.
+                    continue
+
                 if not bheadset:
                     bheadset.add(newrev)
                     continue
@@ -509,13 +542,22 @@ class branchcache(object):
                 parents = [p for p in parentrevs(newrev) if p != nullrev]
                 samebranch = set()
                 otherbranch = set()
+                obsparents = set()
                 for p in parents:
-                    if p in bheadset or getbranchinfo(p)[0] == branch:
+                    if p in obsrevs:
+                        # We ignored this obsolete changeset earlier, but now
+                        # that it has non-ignored children, we need to make
+                        # sure their ancestors are not considered heads. To
+                        # achieve that, we will simply treat this obsolete
+                        # changeset as a parent from other branch.
+                        obsparents.add(p)
+                    elif p in bheadset or getbranchinfo(p)[0] == branch:
                         samebranch.add(p)
                     else:
                         otherbranch.add(p)
-                if otherbranch and not (len(bheadset) == len(samebranch) == 1):
+                if not (len(bheadset) == len(samebranch) == 1):
                     uncertain.update(otherbranch)
+                    uncertain.update(obsparents)
                 bheadset.difference_update(samebranch)
                 bheadset.add(newrev)
 
@@ -524,11 +566,12 @@ class branchcache(object):
                     topoheads = set(cl.headrevs())
                 if bheadset - topoheads:
                     floorrev = min(bheadset)
-                    ancestors = set(cl.ancestors(newheadrevs, floorrev))
-                    bheadset -= ancestors
-            bheadrevs = sorted(bheadset)
-            self[branch] = [cl.node(rev) for rev in bheadrevs]
-            tiprev = bheadrevs[-1]
+                    if floorrev <= max(uncertain):
+                        ancestors = set(cl.ancestors(uncertain, floorrev))
+                        bheadset -= ancestors
+            if bheadset:
+                self[branch] = [cl.node(rev) for rev in sorted(bheadset)]
+            tiprev = max(newheadrevs)
             if tiprev > ntiprev:
                 ntiprev = tiprev
 
@@ -537,15 +580,24 @@ class branchcache(object):
             self.tipnode = cl.node(ntiprev)
 
         if not self.validfor(repo):
-            # cache key are not valid anymore
+            # old cache key is now invalid for the repo, but we've just updated
+            # the cache and we assume it's valid, so let's make the cache key
+            # valid as well by recomputing it from the cached data
             self.tipnode = repo.nullid
             self.tiprev = nullrev
             for heads in self.iterheads():
+                if not heads:
+                    # all revisions on a branch are obsolete
+                    continue
+                # note: tiprev is not necessarily the tip revision of repo,
+                # because the tip could be obsolete (i.e. not a head)
                 tiprev = max(cl.rev(node) for node in heads)
                 if tiprev > self.tiprev:
                     self.tipnode = cl.node(tiprev)
                     self.tiprev = tiprev
-        self.filteredhash = scmutil.filteredhash(repo, self.tiprev)
+        self.filteredhash = scmutil.filteredhash(
+            repo, self.tiprev, needobsolete=True
+        )
 
         duration = util.timer() - starttime
         repo.ui.log(
@@ -579,7 +631,7 @@ _rbcbranchidxmask = 0x7FFFFFFF
 _rbccloseflag = 0x80000000
 
 
-class revbranchcache(object):
+class revbranchcache:
     """Persistent cache, mapping from revision number to branch name and close.
     This is a low level cache, independent of filtering.
 

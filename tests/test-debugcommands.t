@@ -39,6 +39,9 @@
   chunks size   : 191
       0x75 (u)  : 191 (100.00%)
   
+  
+  total-stored-content: 188 bytes
+  
   avg chain length  :  0
   max chain length  :  0
   max chain reach   : 67
@@ -74,6 +77,9 @@
       empty     :  0 ( 0.00%)
       0x75 (u)  : 88 (100.00%)
   
+  
+  total-stored-content: 86 bytes
+  
   avg chain length  :  0
   max chain length  :  0
   max chain reach   : 44
@@ -106,6 +112,9 @@
       0x75 (u)  : 1 (100.00%)
   chunks size   : 3
       0x75 (u)  : 3 (100.00%)
+  
+  
+  total-stored-content: 2 bytes
   
   avg chain length  : 0
   max chain length  : 0
@@ -148,31 +157,31 @@ Test debugindex, with and without the --verbose/--debug flag
 #endif
 
   $ hg debugindex -c
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       0 07f494440405 000000000000 000000000000
        1       1 8cccb4b5fec2 07f494440405 000000000000
        2       2 b1e228c512c5 8cccb4b5fec2 000000000000
   $ hg debugindex -c --debug
-     rev linkrev nodeid                                   p1                                       p2
-       0       0 07f4944404050f47db2e5c5071e0e84e7a27bba9 0000000000000000000000000000000000000000 0000000000000000000000000000000000000000
-       1       1 8cccb4b5fec20cafeb99dd01c26d4dee8ea4388a 07f4944404050f47db2e5c5071e0e84e7a27bba9 0000000000000000000000000000000000000000
-       2       2 b1e228c512c5d7066d70562ed839c3323a62d6d2 8cccb4b5fec20cafeb99dd01c26d4dee8ea4388a 0000000000000000000000000000000000000000
+     rev   rank linkrev                                   nodeid p1-rev                                p1-nodeid p2-rev                                p2-nodeid            full-size delta-base flags comp-mode          data-offset chunk-size sd-comp-mode      sidedata-offset sd-chunk-size
+       0     -1       0 07f4944404050f47db2e5c5071e0e84e7a27bba9     -1 0000000000000000000000000000000000000000     -1 0000000000000000000000000000000000000000                   57          0     0         2                    0         58       inline                    0             0
+       1     -1       1 8cccb4b5fec20cafeb99dd01c26d4dee8ea4388a      0 07f4944404050f47db2e5c5071e0e84e7a27bba9     -1 0000000000000000000000000000000000000000                   66          1     0         2                   58         67       inline                    0             0
+       2     -1       2 b1e228c512c5d7066d70562ed839c3323a62d6d2      1 8cccb4b5fec20cafeb99dd01c26d4dee8ea4388a     -1 0000000000000000000000000000000000000000                   65          2     0         2                  125         66       inline                    0             0
   $ hg debugindex -m
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       0 a0c8bcbbb45c 000000000000 000000000000
        1       1 57faf8a737ae a0c8bcbbb45c 000000000000
        2       2 a35b10320954 57faf8a737ae 000000000000
   $ hg debugindex -m --debug
-     rev linkrev nodeid                                   p1                                       p2
-       0       0 a0c8bcbbb45c63b90b70ad007bf38961f64f2af0 0000000000000000000000000000000000000000 0000000000000000000000000000000000000000
-       1       1 57faf8a737ae7faf490582941a82319ba6529dca a0c8bcbbb45c63b90b70ad007bf38961f64f2af0 0000000000000000000000000000000000000000
-       2       2 a35b103209548032201c16c7688cb2657f037a38 57faf8a737ae7faf490582941a82319ba6529dca 0000000000000000000000000000000000000000
+     rev   rank linkrev                                   nodeid p1-rev                                p1-nodeid p2-rev                                p2-nodeid            full-size delta-base flags comp-mode          data-offset chunk-size sd-comp-mode      sidedata-offset sd-chunk-size
+       0     -1       0 a0c8bcbbb45c63b90b70ad007bf38961f64f2af0     -1 0000000000000000000000000000000000000000     -1 0000000000000000000000000000000000000000                   43          0     0         2                    0         44       inline                    0             0
+       1     -1       1 57faf8a737ae7faf490582941a82319ba6529dca      0 a0c8bcbbb45c63b90b70ad007bf38961f64f2af0     -1 0000000000000000000000000000000000000000                    0          1     0         2                   44          0       inline                    0             0
+       2     -1       2 a35b103209548032201c16c7688cb2657f037a38      1 57faf8a737ae7faf490582941a82319ba6529dca     -1 0000000000000000000000000000000000000000                   43          2     0         2                   44         44       inline                    0             0
   $ hg debugindex a
-     rev linkrev nodeid       p1           p2
+     rev linkrev       nodeid    p1-nodeid    p2-nodeid
        0       0 b789fdd96dc2 000000000000 000000000000
   $ hg debugindex --debug a
-     rev linkrev nodeid                                   p1                                       p2
-       0       0 b789fdd96dc2f3bd229c1dd8eedf0fc60e2b68e3 0000000000000000000000000000000000000000 0000000000000000000000000000000000000000
+     rev   rank linkrev                                   nodeid p1-rev                                p1-nodeid p2-rev                                p2-nodeid            full-size delta-base flags comp-mode          data-offset chunk-size sd-comp-mode      sidedata-offset sd-chunk-size
+       0     -1       0 b789fdd96dc2f3bd229c1dd8eedf0fc60e2b68e3     -1 0000000000000000000000000000000000000000     -1 0000000000000000000000000000000000000000                    2          0     0         2                    0          3       inline                    0             0
 
 debugdelta chain basic output
 
@@ -197,10 +206,10 @@ debugdelta chain basic output
 
 #if reporevlogstore no-pure
   $ hg debugdeltachain -m
-      rev  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
-        0       1        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
-        1       2        1       -1    base          0          0          0   0.00000         0         0    0.00000          0          0   1.00000        1
-        2       3        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
+      rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
+        0      -1      -1       1        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
+        1       0      -1       2        1       -1    base          0          0          0   0.00000         0         0    0.00000          0          0   1.00000        1
+        2       1      -1       3        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
 
   $ hg debugdeltachain -m -T '{rev} {chainid} {chainlen}\n'
   0 1 1
@@ -212,8 +221,7 @@ debugdelta chain basic output
    {
     "chainid": 1,
     "chainlen": 1,
-    "chainratio": 1.02325581395, (no-py3 !)
-    "chainratio": 1.0232558139534884, (py3 !)
+    "chainratio": 1.0232558139534884,
     "chainsize": 44,
     "compsize": 44,
     "deltatype": "base",
@@ -221,6 +229,8 @@ debugdelta chain basic output
     "extraratio": 0.0,
     "largestblock": 44,
     "lindist": 44,
+    "p1": -1,
+    "p2": -1,
     "prevrev": -1,
     "readdensity": 1.0,
     "readsize": 44,
@@ -239,6 +249,8 @@ debugdelta chain basic output
     "extraratio": 0,
     "largestblock": 0,
     "lindist": 0,
+    "p1": 0,
+    "p2": -1,
     "prevrev": -1,
     "readdensity": 1,
     "readsize": 0,
@@ -249,8 +261,7 @@ debugdelta chain basic output
    {
     "chainid": 3,
     "chainlen": 1,
-    "chainratio": 1.02325581395, (no-py3 !)
-    "chainratio": 1.0232558139534884, (py3 !)
+    "chainratio": 1.0232558139534884,
     "chainsize": 44,
     "compsize": 44,
     "deltatype": "base",
@@ -258,6 +269,8 @@ debugdelta chain basic output
     "extraratio": 0.0,
     "largestblock": 44,
     "lindist": 44,
+    "p1": 1,
+    "p2": -1,
     "prevrev": -1,
     "readdensity": 1.0,
     "readsize": 44,
@@ -274,10 +287,10 @@ debugdelta chain with sparse read enabled
   > sparse-read = True
   > EOF
   $ hg debugdeltachain -m
-      rev  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
-        0       1        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
-        1       2        1       -1    base          0          0          0   0.00000         0         0    0.00000          0          0   1.00000        1
-        2       3        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
+      rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
+        0      -1      -1       1        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
+        1       0      -1       2        1       -1    base          0          0          0   0.00000         0         0    0.00000          0          0   1.00000        1
+        2       1      -1       3        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
 
   $ hg debugdeltachain -m -T '{rev} {chainid} {chainlen} {readsize} {largestblock} {readdensity}\n'
   0 1 1 44 44 1.0
@@ -289,8 +302,7 @@ debugdelta chain with sparse read enabled
    {
     "chainid": 1,
     "chainlen": 1,
-    "chainratio": 1.02325581395, (no-py3 !)
-    "chainratio": 1.0232558139534884, (py3 !)
+    "chainratio": 1.0232558139534884,
     "chainsize": 44,
     "compsize": 44,
     "deltatype": "base",
@@ -298,6 +310,8 @@ debugdelta chain with sparse read enabled
     "extraratio": 0.0,
     "largestblock": 44,
     "lindist": 44,
+    "p1": -1,
+    "p2": -1,
     "prevrev": -1,
     "readdensity": 1.0,
     "readsize": 44,
@@ -316,6 +330,8 @@ debugdelta chain with sparse read enabled
     "extraratio": 0,
     "largestblock": 0,
     "lindist": 0,
+    "p1": 0,
+    "p2": -1,
     "prevrev": -1,
     "readdensity": 1,
     "readsize": 0,
@@ -326,8 +342,7 @@ debugdelta chain with sparse read enabled
    {
     "chainid": 3,
     "chainlen": 1,
-    "chainratio": 1.02325581395, (no-py3 !)
-    "chainratio": 1.0232558139534884, (py3 !)
+    "chainratio": 1.0232558139534884,
     "chainsize": 44,
     "compsize": 44,
     "deltatype": "base",
@@ -335,6 +350,8 @@ debugdelta chain with sparse read enabled
     "extraratio": 0.0,
     "largestblock": 44,
     "lindist": 44,
+    "p1": 1,
+    "p2": -1,
     "prevrev": -1,
     "readdensity": 1.0,
     "readsize": 44,
@@ -559,7 +576,7 @@ Test cache warming command
 Test debugcolor
 
 #if no-windows
-  $ hg debugcolor --style --color always | egrep 'mode|style|log\.'
+  $ hg debugcolor --style --color always | grep -E 'mode|style|log\.'
   color mode: 'ansi'
   available style:
   \x1b[0;33mlog.changeset\x1b[0m:                      \x1b[0;33myellow\x1b[0m (esc)
@@ -574,7 +591,6 @@ Test debugcolor
 Test internal debugstacktrace command
 
   $ cat > debugstacktrace.py << EOF
-  > from __future__ import absolute_import
   > from mercurial import (
   >     util,
   > )
@@ -593,15 +609,15 @@ Test internal debugstacktrace command
   > EOF
   $ "$PYTHON" debugstacktrace.py
   stacktrace at:
-   *debugstacktrace.py:16 in * (glob)
-   *debugstacktrace.py:9  in f (glob)
+   *debugstacktrace.py:15 in * (glob)
+   *debugstacktrace.py:8  in f (glob)
   hello from g at:
-   *debugstacktrace.py:16 in * (glob)
-   *debugstacktrace.py:10 in f (glob)
+   *debugstacktrace.py:15 in * (glob)
+   *debugstacktrace.py:9  in f (glob)
   hi ...
   from h hidden in g at:
-   *debugstacktrace.py:10 in f (glob)
-   *debugstacktrace.py:13 in g (glob)
+   *debugstacktrace.py:9  in f (glob)
+   *debugstacktrace.py:12 in g (glob)
 
 Test debugcapabilities command:
 
@@ -620,6 +636,7 @@ Test debugcapabilities command:
     changegroup
       01
       02
+      03
     checkheads
       related
     digests
@@ -644,22 +661,21 @@ Test debugcapabilities command:
 
 Test debugpeer
 
-  $ hg --config ui.ssh="\"$PYTHON\" \"$TESTDIR/dummyssh\"" debugpeer ssh://user@dummy/debugrevlog
+  $ hg debugpeer ssh://user@dummy/debugrevlog
   url: ssh://user@dummy/debugrevlog
   local: no
   pushable: yes
 
-  $ hg --config ui.ssh="\"$PYTHON\" \"$TESTDIR/dummyssh\"" --debug debugpeer ssh://user@dummy/debugrevlog
-  running "*" "*/tests/dummyssh" 'user@dummy' 'hg -R debugrevlog serve --stdio' (glob) (no-windows !)
-  running "*" "*\tests/dummyssh" "user@dummy" "hg -R debugrevlog serve --stdio" (glob) (windows !)
+#if rust
+
+  $ hg --debug debugpeer ssh://user@dummy/debugrevlog
+  running .* ".*[/\\]dummyssh" ['"]user@dummy['"] ['"]hg -R debugrevlog serve --stdio['"] (re)
   devel-peer-request: hello+between
   devel-peer-request:   pairs: 81 bytes
   sending hello command
   sending between command
-  remote: 444 (no-rust !)
-  remote: 463 (rust !)
-  remote: capabilities: batch branchmap $USUAL_BUNDLE2_CAPS$ changegroupsubset getbundle known lookup protocaps pushkey streamreqs=generaldelta,revlogv1,sparserevlog unbundle=HG10GZ,HG10BZ,HG10UN unbundlehash (no-rust !)
-  remote: capabilities: batch branchmap $USUAL_BUNDLE2_CAPS$ changegroupsubset getbundle known lookup protocaps pushkey streamreqs=generaldelta,persistent-nodemap,revlogv1,sparserevlog unbundle=HG10GZ,HG10BZ,HG10UN unbundlehash (rust !)
+  remote: 473
+  remote: capabilities: batch branchmap $USUAL_BUNDLE2_CAPS$ changegroupsubset getbundle known lookup protocaps pushkey streamreqs=generaldelta,revlog-compression-zstd,revlogv1,sparserevlog unbundle=HG10GZ,HG10BZ,HG10UN unbundlehash
   remote: 1
   devel-peer-request: protocaps
   devel-peer-request:   caps: * bytes (glob)
@@ -667,3 +683,50 @@ Test debugpeer
   url: ssh://user@dummy/debugrevlog
   local: no
   pushable: yes
+
+#endif
+
+#if no-rust zstd
+
+  $ hg --debug debugpeer ssh://user@dummy/debugrevlog
+  running .* ".*[/\\]dummyssh" ['"]user@dummy['"] ['"]hg -R debugrevlog serve --stdio['"] (re)
+  devel-peer-request: hello+between
+  devel-peer-request:   pairs: 81 bytes
+  sending hello command
+  sending between command
+  remote: 473
+  remote: capabilities: batch branchmap $USUAL_BUNDLE2_CAPS$ changegroupsubset getbundle known lookup protocaps pushkey streamreqs=generaldelta,revlog-compression-zstd,revlogv1,sparserevlog unbundle=HG10GZ,HG10BZ,HG10UN unbundlehash
+  remote: 1
+  devel-peer-request: protocaps
+  devel-peer-request:   caps: * bytes (glob)
+  sending protocaps command
+  url: ssh://user@dummy/debugrevlog
+  local: no
+  pushable: yes
+
+#endif
+
+#if no-rust no-zstd
+
+  $ hg --debug debugpeer ssh://user@dummy/debugrevlog
+  running .* ".*[/\\]dummyssh" ['"]user@dummy['"] ['"]hg -R debugrevlog serve --stdio['"] (re)
+  devel-peer-request: hello+between
+  devel-peer-request:   pairs: 81 bytes
+  sending hello command
+  sending between command
+  remote: 449
+  remote: capabilities: batch branchmap $USUAL_BUNDLE2_CAPS$ changegroupsubset getbundle known lookup protocaps pushkey streamreqs=generaldelta,revlogv1,sparserevlog unbundle=HG10GZ,HG10BZ,HG10UN unbundlehash
+  remote: 1
+  devel-peer-request: protocaps
+  devel-peer-request:   caps: * bytes (glob)
+  sending protocaps command
+  url: ssh://user@dummy/debugrevlog
+  local: no
+  pushable: yes
+
+#endif
+
+Test debugshell
+
+  $ hg debugshell -c 'ui.write(b"%s\n" % ui.username())'
+  test

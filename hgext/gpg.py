@@ -5,7 +5,6 @@
 
 '''commands to sign and verify changesets'''
 
-from __future__ import absolute_import
 
 import binascii
 import os
@@ -65,7 +64,7 @@ help.CATEGORY_ORDER.insert(
 help.CATEGORY_NAMES[_HELP_CATEGORY] = b'Signing changes (GPG)'
 
 
-class gpg(object):
+class gpg:
     def __init__(self, path, key=None):
         self.path = path
         self.key = (key and b" --local-user \"%s\"" % key) or b""
@@ -340,8 +339,9 @@ def _dosign(ui, repo, *revs, **opts):
         repo.vfs.append(b"localsigs", sigmessage)
         return
 
+    msigs = match.exact([b'.hgsigs'])
+
     if not opts[b"force"]:
-        msigs = match.exact([b'.hgsigs'])
         if any(repo.status(match=msigs, unknown=True, ignored=True)):
             raise error.Abort(
                 _(b"working copy of .hgsigs is changed "),
@@ -353,7 +353,8 @@ def _dosign(ui, repo, *revs, **opts):
     sigsfile.close()
 
     if b'.hgsigs' not in repo.dirstate:
-        repo[None].add([b".hgsigs"])
+        with repo.dirstate.changing_files(repo):
+            repo[None].add([b".hgsigs"])
 
     if opts[b"no_commit"]:
         return

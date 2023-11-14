@@ -41,11 +41,9 @@ A unix-like system keeps an index of the DESCRIPTIONs, which is accesable
 by the command whatis or apropos.
 
 """
-from __future__ import absolute_import
 
 __docformat__ = 'reStructuredText'
 
-import inspect
 import re
 
 from docutils import (
@@ -114,7 +112,7 @@ class Writer(writers.Writer):
         self.output = visitor.astext()
 
 
-class Table(object):
+class Table:
     def __init__(self):
         self._rows = []
         self._options = ['center']
@@ -177,13 +175,7 @@ class Translator(nodes.NodeVisitor):
         nodes.NodeVisitor.__init__(self, document)
         self.settings = settings = document.settings
         lcode = settings.language_code
-        arglen = len(inspect.getargspec(languages.get_language)[0])
-        if arglen == 2:
-            self.language = languages.get_language(
-                lcode, self.document.reporter
-            )
-        else:
-            self.language = languages.get_language(lcode)
+        self.language = languages.get_language(lcode, self.document.reporter)
         self.head = []
         self.body = []
         self.foot = []
@@ -320,7 +312,7 @@ class Translator(nodes.NodeVisitor):
         pass
 
     def list_start(self, node):
-        class enum_char(object):
+        class enum_char:
             enum_style = {
                 'bullet': '\\(bu',
                 'emdash': '\\(em',
