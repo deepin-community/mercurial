@@ -190,10 +190,9 @@ def findglobaltags(ui, repo):
         _updatetags(cachetags, alltags)
         return alltags
 
+    has_node = repo.changelog.index.has_node
     for head in reversed(heads):  # oldest to newest
-        assert repo.changelog.index.has_node(
-            head
-        ), b"tag cache returned bogus head %s" % short(head)
+        assert has_node(head), b"tag cache returned bogus head %s" % short(head)
     fnodes = _filterfnodes(tagfnode, reversed(heads))
     alltags = _tagsfromfnodes(ui, repo, fnodes)
 
@@ -910,3 +909,28 @@ class hgtagsfnodescache:
             )
         finally:
             lock.release()
+
+
+def clear_cache_on_disk(repo):
+    """function used by the perf extension to "tags" cache"""
+    repo.cachevfs.tryunlink(_filename(repo))
+
+
+# a small attribute to help `hg perf::tags` to detect a fixed version.
+clear_cache_fnodes_is_working = True
+
+
+def clear_cache_fnodes(repo):
+    """function used by the perf extension to clear "file node cache"""
+    repo.cachevfs.tryunlink(_fnodescachefile)
+
+
+def forget_fnodes(repo, revs):
+    """function used by the perf extension to prune some entries from the fnodes
+    cache"""
+    missing_1 = b'\xff' * 4
+    missing_2 = b'\xff' * 20
+    cache = hgtagsfnodescache(repo.unfiltered())
+    for r in revs:
+        cache._writeentry(r * _fnodesrecsize, missing_1, missing_2)
+    cache.write()

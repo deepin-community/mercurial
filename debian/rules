@@ -58,7 +58,7 @@ override_dh_auto_install: $(PYVERS:%=install-python%)
 	rm -rf debian/tmp/usr/lib/python*/*-packages/hgext/git
 
 install-python%:
-	dh_auto_install -- PREFIX=/usr PYTHON=python$*
+	dh_auto_install -- PREFIX=/usr PYTHON=python$* DEB_PYTHON_INSTALL_LAYOUT=deb
 
 execute_after_dh_install:
 	if test -d $(CURDIR)/debian/mercurial ; then \

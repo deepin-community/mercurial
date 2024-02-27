@@ -141,6 +141,13 @@ contrib/merge-lists/src/main.rs
 contrib/merge-lists/tests/test-merge-lists.rs
 contrib/nix/flake.lock
 contrib/nix/flake.nix
+contrib/openvms/build.com
+contrib/openvms/vms/hgeditor.com
+contrib/openvms/vms/hgmerge.com
+contrib/openvms/vms/logicals.com
+contrib/openvms/vms/setup.com
+contrib/openvms/vms/startup.com
+contrib/openvms/vms/stmlf.fdl
 contrib/packaging/Makefile
 contrib/packaging/build-linux-wheels.sh
 contrib/packaging/builddeb
@@ -443,15 +450,6 @@ hgext/hooklib/changeset_published.py
 hgext/hooklib/enforce_draft_commits.py
 hgext/hooklib/reject_merge_commits.py
 hgext/hooklib/reject_new_heads.py
-hgext/infinitepush/README
-hgext/infinitepush/__init__.py
-hgext/infinitepush/bundleparts.py
-hgext/infinitepush/common.py
-hgext/infinitepush/fileindexapi.py
-hgext/infinitepush/indexapi.py
-hgext/infinitepush/schema.sql
-hgext/infinitepush/sqlindexapi.py
-hgext/infinitepush/store.py
 hgext/largefiles/CONTRIBUTORS
 hgext/largefiles/__init__.py
 hgext/largefiles/basestore.py
@@ -522,6 +520,7 @@ i18n/zh_TW.po
 mercurial/__init__.py
 mercurial/__main__.py
 mercurial/__version__.py
+mercurial/admin_commands.py
 mercurial/ancestor.py
 mercurial/archival.py
 mercurial/bdiff.c
@@ -544,6 +543,7 @@ mercurial/commit.py
 mercurial/compat.h
 mercurial/config.py
 mercurial/configitems.py
+mercurial/configitems.toml
 mercurial/context.py
 mercurial/copies.py
 mercurial/crecord.py
@@ -679,6 +679,8 @@ mercurial.egg-info/PKG-INFO
 mercurial.egg-info/SOURCES.txt
 mercurial.egg-info/dependency_links.txt
 mercurial.egg-info/top_level.txt
+mercurial/admin/__init__.py
+mercurial/admin/verify.py
 mercurial/cext/__init__.py
 mercurial/cext/base85.c
 mercurial/cext/base85.pyi
@@ -1010,6 +1012,13 @@ mercurial/thirdparty/sha1dc/lib/sha1.c
 mercurial/thirdparty/sha1dc/lib/sha1.h
 mercurial/thirdparty/sha1dc/lib/ubc_check.c
 mercurial/thirdparty/sha1dc/lib/ubc_check.h
+mercurial/thirdparty/tomli/LICENSE
+mercurial/thirdparty/tomli/README.md
+mercurial/thirdparty/tomli/__init__.py
+mercurial/thirdparty/tomli/_parser.py
+mercurial/thirdparty/tomli/_re.py
+mercurial/thirdparty/tomli/_types.py
+mercurial/thirdparty/tomli/py.typed
 mercurial/thirdparty/xdiff/xdiff.h
 mercurial/thirdparty/xdiff/xdiffi.c
 mercurial/thirdparty/xdiff/xdiffi.h
@@ -1072,6 +1081,7 @@ relnotes/6.2
 relnotes/6.3
 relnotes/6.4
 relnotes/6.5
+relnotes/6.6
 relnotes/next
 rust/Cargo.lock
 rust/Cargo.toml
@@ -1117,7 +1127,7 @@ rust/hg-core/src/sparse.rs
 rust/hg-core/src/testing.rs
 rust/hg-core/src/utils.rs
 rust/hg-core/src/vfs.rs
-rust/hg-core/src/config/config.rs
+rust/hg-core/src/config/config_items.rs
 rust/hg-core/src/config/layer.rs
 rust/hg-core/src/config/mod.rs
 rust/hg-core/src/config/plain_info.rs
@@ -1235,7 +1245,6 @@ tests/histedit-helpers.sh
 tests/httpserverauth.py
 tests/hypothesishelpers.py
 tests/killdaemons.py
-tests/library-infinitepush.sh
 tests/list-tree.py
 tests/lockdelay.py
 tests/logexceptions.py
@@ -1277,6 +1286,8 @@ tests/test-acl.t
 tests/test-add.t
 tests/test-addremove-similar.t
 tests/test-addremove.t
+tests/test-admin-commands.py
+tests/test-admin-commands.t
 tests/test-alias.t
 tests/test-amend-subrepo.t
 tests/test-amend.t
@@ -1673,9 +1684,6 @@ tests/test-import-unknown.t
 tests/test-import.t
 tests/test-imports-checker.t
 tests/test-incoming-outgoing.t
-tests/test-infinitepush-bundlestore.t
-tests/test-infinitepush-ci.t
-tests/test-infinitepush.t
 tests/test-inherit-mode.t
 tests/test-init.t
 tests/test-install.t
@@ -2185,6 +2193,7 @@ tests/test-wireproto.py
 tests/test-wireproto.py.out
 tests/test-wireproto.t
 tests/test-worker.t
+tests/test-wsgicgi.t
 tests/test-wsgirequest.py
 tests/test-xdg.t
 tests/tinyproxy.py
