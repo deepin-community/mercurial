@@ -456,7 +456,7 @@ def gettimer(ui, opts=None):
         return functools.partial(stub_timer, fm), fm
 
     # experimental config: perf.all-timing
-    displayall = ui.configbool(b"perf", b"all-timing", False)
+    displayall = ui.configbool(b"perf", b"all-timing", True)
 
     # experimental config: perf.run-limits
     limitspec = ui.configlist(b"perf", b"run-limits", [])
@@ -882,23 +882,142 @@ def perfheads(ui, repo, **opts):
     fm.end()
 
 
+def _default_clear_on_disk_tags_cache(repo):
+    from mercurial import tags
+
+    repo.cachevfs.tryunlink(tags._filename(repo))
+
+
+def _default_clear_on_disk_tags_fnodes_cache(repo):
+    from mercurial import tags
+
+    repo.cachevfs.tryunlink(tags._fnodescachefile)
+
+
+def _default_forget_fnodes(repo, revs):
+    """function used by the perf extension to prune some entries from the
+    fnodes cache"""
+    from mercurial import tags
+
+    missing_1 = b'\xff' * 4
+    missing_2 = b'\xff' * 20
+    cache = tags.hgtagsfnodescache(repo.unfiltered())
+    for r in revs:
+        cache._writeentry(r * tags._fnodesrecsize, missing_1, missing_2)
+    cache.write()
+
+
 @command(
     b'perf::tags|perftags',
     formatteropts
     + [
         (b'', b'clear-revlogs', False, b'refresh changelog and manifest'),
+        (
+            b'',
+            b'clear-on-disk-cache',
+            False,
+            b'clear on disk tags cache (DESTRUCTIVE)',
+        ),
+        (
+            b'',
+            b'clear-fnode-cache-all',
+            False,
+            b'clear on disk file node cache (DESTRUCTIVE),',
+        ),
+        (
+            b'',
+            b'clear-fnode-cache-rev',
+            [],
+            b'clear on disk file node cache (DESTRUCTIVE),',
+            b'REVS',
+        ),
+        (
+            b'',
+            b'update-last',
+            b'',
+            b'simulate an update over the last N revisions (DESTRUCTIVE),',
+            b'N',
+        ),
     ],
 )
 def perftags(ui, repo, **opts):
+    """Benchmark tags retrieval in various situation
+
+    The option marked as (DESTRUCTIVE) will alter the on-disk cache, possibly
+    altering performance after the command was run. However, it does not
+    destroy any stored data.
+    """
+    from mercurial import tags
+
     opts = _byteskwargs(opts)
     timer, fm = gettimer(ui, opts)
     repocleartagscache = repocleartagscachefunc(repo)
     clearrevlogs = opts[b'clear_revlogs']
+    clear_disk = opts[b'clear_on_disk_cache']
+    clear_fnode = opts[b'clear_fnode_cache_all']
+
+    clear_fnode_revs = opts[b'clear_fnode_cache_rev']
+    update_last_str = opts[b'update_last']
+    update_last = None
+    if update_last_str:
+        try:
+            update_last = int(update_last_str)
+        except ValueError:
+            msg = b'could not parse value for update-last: "%s"'
+            msg %= update_last_str
+            hint = b'value should be an integer'
+            raise error.Abort(msg, hint=hint)
+
+    clear_disk_fn = getattr(
+        tags,
+        "clear_cache_on_disk",
+        _default_clear_on_disk_tags_cache,
+    )
+    if getattr(tags, 'clear_cache_fnodes_is_working', False):
+        clear_fnodes_fn = tags.clear_cache_fnodes
+    else:
+        clear_fnodes_fn = _default_clear_on_disk_tags_fnodes_cache
+    clear_fnodes_rev_fn = getattr(
+        tags,
+        "forget_fnodes",
+        _default_forget_fnodes,
+    )
+
+    clear_revs = []
+    if clear_fnode_revs:
+        clear_revs.extend(scmutil.revrange(repo, clear_fnode_revs))
+
+    if update_last:
+        revset = b'last(all(), %d)' % update_last
+        last_revs = repo.unfiltered().revs(revset)
+        clear_revs.extend(last_revs)
+
+        from mercurial import repoview
+
+        rev_filter = {(b'experimental', b'extra-filter-revs'): revset}
+        with repo.ui.configoverride(rev_filter, source=b"perf"):
+            filter_id = repoview.extrafilter(repo.ui)
+
+        filter_name = b'%s%%%s' % (repo.filtername, filter_id)
+        pre_repo = repo.filtered(filter_name)
+        pre_repo.tags()  # warm the cache
+        old_tags_path = repo.cachevfs.join(tags._filename(pre_repo))
+        new_tags_path = repo.cachevfs.join(tags._filename(repo))
+
+    clear_revs = sorted(set(clear_revs))
 
     def s():
+        if update_last:
+            util.copyfile(old_tags_path, new_tags_path)
         if clearrevlogs:
             clearchangelog(repo)
             clearfilecache(repo.unfiltered(), 'manifest')
+        if clear_disk:
+            clear_disk_fn(repo)
+        if clear_fnode:
+            clear_fnodes_fn(repo)
+        elif clear_revs:
+            clear_fnodes_rev_fn(repo, clear_revs)
         repocleartagscache()
 
     def t():
@@ -3359,7 +3478,7 @@ def perfrevlogwrite(ui, repo, file_=None, startrev=1000, stoprev=-1, **opts):
 
     # get a formatter
     fm = ui.formatter(b'perf', opts)
-    displayall = ui.configbool(b"perf", b"all-timing", False)
+    displayall = ui.configbool(b"perf", b"all-timing", True)
 
     # print individual details if requested
     if opts['details']:
@@ -3429,7 +3548,10 @@ def _timeonewrite(
     timings = []
     tr = _faketr()
     with _temprevlog(ui, orig, startrev) as dest:
-        dest._lazydeltabase = lazydeltabase
+        if hasattr(dest, "delta_config"):
+            dest.delta_config.lazy_delta_base = lazydeltabase
+        else:
+            dest._lazydeltabase = lazydeltabase
         revs = list(orig.revs(startrev, stoprev))
         total = len(revs)
         topic = 'adding'
@@ -3597,11 +3719,15 @@ def perfrevlogchunks(ui, repo, file_=None, engines=None, startrev=0, **opts):
 
     rl = cmdutil.openrevlog(repo, b'perfrevlogchunks', file_, opts)
 
-    # _chunkraw was renamed to _getsegmentforrevs.
+    # - _chunkraw was renamed to _getsegmentforrevs
+    # - _getsegmentforrevs was moved on the inner object
     try:
-        segmentforrevs = rl._getsegmentforrevs
+        segmentforrevs = rl._inner.get_segment_for_revs
     except AttributeError:
-        segmentforrevs = rl._chunkraw
+        try:
+            segmentforrevs = rl._getsegmentforrevs
+        except AttributeError:
+            segmentforrevs = rl._chunkraw
 
     # Verify engines argument.
     if engines:
@@ -3624,62 +3750,101 @@ def perfrevlogchunks(ui, repo, file_=None, engines=None, startrev=0, **opts):
 
     revs = list(rl.revs(startrev, len(rl) - 1))
 
-    def rlfh(rl):
-        if rl._inline:
+    @contextlib.contextmanager
+    def reading(rl):
+        if getattr(rl, 'reading', None) is not None:
+            with rl.reading():
+                yield None
+        elif rl._inline:
             indexfile = getattr(rl, '_indexfile', None)
             if indexfile is None:
                 # compatibility with <= hg-5.8
                 indexfile = getattr(rl, 'indexfile')
-            return getsvfs(repo)(indexfile)
+            yield getsvfs(repo)(indexfile)
         else:
             datafile = getattr(rl, 'datafile', getattr(rl, 'datafile'))
-            return getsvfs(repo)(datafile)
+            yield getsvfs(repo)(datafile)
+
+    if getattr(rl, 'reading', None) is not None:
+
+        @contextlib.contextmanager
+        def lazy_reading(rl):
+            with rl.reading():
+                yield
+
+    else:
+
+        @contextlib.contextmanager
+        def lazy_reading(rl):
+            yield
 
     def doread():
         rl.clearcaches()
         for rev in revs:
-            segmentforrevs(rev, rev)
+            with lazy_reading(rl):
+                segmentforrevs(rev, rev)
 
     def doreadcachedfh():
         rl.clearcaches()
-        fh = rlfh(rl)
-        for rev in revs:
-            segmentforrevs(rev, rev, df=fh)
+        with reading(rl) as fh:
+            if fh is not None:
+                for rev in revs:
+                    segmentforrevs(rev, rev, df=fh)
+            else:
+                for rev in revs:
+                    segmentforrevs(rev, rev)
 
     def doreadbatch():
         rl.clearcaches()
-        segmentforrevs(revs[0], revs[-1])
+        with lazy_reading(rl):
+            segmentforrevs(revs[0], revs[-1])
 
     def doreadbatchcachedfh():
         rl.clearcaches()
-        fh = rlfh(rl)
-        segmentforrevs(revs[0], revs[-1], df=fh)
+        with reading(rl) as fh:
+            if fh is not None:
+                segmentforrevs(revs[0], revs[-1], df=fh)
+            else:
+                segmentforrevs(revs[0], revs[-1])
 
     def dochunk():
         rl.clearcaches()
-        fh = rlfh(rl)
-        for rev in revs:
-            rl._chunk(rev, df=fh)
+        # chunk used to be available directly on the revlog
+        _chunk = getattr(rl, '_inner', rl)._chunk
+        with reading(rl) as fh:
+            if fh is not None:
+                for rev in revs:
+                    _chunk(rev, df=fh)
+            else:
+                for rev in revs:
+                    _chunk(rev)
 
     chunks = [None]
 
     def dochunkbatch():
         rl.clearcaches()
-        fh = rlfh(rl)
-        # Save chunks as a side-effect.
-        chunks[0] = rl._chunks(revs, df=fh)
+        _chunks = getattr(rl, '_inner', rl)._chunks
+        with reading(rl) as fh:
+            if fh is not None:
+                # Save chunks as a side-effect.
+                chunks[0] = _chunks(revs, df=fh)
+            else:
+                # Save chunks as a side-effect.
+                chunks[0] = _chunks(revs)
 
     def docompress(compressor):
         rl.clearcaches()
 
+        compressor_holder = getattr(rl, '_inner', rl)
+
         try:
             # Swap in the requested compression engine.
-            oldcompressor = rl._compressor
-            rl._compressor = compressor
+            oldcompressor = compressor_holder._compressor
+            compressor_holder._compressor = compressor
             for chunk in chunks[0]:
                 rl.compress(chunk)
         finally:
-            rl._compressor = oldcompressor
+            compressor_holder._compressor = oldcompressor
 
     benches = [
         (lambda: doread(), b'read'),
@@ -3737,12 +3902,28 @@ def perfrevlogrevision(ui, repo, file_, rev=None, cache=None, **opts):
 
     # _chunkraw was renamed to _getsegmentforrevs.
     try:
-        segmentforrevs = r._getsegmentforrevs
+        segmentforrevs = r._inner.get_segment_for_revs
     except AttributeError:
-        segmentforrevs = r._chunkraw
+        try:
+            segmentforrevs = r._getsegmentforrevs
+        except AttributeError:
+            segmentforrevs = r._chunkraw
 
     node = r.lookup(rev)
     rev = r.rev(node)
+
+    if getattr(r, 'reading', None) is not None:
+
+        @contextlib.contextmanager
+        def lazy_reading(r):
+            with r.reading():
+                yield
+
+    else:
+
+        @contextlib.contextmanager
+        def lazy_reading(r):
+            yield
 
     def getrawchunks(data, chain):
         start = r.start
@@ -3777,7 +3958,8 @@ def perfrevlogrevision(ui, repo, file_, rev=None, cache=None, **opts):
         if not cache:
             r.clearcaches()
         for item in slicedchain:
-            segmentforrevs(item[0], item[-1])
+            with lazy_reading(r):
+                segmentforrevs(item[0], item[-1])
 
     def doslice(r, chain, size):
         for s in slicechunk(r, chain, targetsize=size):
@@ -3815,13 +3997,19 @@ def perfrevlogrevision(ui, repo, file_, rev=None, cache=None, **opts):
 
     size = r.length(rev)
     chain = r._deltachain(rev)[0]
-    if not getattr(r, '_withsparseread', False):
+
+    with_sparse_read = False
+    if hasattr(r, 'data_config'):
+        with_sparse_read = r.data_config.with_sparse_read
+    elif hasattr(r, '_withsparseread'):
+        with_sparse_read = r._withsparseread
+    if with_sparse_read:
         slicedchain = (chain,)
     else:
         slicedchain = tuple(slicechunk(r, chain, targetsize=size))
     data = [segmentforrevs(seg[0], seg[-1])[1] for seg in slicedchain]
     rawchunks = getrawchunks(data, slicedchain)
-    bins = r._chunks(chain)
+    bins = r._inner._chunks(chain)
     text = bytes(bins[0])
     bins = bins[1:]
     text = mdiff.patches(text, bins)
@@ -3832,7 +4020,7 @@ def perfrevlogrevision(ui, repo, file_, rev=None, cache=None, **opts):
         (lambda: doread(chain), b'read'),
     ]
 
-    if getattr(r, '_withsparseread', False):
+    if with_sparse_read:
         slicing = (lambda: doslice(r, chain, size), b'slice-sparse-chain')
         benches.append(slicing)
 
@@ -4421,7 +4609,8 @@ def uisetup(ui):
                 )
             return orig(repo, cmd, file_, opts)
 
-        extensions.wrapfunction(cmdutil, b'openrevlog', openrevlog)
+        name = _sysstr(b'openrevlog')
+        extensions.wrapfunction(cmdutil, name, openrevlog)
 
 
 @command(

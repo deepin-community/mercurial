@@ -64,7 +64,7 @@ Suggest Debian packages for some optional dependencies.
  class NoRepo(Exception):
 --- a/hgext/convert/cvs.py
 +++ b/hgext/convert/cvs.py
-@@ -46,7 +46,7 @@ class convert_cvs(converter_source):
+@@ -45,7 +45,7 @@ class convert_cvs(converter_source):
          if not os.path.exists(cvs):
              raise NoRepo(_(b"%s does not look like a CVS checkout") % path)
  
@@ -160,7 +160,7 @@ Suggest Debian packages for some optional dependencies.
          commandline.__init__(self, ui, b'svn')
 --- a/mercurial/sslutil.py
 +++ b/mercurial/sslutil.py
-@@ -207,7 +207,8 @@ def _hostsettings(ui, hostname):
+@@ -206,7 +206,8 @@ def _hostsettings(ui, hostname):
                  cafile = util.expandpath(cafile)
                  if not os.path.exists(cafile):
                      raise error.Abort(

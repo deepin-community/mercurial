@@ -5614,6 +5614,32 @@ Options:
 update to new branch head if changesets were unbundled
 .UNINDENT
 .SS Repository maintenance
+.SS admin::verify
+.sp
+verify the integrity of the repository:
+.sp
+.nf
+.ft C
+hg admin::verify
+.ft P
+.fi
+.sp
+Alternative UI to \fIhg verify\fP with a lot more control over the
+verification process and better error reporting.
+.sp
+Options:
+.INDENT 0.0
+.TP
+.BI \-c,  \-\-check \ <CHECK[+]>
+.
+add a check
+.TP
+.BI \-o,  \-\-option \ <OPTION[+]>
+.
+pass an option to a check
+.UNINDENT
+.sp
+[+] marked option can be specified multiple times
 .SS manifest
 .sp
 output the current or given revision of the project manifest:
@@ -5768,6 +5794,9 @@ integrity of their crosslinks and indices.
 Please see \%https://mercurial\-scm.org/wiki/RepositoryCorruption\:
 for more information about recovery from corruption of the
 repository.
+.sp
+For an alternative UI with a lot more control over the verification
+process and better error reporting, try \fIhg help admin::verify\fP.
 .sp
 Returns 0 on success, 1 if errors are encountered.
 .sp
@@ -14890,97 +14919,6 @@ The implementation of the hooks is subject to change, e.g. whether to
 implement them as individual hooks or merge them into the notify
 extension as option. The functionality itself is planned to be supported
 long\-term.
-.SS infinitepush
-.INDENT 0.0
-.INDENT 3.5
-.sp
-store some pushes in a remote blob store on the server (EXPERIMENTAL)
-.UNINDENT
-.UNINDENT
-.sp
-IMPORTANT: if you use this extension, please contact
-\%mercurial\-devel@mercurial\-scm.org\: ASAP. This extension is believed to
-be unused and barring learning of users of this functionality, we will
-delete this code at the end of 2020.
-.INDENT 0.0
-.INDENT 3.5
-.sp
-[infinitepush]
-# Server\-side and client\-side option. Pattern of the infinitepush bookmark
-branchpattern = PATTERN
-.sp
-# Server or client
-server = False
-.sp
-# Server\-side option. Possible values: \(aqdisk\(aq or \(aqsql\(aq. Fails if not set
-indextype = disk
-.sp
-# Server\-side option. Used only if indextype=sql.
-# Format: \(aqIP:PORT:DB_NAME:USER:PASSWORD\(aq
-sqlhost = IP:PORT:DB_NAME:USER:PASSWORD
-.sp
-# Server\-side option. Used only if indextype=disk.
-# Filesystem path to the index store
-indexpath = PATH
-.sp
-# Server\-side option. Possible values: \(aqdisk\(aq or \(aqexternal\(aq
-# Fails if not set
-storetype = disk
-.sp
-# Server\-side option.
-# Path to the binary that will save bundle to the bundlestore
-# Formatted cmd line will be passed to it (see \fIput_args\fP)
-put_binary = put
-.sp
-# Serser\-side option. Used only if storetype=external.
-# Format cmd\-line string for put binary. Placeholder: {filename}
-put_args = {filename}
-.sp
-# Server\-side option.
-# Path to the binary that get bundle from the bundlestore.
-# Formatted cmd line will be passed to it (see \fIget_args\fP)
-get_binary = get
-.sp
-# Serser\-side option. Used only if storetype=external.
-# Format cmd\-line string for get binary. Placeholders: {filename} {handle}
-get_args = {filename} {handle}
-.sp
-# Server\-side option
-logfile = FIlE
-.sp
-# Server\-side option
-loglevel = DEBUG
-.sp
-# Server\-side option. Used only if indextype=sql.
-# Sets mysql wait_timeout option.
-waittimeout = 300
-.sp
-# Server\-side option. Used only if indextype=sql.
-# Sets mysql innodb_lock_wait_timeout option.
-locktimeout = 120
-.sp
-# Server\-side option. Used only if indextype=sql.
-# Name of the repository
-reponame = \(aq\(aq
-.sp
-# Client\-side option. Used by \-\-list\-remote option. List of remote scratch
-# patterns to list if no patterns are specified.
-defaultremotepatterns = [\(aq*\(aq]
-.sp
-# Instructs infinitepush to forward all received bundle2 parts to the
-# bundle for storage. Defaults to False.
-storeallparts = True
-.sp
-# routes each incoming push to the bundlestore. defaults to False
-pushtobundlestore = True
-.sp
-[remotenames]
-# Client\-side option
-# This option should be set only if remotenames extension is enabled.
-# Whether remote bookmarks are tracked by remotenames extension.
-bookmarks = True
-.UNINDENT
-.UNINDENT
 .SS journal
 .sp
 track previous positions of bookmarks (EXPERIMENTAL)

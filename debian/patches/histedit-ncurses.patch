@@ -1,0 +1,42 @@
+# HG changeset patch
+# User Julien Cristau <jcristau@mozilla.com>
+# Date 1702378068 -3600
+#      Tue Dec 12 11:47:48 2023 +0100
+# Branch stable
+# Node ID e306d552dfb126efec571c5834400c84809c7efb
+# Parent  cde293e04ca05ca8e324d9640b73b3056bfb0033
+# EXP-Topic histedit-endwin
+histedit: remove superfluous echo() and endwin() calls (issue6859)
+
+ncurses patchlevel 20231111 started returning an error from endwin() if
+called twice without a intervening screen update.
+
+Per Sven Joachim in
+https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1058041#17: "AFAICS,
+invoking curses.echo() and curses.endwin() is superfluous
+because curses.wrapper already does that for you, and calling
+curses.endwin() twice throws an error with the newer ncurses.  Removing
+those two lines should fix the problem."
+
+diff --git a/hgext/histedit.py b/hgext/histedit.py
+--- a/hgext/histedit.py
++++ b/hgext/histedit.py
+@@ -1755,18 +1755,16 @@ def _chistedit(ui, repo, freeargs, opts)
+                 _(b'%s is not an ancestor of working directory') % short(root)
+             )
+ 
+         rules = []
+         for i, r in enumerate(revs):
+             rules.append(histeditrule(ui, repo[r], i))
+         with util.with_lc_ctype():
+             rc = curses.wrapper(functools.partial(_chisteditmain, repo, rules))
+-        curses.echo()
+-        curses.endwin()
+         if rc is False:
+             ui.write(_(b"histedit aborted\n"))
+             return 0
+         if type(rc) is list:
+             ui.status(_(b"performing changes\n"))
+             rules = makecommands(rc)
+             with repo.vfs(b'chistedit', b'w+') as fp:
+                 for r in rules:

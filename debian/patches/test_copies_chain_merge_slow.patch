@@ -1,0 +1,14 @@
+diff --git a/tests/test-copies-chain-merge.t b/tests/test-copies-chain-merge.t
+index dfbdd8b2..b2662e6f 100644
+--- a/tests/test-copies-chain-merge.t
++++ b/tests/test-copies-chain-merge.t
+@@ -1,8 +1,9 @@
++#require slow
+ #testcases filelog compatibility changeset sidedata upgraded upgraded-parallel pull push pull-upgrade push-upgrade
+ 
+ =====================================================
+ Test Copy tracing for chain of copies involving merge
+ =====================================================
+ 
+ This test files covers copies/rename case for a chains of commit where merges
+ are involved. It cheks we do not have unwanted update of behavior and that the

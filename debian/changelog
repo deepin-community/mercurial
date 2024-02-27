@@ -1,3 +1,39 @@
+mercurial (6.6.1-2) unstable; urgency=medium
+
+  * histedit: remove superfluous echo() and endwin() calls.  Fixes
+    incompatibility with ncurses patch level 20231111, see #1058041.
+    Thanks, Sven Joachim!
+
+ -- Julien Cristau <jcristau@debian.org>  Tue, 12 Dec 2023 13:28:02 +0100
+
+mercurial (6.6.1-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+  * Mark test-copies-chain-merge as slow, so it's skipped.
+
+ -- Julien Cristau <jcristau@debian.org>  Mon, 11 Dec 2023 14:23:00 +0100
+
+mercurial (6.6-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Julien Cristau <jcristau@debian.org>  Tue, 05 Dec 2023 15:17:28 +0100
+
+mercurial (6.6~rc0-1) experimental; urgency=medium
+
+  * New upstream release candidate.
+
+ -- Julien Cristau <jcristau@debian.org>  Fri, 17 Nov 2023 10:11:37 +0100
+
+mercurial (6.5.3-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+  * Delete mercurial.egg-info/ on clean.
+  * Pass DEB_PYTHON_INSTALL_LAYOUT to make install to work around
+    distutils/setuptools being a mess.
+
+ -- Julien Cristau <jcristau@debian.org>  Thu, 16 Nov 2023 17:57:14 +0100
+
 mercurial (6.5.2-2) unstable; urgency=medium
 
   * Fix test-clone-stream.t failure causing FTBFS on big endian
