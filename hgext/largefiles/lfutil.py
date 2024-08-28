@@ -430,6 +430,7 @@ def composestandinmatcher(repo, rmatcher):
     def composedmatchfn(f):
         return isstandin(f) and rmatcher.matchfn(splitstandin(f))
 
+    smatcher._was_tampered_with = True
     smatcher.matchfn = composedmatchfn
 
     return smatcher
@@ -716,6 +717,7 @@ def updatestandinsbymatch(repo, match):
         return match
 
     lfiles = listlfiles(repo)
+    match._was_tampered_with = True
     match._files = repo._subdirlfs(match.files(), lfiles)
 
     # Case 2: user calls commit with specified patterns: refresh
@@ -746,6 +748,7 @@ def updatestandinsbymatch(repo, match):
     # user.  Have to modify _files to prevent commit() from
     # complaining "not tracked" for big files.
     match = copy.copy(match)
+    match._was_tampered_with = True
     origmatchfn = match.matchfn
 
     # Check both the list of largefiles and the list of
@@ -814,7 +817,7 @@ def getstatuswriter(ui, repo, forcibly=None):
     Otherwise, this returns the function to always write out (or
     ignore if ``not forcibly``) status.
     """
-    if forcibly is None and util.safehasattr(repo, b'_largefilesenabled'):
+    if forcibly is None and hasattr(repo, '_largefilesenabled'):
         return repo._lfstatuswriters[-1]
     else:
         if forcibly:

@@ -810,7 +810,11 @@ class sqlitefilestore:
 
         return not empty
 
-    def censorrevision(self, tr, censornode, tombstone=b''):
+    def censorrevision(self, tr, censor_nodes, tombstone=b''):
+        for node in censor_nodes:
+            self._censor_one_revision(tr, node, tombstone=tombstone)
+
+    def _censor_one_revision(self, tr, censornode, tombstone):
         tombstone = storageutil.packmeta({b'censored': tombstone}, b'')
 
         # This restriction is cargo culted from revlogs and makes no sense for
@@ -1330,11 +1334,11 @@ def verifierinit(orig, self, *args, **kwargs):
 def extsetup(ui):
     localrepo.featuresetupfuncs.add(featuresetup)
     extensions.wrapfunction(
-        localrepo, b'newreporequirements', newreporequirements
+        localrepo, 'newreporequirements', newreporequirements
     )
-    extensions.wrapfunction(localrepo, b'makefilestorage', makefilestorage)
-    extensions.wrapfunction(localrepo, b'makemain', makemain)
-    extensions.wrapfunction(verify.verifier, b'__init__', verifierinit)
+    extensions.wrapfunction(localrepo, 'makefilestorage', makefilestorage)
+    extensions.wrapfunction(localrepo, 'makemain', makemain)
+    extensions.wrapfunction(verify.verifier, '__init__', verifierinit)
 
 
 def reposetup(ui, repo):

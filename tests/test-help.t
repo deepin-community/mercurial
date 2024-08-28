@@ -129,6 +129,8 @@ the extension is unknown.
   
   Repository maintenance:
   
+   admin::verify
+                 verify the integrity of the repository
    manifest      output the current or given revision of the project manifest
    recover       roll back an interrupted transaction
    verify        verify the integrity of the repository
@@ -260,6 +262,8 @@ the extension is unknown.
   
   Repository maintenance:
   
+   admin::verify
+                 verify the integrity of the repository
    manifest      output the current or given revision of the project manifest
    recover       roll back an interrupted transaction
    verify        verify the integrity of the repository
@@ -408,6 +412,9 @@ Test short command list with verbose option
   
    abort         abort an unfinished operation (EXPERIMENTAL)
    add           add the specified files on the next commit
+   admin::chainsaw-update, admin::chainsawupdate
+                 pull and update to a given revision, no matter what,
+                 (EXPERIMENTAL)
    annotate, blame
                  show changeset information by line for each file
    clone         make a copy of an existing repository
@@ -604,8 +611,15 @@ Test ambiguous command help
   $ hg help ad
   list of commands:
   
+  Working directory management:
+  
    add           add the specified files on the next commit
    addremove     add all new files, delete all missing files
+  
+  Repository maintenance:
+  
+   admin::verify
+                 verify the integrity of the repository
   
   (use 'hg help -v ad' to show built-in aliases and global options)
 
@@ -625,6 +639,9 @@ Test command without options
   
       Please see https://mercurial-scm.org/wiki/RepositoryCorruption for more
       information about recovery from corruption of the repository.
+  
+      For an alternative UI with a lot more control over the verification
+      process and better error reporting, try 'hg help admin::verify'.
   
       Returns 0 on success, 1 if errors are encountered.
   
@@ -992,6 +1009,8 @@ Test list of internal help commands
    debug::stable-tail-sort-leaps
                  display the leaps in the stable-tail sort of a node, one per
                  line
+   debug::unbundle
+                 same as 'hg unbundle', but pretent to come from a push
    debugancestor
                  find the ancestor revision of two revisions in a given index
    debugantivirusrunning
@@ -2519,6 +2538,13 @@ Dish up an empty repo; serve it cold.
   add the specified files on the next commit
   </td></tr>
   <tr><td>
+  <a href="/help/admin::chainsaw-update">
+  admin::chainsaw-update
+  </a>
+  </td><td>
+  pull and update to a given revision, no matter what, (EXPERIMENTAL)
+  </td></tr>
+  <tr><td>
   <a href="/help/annotate">
   annotate
   </a>
@@ -2648,6 +2674,13 @@ Dish up an empty repo; serve it cold.
   </a>
   </td><td>
   add all new files, delete all missing files
+  </td></tr>
+  <tr><td>
+  <a href="/help/admin::verify">
+  admin::verify
+  </a>
+  </td><td>
+  verify the integrity of the repository
   </td></tr>
   <tr><td>
   <a href="/help/archive">

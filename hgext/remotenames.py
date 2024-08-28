@@ -134,10 +134,10 @@ class lazyremotenamedict(collections.abc.MutableMapping):
     def __len__(self):
         return len(self.potentialentries)
 
-    def __setitem__(self):
+    def __setitem__(self, k, v):
         raise NotImplementedError
 
-    def __delitem__(self):
+    def __delitem__(self, k):
         raise NotImplementedError
 
     def _fetchandcache(self, key):
@@ -255,7 +255,7 @@ def wrapprintbookmarks(orig, ui, repo, fm, bmarks):
 
 
 def extsetup(ui):
-    extensions.wrapfunction(bookmarks, b'_printbookmarks', wrapprintbookmarks)
+    extensions.wrapfunction(bookmarks, '_printbookmarks', wrapprintbookmarks)
 
 
 def reposetup(ui, repo):

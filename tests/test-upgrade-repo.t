@@ -836,7 +836,10 @@ generaldelta added to original requirements files
 store directory has files we expect
 
   $ ls .hg/store
+  00changelog-????????.nd (glob) (rust !)
+  00changelog.d
   00changelog.i
+  00changelog.n (rust !)
   00manifest.i
   data
   data-s
@@ -860,7 +863,10 @@ old store should be backed up
   $ ls -d .hg/upgradebackup.*/
   .hg/upgradebackup.*/ (glob)
   $ ls .hg/upgradebackup.*/store
+  00changelog-????????.nd (glob) (rust !)
+  00changelog.d
   00changelog.i
+  00changelog.n (rust !)
   00manifest.i
   data
   data-s
@@ -868,6 +874,7 @@ old store should be backed up
   phaseroots
   requires
   undo
+  undo.backup.00changelog.n.bck (rust !)
   undo.backup.fncache.bck
   undo.backupfiles
 
@@ -1427,7 +1434,7 @@ repository config is taken in account
   $ hg config format
   format.revlog-compression=$BUNDLE2_COMPRESSIONS$
   format.maxchainlen=9001
-  $ hg debugdeltachain file
+  $ hg debugdeltachain file --all-info
       rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
         0      -1      -1       1        1       -1    base         77        182         77   0.42308        77         0    0.00000         77         77   1.00000        1
         1       0      -1       1        2        0      p1         21        191         98   0.51309        98         0    0.00000         98         98   1.00000        1
@@ -1475,7 +1482,7 @@ repository config is taken in account
   removing temporary repository $TESTTMP/localconfig/.hg/upgrade.* (glob)
   copy of old repository backed up at $TESTTMP/localconfig/.hg/upgradebackup.* (glob)
   the old repository will not be deleted; remove it to free up disk space once the upgraded repository is verified
-  $ hg debugdeltachain file
+  $ hg debugdeltachain file --all-info
       rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
         0      -1      -1       1        1       -1    base         77        182         77   0.42308        77         0    0.00000         77         77   1.00000        1
         1       0      -1       1        2        0      p1         21        191         98   0.51309        98         0    0.00000         98         98   1.00000        1

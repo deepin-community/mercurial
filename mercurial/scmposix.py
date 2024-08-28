@@ -3,20 +3,20 @@ import errno
 import fcntl
 import os
 import sys
+import typing
 
 from typing import (
     List,
     Tuple,
 )
 
-from .pycompat import getattr
 from . import (
     encoding,
     pycompat,
     util,
 )
 
-if pycompat.TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     from . import ui as uimod
 
 # BSD 'more' escapes ANSI color sequences by default. This can be disabled by
@@ -60,8 +60,6 @@ def systemrcpath() -> List[bytes]:
 def userrcpath() -> List[bytes]:
     if pycompat.sysplatform == b'plan9':
         return [encoding.environ[b'home'] + b'/lib/hgrc']
-    elif pycompat.isdarwin:
-        return [os.path.expanduser(b'~/.hgrc')]
     else:
         confighome = encoding.environ.get(b'XDG_CONFIG_HOME')
         if confighome is None or not os.path.isabs(confighome):

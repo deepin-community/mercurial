@@ -221,6 +221,9 @@ class hgcommand:
         self.cmd = cmd
         self.env = env
 
+    def __repr__(self):
+        return f"<hgcommand cmd={self.cmd} env={self.env}>"
+
     def run(self, args):
         cmd = self.cmd + args
         returncode, out, err = runcmd(cmd, self.env)
@@ -229,6 +232,10 @@ class hgcommand:
             print("stderr from '%s':" % (' '.join(cmd)), file=sys.stderr)
             print(err, file=sys.stderr)
         if returncode != 0:
+            print(
+                "non zero-return '%s': %d" % (' '.join(cmd), returncode),
+                file=sys.stderr,
+            )
             return b''
         return out
 
@@ -245,7 +252,10 @@ def filterhgerr(err):
         if (
             not e.startswith(b'not trusting file')
             and not e.startswith(b'warning: Not importing')
-            and not e.startswith(b'obsolete feature not enabled')
+            and not (
+                e.startswith(b'obsolete feature not enabled')
+                or e.startswith(b'"obsolete" feature not enabled')
+            )
             and not e.startswith(b'*** failed to import extension')
             and not e.startswith(b'devel-warn:')
             and not (
@@ -295,9 +305,15 @@ def findhg():
         if attempt(hgcmd + check_cmd, hgenv):
             return hgcommand(hgcmd, hgenv)
 
-    # Fall back to trying the local hg installation.
+    # Fall back to trying the local hg installation (pure python)
+    repo_hg = os.path.join(os.path.dirname(__file__), 'hg')
     hgenv = localhgenv()
-    hgcmd = [sys.executable, 'hg']
+    hgcmd = [sys.executable, repo_hg]
+    if attempt(hgcmd + check_cmd, hgenv):
+        return hgcommand(hgcmd, hgenv)
+    # Fall back to trying the local hg installation (whatever we can)
+    hgenv = localhgenv(pure_python=False)
+    hgcmd = [sys.executable, repo_hg]
     if attempt(hgcmd + check_cmd, hgenv):
         return hgcommand(hgcmd, hgenv)
 
@@ -319,17 +335,18 @@ def findhg():
     return None
 
 
-def localhgenv():
+def localhgenv(pure_python=True):
     """Get an environment dictionary to use for invoking or importing
     mercurial from the local repository."""
     # Execute hg out of this directory with a custom environment which takes
     # care to not use any hgrc files and do no localization.
     env = {
-        'HGMODULEPOLICY': 'py',
         'HGRCPATH': '',
         'LANGUAGE': 'C',
         'PATH': '',
     }  # make pypi modules that use os.environ['PATH'] happy
+    if pure_python:
+        env['HGMODULEPOLICY'] = 'py'
     if 'LD_LIBRARY_PATH' in os.environ:
         env['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']
     if 'SystemRoot' in os.environ:
@@ -1309,6 +1326,7 @@ if py2exehacked:
 
 packages = [
     'mercurial',
+    'mercurial.admin',
     'mercurial.cext',
     'mercurial.cffi',
     'mercurial.defaultrc',
@@ -1322,6 +1340,7 @@ packages = [
     'mercurial.templates',
     'mercurial.thirdparty',
     'mercurial.thirdparty.attr',
+    'mercurial.thirdparty.tomli',
     'mercurial.thirdparty.zope',
     'mercurial.thirdparty.zope.interface',
     'mercurial.upgrade_utils',
@@ -1336,7 +1355,6 @@ packages = [
     'hgext.git',
     'hgext.highlight',
     'hgext.hooklib',
-    'hgext.infinitepush',
     'hgext.largefiles',
     'hgext.lfs',
     'hgext.narrow',
@@ -1659,6 +1677,7 @@ if os.name == 'nt':
 
 packagedata = {
     'mercurial': [
+        'configitems.toml',
         'locale/*/LC_MESSAGES/hg.mo',
         'dummycert.pem',
     ],
@@ -1819,5 +1838,5 @@ setup(
             'welcome': 'contrib/packaging/macosx/Welcome.html',
         },
     },
-    **extra
+    **extra,
 )

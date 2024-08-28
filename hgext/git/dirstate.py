@@ -47,7 +47,7 @@ def readpatternfile(orig, filepath, warn, sourceinfo=False):
     return result, warnings
 
 
-extensions.wrapfunction(matchmod, b'readpatternfile', readpatternfile)
+extensions.wrapfunction(matchmod, 'readpatternfile', readpatternfile)
 
 
 _STATUS_MAP = {}
@@ -389,7 +389,7 @@ class gitdirstate:
         # TODO: should this be added to the dirstate interface?
         self._plchangecallbacks[category] = callback
 
-    def setbranch(self, branch, transaction=None):
+    def setbranch(self, branch, transaction):
         raise error.Abort(
             b'git repos do not support branches. try using bookmarks'
         )

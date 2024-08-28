@@ -63,6 +63,9 @@ include contrib/docker/apache-server/README.rst
 include contrib/docker/apache-server/entrypoint.sh
 include contrib/docker/apache-server/hgwebconfig
 include contrib/docker/apache-server/vhost.conf
+include contrib/docker/pytype/Dockerfile
+include contrib/docker/pytype/entrypoint.sh
+include contrib/docker/pytype/recipe.sh
 include contrib/dumprevlog
 include contrib/editmerge
 include contrib/editmergeps.bat
@@ -114,6 +117,13 @@ include contrib/merge-lists/tests/test-merge-lists.rs
 include contrib/mq.el
 include contrib/nix/flake.lock
 include contrib/nix/flake.nix
+include contrib/openvms/build.com
+include contrib/openvms/vms/hgeditor.com
+include contrib/openvms/vms/hgmerge.com
+include contrib/openvms/vms/logicals.com
+include contrib/openvms/vms/setup.com
+include contrib/openvms/vms/startup.com
+include contrib/openvms/vms/stmlf.fdl
 include contrib/packaging/Makefile
 include contrib/packaging/build-linux-wheels.sh
 include contrib/packaging/builddeb
@@ -405,15 +415,6 @@ include hgext/hooklib/changeset_published.py
 include hgext/hooklib/enforce_draft_commits.py
 include hgext/hooklib/reject_merge_commits.py
 include hgext/hooklib/reject_new_heads.py
-include hgext/infinitepush/README
-include hgext/infinitepush/__init__.py
-include hgext/infinitepush/bundleparts.py
-include hgext/infinitepush/common.py
-include hgext/infinitepush/fileindexapi.py
-include hgext/infinitepush/indexapi.py
-include hgext/infinitepush/schema.sql
-include hgext/infinitepush/sqlindexapi.py
-include hgext/infinitepush/store.py
 include hgext/journal.py
 include hgext/keyword.py
 include hgext/largefiles/CONTRIBUTORS
@@ -509,6 +510,10 @@ include i18n/zh_CN.po
 include i18n/zh_TW.po
 include mercurial/__init__.py
 include mercurial/__main__.py
+include mercurial/admin/__init__.py
+include mercurial/admin/chainsaw.py
+include mercurial/admin/verify.py
+include mercurial/admin_commands.py
 include mercurial/ancestor.py
 include mercurial/archival.py
 include mercurial/bdiff.c
@@ -558,6 +563,7 @@ include mercurial/commit.py
 include mercurial/compat.h
 include mercurial/config.py
 include mercurial/configitems.py
+include mercurial/configitems.toml
 include mercurial/context.py
 include mercurial/copies.py
 include mercurial/crecord.py
@@ -973,6 +979,13 @@ include mercurial/thirdparty/sha1dc/lib/sha1.c
 include mercurial/thirdparty/sha1dc/lib/sha1.h
 include mercurial/thirdparty/sha1dc/lib/ubc_check.c
 include mercurial/thirdparty/sha1dc/lib/ubc_check.h
+include mercurial/thirdparty/tomli/LICENSE
+include mercurial/thirdparty/tomli/README.md
+include mercurial/thirdparty/tomli/__init__.py
+include mercurial/thirdparty/tomli/_parser.py
+include mercurial/thirdparty/tomli/_re.py
+include mercurial/thirdparty/tomli/_types.py
+include mercurial/thirdparty/tomli/py.typed
 include mercurial/thirdparty/xdiff/xdiff.h
 include mercurial/thirdparty/xdiff/xdiffi.c
 include mercurial/thirdparty/xdiff/xdiffi.h
@@ -1056,6 +1069,9 @@ include relnotes/6.2
 include relnotes/6.3
 include relnotes/6.4
 include relnotes/6.5
+include relnotes/6.6
+include relnotes/6.7
+include relnotes/6.8
 include relnotes/next
 include rust/.cargo/config
 include rust/Cargo.lock
@@ -1081,7 +1097,7 @@ include rust/hg-core/examples/nodemap/index.rs
 include rust/hg-core/examples/nodemap/main.rs
 include rust/hg-core/src/ancestors.rs
 include rust/hg-core/src/checkexec.rs
-include rust/hg-core/src/config/config.rs
+include rust/hg-core/src/config/config_items.rs
 include rust/hg-core/src/config/layer.rs
 include rust/hg-core/src/config/mod.rs
 include rust/hg-core/src/config/plain_info.rs
@@ -1114,6 +1130,7 @@ include rust/hg-core/src/operations/cat.rs
 include rust/hg-core/src/operations/debugdata.rs
 include rust/hg-core/src/operations/list_tracked_files.rs
 include rust/hg-core/src/operations/mod.rs
+include rust/hg-core/src/operations/status_rev_rev.rs
 include rust/hg-core/src/repo.rs
 include rust/hg-core/src/requirements.rs
 include rust/hg-core/src/revlog/changelog.rs
@@ -1198,6 +1215,7 @@ include tests/blacklists/nix
 include tests/bruterebase.py
 include tests/bundles/darcs1.hg
 include tests/bundles/hgweb+obs.hg
+include tests/bundles/inlined-changelog.tar
 include tests/bundles/issue4041.hg
 include tests/bundles/issue4438-r1.hg
 include tests/bundles/issue4438-r2.hg
@@ -1255,7 +1273,6 @@ include tests/histedit-helpers.sh
 include tests/httpserverauth.py
 include tests/hypothesishelpers.py
 include tests/killdaemons.py
-include tests/library-infinitepush.sh
 include tests/list-tree.py
 include tests/lockdelay.py
 include tests/logexceptions.py
@@ -1310,6 +1327,7 @@ include tests/revlog-formatv0.py
 include tests/revnamesext.py
 include tests/run-tests.py
 include tests/seq.py
+include tests/sha256line.py
 include tests/silenttestrunner.py
 include tests/simplestorerepo.py
 include tests/sitecustomize.py
@@ -1352,6 +1370,8 @@ include tests/test-acl.t
 include tests/test-add.t
 include tests/test-addremove-similar.t
 include tests/test-addremove.t
+include tests/test-admin-commands.py
+include tests/test-admin-commands.t
 include tests/test-alias.t
 include tests/test-amend-subrepo.t
 include tests/test-amend.t
@@ -1383,6 +1403,7 @@ include tests/test-bookflow.t
 include tests/test-bookmarks-corner-case.t
 include tests/test-bookmarks-current.t
 include tests/test-bookmarks-merge.t
+include tests/test-bookmarks-push-race.t
 include tests/test-bookmarks-pushpull.t
 include tests/test-bookmarks-rebase.t
 include tests/test-bookmarks-strip.t
@@ -1390,6 +1411,7 @@ include tests/test-bookmarks.t
 include tests/test-branch-change.t
 include tests/test-branch-option.t
 include tests/test-branch-tag-confict.t
+include tests/test-branches-obsolete.t
 include tests/test-branches.t
 include tests/test-bugzilla.t
 include tests/test-bundle-phase-internal.t
@@ -1413,6 +1435,7 @@ include tests/test-cat.t
 include tests/test-cbor.py
 include tests/test-censor.t
 include tests/test-censor2.t
+include tests/test-chainsaw-update.t
 include tests/test-changelog-exec.t
 include tests/test-check-cargo-lock.t
 include tests/test-check-clang-format.t
@@ -1748,9 +1771,6 @@ include tests/test-import-unknown.t
 include tests/test-import.t
 include tests/test-imports-checker.t
 include tests/test-incoming-outgoing.t
-include tests/test-infinitepush-bundlestore.t
-include tests/test-infinitepush-ci.t
-include tests/test-infinitepush.t
 include tests/test-inherit-mode.t
 include tests/test-init.t
 include tests/test-install.t
@@ -1883,6 +1903,7 @@ include tests/test-mq-subrepo.t
 include tests/test-mq-symlinks.t
 include tests/test-mq.t
 include tests/test-mv-cp-st-diff.t
+include tests/test-narrow-acl-excludes.t
 include tests/test-narrow-acl.t
 include tests/test-narrow-archive.t
 include tests/test-narrow-clone-no-ellipsis.t
@@ -1910,6 +1931,7 @@ include tests/test-narrow-sparse.t
 include tests/test-narrow-strip.t
 include tests/test-narrow-trackedcmd.t
 include tests/test-narrow-update.t
+include tests/test-narrow-widen-linkrev-computation.t
 include tests/test-narrow-widen-no-ellipsis.t
 include tests/test-narrow-widen.t
 include tests/test-narrow.t
@@ -2162,6 +2184,7 @@ include tests/test-sparse-revlog.t
 include tests/test-sparse-verbose-json.t
 include tests/test-sparse-with-safe-share.t
 include tests/test-sparse.t
+include tests/test-split-legacy-inline-changelog.t
 include tests/test-split.t
 include tests/test-sqlitestore.t
 include tests/test-ssh-batch.t
@@ -2260,6 +2283,7 @@ include tests/test-wireproto.py
 include tests/test-wireproto.py.out
 include tests/test-wireproto.t
 include tests/test-worker.t
+include tests/test-wsgicgi.t
 include tests/test-wsgirequest.py
 include tests/test-xdg.t
 include tests/testlib/badserverext.py

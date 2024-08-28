@@ -15,11 +15,6 @@ from .node import (
     hex,
     nullrev,
 )
-from .pycompat import (
-    delattr,
-    getattr,
-    setattr,
-)
 from . import (
     error,
     obsolete,
@@ -165,7 +160,7 @@ def computeimpactable(repo, visibilityexceptions=None):
     firstmutable = len(cl)
     roots = repo._phasecache.nonpublicphaseroots(repo)
     if roots:
-        firstmutable = min(firstmutable, min(cl.rev(r) for r in roots))
+        firstmutable = min(firstmutable, min(roots))
     # protect from nullrev root
     firstmutable = max(0, firstmutable)
     return frozenset(range(firstmutable, len(cl)))
@@ -296,13 +291,12 @@ class filteredchangelogmixin:
         This returns a version of 'revs' to be used thereafter by the caller.
         In particular, if revs is an iterator, it is converted into a set.
         """
-        safehasattr = util.safehasattr
-        if safehasattr(revs, '__next__'):
+        if hasattr(revs, '__next__'):
             # Note that inspect.isgenerator() is not true for iterators,
             revs = set(revs)
 
         filteredrevs = self.filteredrevs
-        if safehasattr(revs, 'first'):  # smartset
+        if hasattr(revs, 'first'):  # smartset
             offenders = revs & filteredrevs
         else:
             offenders = filteredrevs.intersection(revs)
@@ -310,6 +304,10 @@ class filteredchangelogmixin:
         for rev in offenders:
             raise error.FilteredIndexError(rev)
         return revs
+
+    def _head_node_ids(self):
+        # no Rust fast path implemented yet, so just loop in Python
+        return [self.node(r) for r in self.headrevs()]
 
     def headrevs(self, revs=None):
         if revs is None:
@@ -399,6 +397,9 @@ class repoview:
     """
 
     def __init__(self, repo, filtername, visibilityexceptions=None):
+        if filtername is None:
+            msg = "repoview should have a non-None filtername"
+            raise error.ProgrammingError(msg)
         object.__setattr__(self, '_unfilteredrepo', repo)
         object.__setattr__(self, 'filtername', filtername)
         object.__setattr__(self, '_clcachekey', None)
@@ -422,7 +423,7 @@ class repoview:
         with util.timedcm('repo filter for %s', self.filtername):
             revs = filterrevs(unfi, self.filtername, self._visibilityexceptions)
         cl = self._clcache
-        newkey = (unfilen, unfinode, hash(revs), unfichangelog._delayed)
+        newkey = (unfilen, unfinode, hash(revs), unfichangelog.is_delaying)
         # if cl.index is not unfiindex, unfi.changelog would be
         # recreated, and our clcache refers to garbage object
         if cl is not None and (

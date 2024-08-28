@@ -17,7 +17,7 @@
 #if reporevlogstore
   $ hg debugrevlog -c
   format : 1
-  flags  : inline
+  flags  : (none)
   
   revisions     :   3
       merges    :   0 ( 0.00%)
@@ -185,19 +185,19 @@ Test debugindex, with and without the --verbose/--debug flag
 
 debugdelta chain basic output
 
-#if reporevlogstore pure
+#if reporevlogstore pure rust
   $ hg debugindexstats
-  abort: debugindexstats only works with native code
+  abort: debugindexstats only works with native C code
   [255]
 #endif
-#if reporevlogstore no-pure
+#if reporevlogstore no-pure no-rust
   $ hg debugindexstats
   node trie capacity: 4
   node trie count: 2
   node trie depth: 1
   node trie last rev scanned: -1 (no-rust !)
   node trie last rev scanned: 3 (rust !)
-  node trie lookups: 4 (no-rust !)
+  node trie lookups: 3 (no-rust !)
   node trie lookups: 2 (rust !)
   node trie misses: 1
   node trie splits: 1
@@ -205,7 +205,7 @@ debugdelta chain basic output
 #endif
 
 #if reporevlogstore no-pure
-  $ hg debugdeltachain -m
+  $ hg debugdeltachain -m --all-info
       rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
         0      -1      -1       1        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
         1       0      -1       2        1       -1    base          0          0          0   0.00000         0         0    0.00000          0          0   1.00000        1
@@ -216,7 +216,50 @@ debugdelta chain basic output
   1 2 1
   2 3 1
 
-  $ hg debugdeltachain -m -Tjson
+  $ hg debugdeltachain -m -Tjson  --size-info
+  [
+   {
+    "chainid": 1,
+    "chainlen": 1,
+    "chainratio": 1.0232558139534884,
+    "chainsize": 44,
+    "compsize": 44,
+    "deltatype": "base",
+    "p1": -1,
+    "p2": -1,
+    "prevrev": -1,
+    "rev": 0,
+    "uncompsize": 43
+   },
+   {
+    "chainid": 2,
+    "chainlen": 1,
+    "chainratio": 0,
+    "chainsize": 0,
+    "compsize": 0,
+    "deltatype": "base",
+    "p1": 0,
+    "p2": -1,
+    "prevrev": -1,
+    "rev": 1,
+    "uncompsize": 0
+   },
+   {
+    "chainid": 3,
+    "chainlen": 1,
+    "chainratio": 1.0232558139534884,
+    "chainsize": 44,
+    "compsize": 44,
+    "deltatype": "base",
+    "p1": 1,
+    "p2": -1,
+    "prevrev": -1,
+    "rev": 2,
+    "uncompsize": 43
+   }
+  ]
+
+  $ hg debugdeltachain -m -Tjson  --all-info
   [
    {
     "chainid": 1,
@@ -286,18 +329,61 @@ debugdelta chain with sparse read enabled
   > [experimental]
   > sparse-read = True
   > EOF
-  $ hg debugdeltachain -m
+  $ hg debugdeltachain -m --all-info
       rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio   readsize largestblk rddensity srchunks
         0      -1      -1       1        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
         1       0      -1       2        1       -1    base          0          0          0   0.00000         0         0    0.00000          0          0   1.00000        1
         2       1      -1       3        1       -1    base         44         43         44   1.02326        44         0    0.00000         44         44   1.00000        1
 
-  $ hg debugdeltachain -m -T '{rev} {chainid} {chainlen} {readsize} {largestblock} {readdensity}\n'
+  $ hg debugdeltachain -m --sparse-info -T '{rev} {chainid} {chainlen} {readsize} {largestblock} {readdensity}\n'
   0 1 1 44 44 1.0
   1 2 1 0 0 1
   2 3 1 44 44 1.0
 
-  $ hg debugdeltachain -m -Tjson
+  $ hg debugdeltachain -m -Tjson --sparse-info
+  [
+   {
+    "chainid": 1,
+    "chainlen": 1,
+    "deltatype": "base",
+    "largestblock": 44,
+    "p1": -1,
+    "p2": -1,
+    "prevrev": -1,
+    "readdensity": 1.0,
+    "readsize": 44,
+    "rev": 0,
+    "srchunks": 1
+   },
+   {
+    "chainid": 2,
+    "chainlen": 1,
+    "deltatype": "base",
+    "largestblock": 0,
+    "p1": 0,
+    "p2": -1,
+    "prevrev": -1,
+    "readdensity": 1,
+    "readsize": 0,
+    "rev": 1,
+    "srchunks": 1
+   },
+   {
+    "chainid": 3,
+    "chainlen": 1,
+    "deltatype": "base",
+    "largestblock": 44,
+    "p1": 1,
+    "p2": -1,
+    "prevrev": -1,
+    "readdensity": 1.0,
+    "readsize": 44,
+    "rev": 2,
+    "srchunks": 1
+   }
+  ]
+
+  $ hg debugdeltachain -m -Tjson --all-info
   [
    {
     "chainid": 1,
@@ -374,7 +460,7 @@ debugdelta chain with sparse read enabled
   >   hg ci -m "a default:$i"
   >   hg up -q other
   > done
-  $ hg debugdeltachain a -T '{rev} {srchunks}\n' \
+  $ hg debugdeltachain a -T '{rev} {srchunks}\n'  --all-info\
   >    --config experimental.sparse-read.density-threshold=0.50 \
   >    --config experimental.sparse-read.min-gap-size=0
   0 1
@@ -566,12 +652,17 @@ Test cache warming command
   .hg/cache/rbc-revs-v1
   .hg/cache/rbc-names-v1
   .hg/cache/hgtagsfnodes1
-  .hg/cache/branch2-visible-hidden
-  .hg/cache/branch2-visible
-  .hg/cache/branch2-served.hidden
   .hg/cache/branch2-served
-  .hg/cache/branch2-immutable
-  .hg/cache/branch2-base
+
+Test debug::unbundle
+
+  $ hg bundle --exact --rev tip foo.hg
+  1 changesets found
+  $ hg debug::unbundle foo.hg
+  adding changesets
+  adding manifests
+  adding file changes
+  added 0 changesets with 0 changes to 1 files (no-pure !)
 
 Test debugcolor
 

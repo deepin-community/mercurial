@@ -145,8 +145,13 @@ Test corrupted p1/p2 fields that could cause SEGV at parsers.c:
   > ]
   > for n, p in poisons:
   >     # corrupt p1 at rev0 and p2 at rev1
-  >     d = data[:24] + p + data[28:127 + 28] + p + data[127 + 32:]
-  >     open(n + b"/.hg/store/00changelog.i", "wb").write(d)
+  >     rev_0 = data[:64]
+  >     rev_1 = data[64:]
+  >     altered_rev_0 = rev_0[:24] + p + rev_0[24 + 4:]
+  >     altered_rev_1 = rev_1[:28] + p + rev_1[28 + 4:]
+  >     new_data = altered_rev_0 + altered_rev_1
+  >     with open(n + b"/.hg/store/00changelog.i", "wb") as f:
+  >         f.write(new_data)
   > EOF
 
   $ hg -R limit debugrevlogindex -f1 -c
@@ -155,9 +160,9 @@ Test corrupted p1/p2 fields that could cause SEGV at parsers.c:
        1 0000       65      1      0      2 26333235a41c
 
   $ hg -R limit debugdeltachain -c
-      rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio
-        0       2      -1       1        1       -1    base         63         62         63   1.01613        63         0    0.00000
-        1       0       2       2        1       -1    base         66         65         66   1.01538        66         0    0.00000
+      rev      p1      p2  chain# chainlen     prev   delta
+        0       2      -1       1        1       -1    base
+        1       0       2       2        1       -1    base
 
   $ hg -R neglimit debugrevlogindex -f1 -c
      rev flag     size   link     p1     p2       nodeid
@@ -170,9 +175,9 @@ Test corrupted p1/p2 fields that could cause SEGV at parsers.c:
        1 0000       65      1      0  65536 26333235a41c
 
   $ hg -R segv debugdeltachain -c
-      rev      p1      p2  chain# chainlen     prev   delta       size    rawsize  chainsize     ratio   lindist extradist extraratio
-        0   65536      -1       1        1       -1    base         63         62         63   1.01613        63         0    0.00000
-        1       0   65536       2        1       -1    base         66         65         66   1.01538        66         0    0.00000
+      rev      p1      p2  chain# chainlen     prev   delta
+        0   65536      -1       1        1       -1    base
+        1       0   65536       2        1       -1    base
 
   $ cat <<EOF > test.py
   > import sys
@@ -182,7 +187,7 @@ Test corrupted p1/p2 fields that could cause SEGV at parsers.c:
   > ops = [
   >     ('reachableroots',
   >      lambda: cl.index.reachableroots2(0, [1], [0], False)),
-  >     ('compute_phases_map_sets', lambda: cl.computephases({1: {cl.node(0)}})),
+  >     ('compute_phases_map_sets', lambda: cl.computephases({1: {0}})),
   >     ('index_headrevs', lambda: cl.headrevs()),
   >     ('find_gca_candidates', lambda: cl.commonancestorsheads(n0, n1)),
   >     ('find_deepest', lambda: cl.ancestor(n0, n1)),

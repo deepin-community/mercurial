@@ -54,6 +54,8 @@ CACHE_BRANCHMAP_ALL = b"branchmap-all"
 CACHE_BRANCHMAP_SERVED = b"branchmap-served"
 # Warm internal changelog cache (eg: persistent nodemap)
 CACHE_CHANGELOG_CACHE = b"changelog-cache"
+# check of a branchmap can use the "pure topo" mode
+CACHE_BRANCHMAP_DETECT_PURE_TOPO = b"branchmap-detect-pure-topo"
 # Warm full manifest cache
 CACHE_FULL_MANIFEST = b"full-manifest"
 # Warm file-node-tags cache
@@ -78,6 +80,7 @@ CACHES_DEFAULT = {
 CACHES_ALL = {
     CACHE_BRANCHMAP_SERVED,
     CACHE_BRANCHMAP_ALL,
+    CACHE_BRANCHMAP_DETECT_PURE_TOPO,
     CACHE_CHANGELOG_CACHE,
     CACHE_FILE_NODE_TAGS,
     CACHE_FULL_MANIFEST,
@@ -684,7 +687,7 @@ class ifiledata(interfaceutil.Interface):
         Any metadata is excluded from size measurements.
         """
 
-    def revision(node, raw=False):
+    def revision(node):
         """Obtain fulltext data for a node.
 
         By default, any storage transformations are applied before the data
@@ -1229,13 +1232,6 @@ class imanifeststorage(interfaceutil.Interface):
         """
     )
 
-    _generaldelta = interfaceutil.Attribute(
-        """Whether generaldelta storage is being used.
-
-        TODO this is revlog specific and should not be exposed.
-        """
-    )
-
     fulltextcache = interfaceutil.Attribute(
         """Dict with cache of fulltexts.
 
@@ -1282,10 +1278,10 @@ class imanifeststorage(interfaceutil.Interface):
     def linkrev(rev):
         """Obtain the changeset revision number a revision is linked to."""
 
-    def revision(node, _df=None):
+    def revision(node):
         """Obtain fulltext data for a node."""
 
-    def rawdata(node, _df=None):
+    def rawdata(node):
         """Obtain raw data for a node."""
 
     def revdiff(rev1, rev2):

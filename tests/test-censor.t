@@ -78,6 +78,9 @@ Censor revision with 2 offenses
 
   $ mkdir -p foo/bar/baz
   $ hg --config extensions.censor= --cwd foo/bar/baz censor -r $C2 -t "remove password" ../../../target
+  checking for the censored content in 2 heads
+  checking for the censored content in the working directory
+  censoring 1 file revisions
   $ hg cat -r $H1 target | head -n 10
   Tainted file is now sanitized
   $ hg cat -r $H2 target | head -n 10
@@ -96,6 +99,9 @@ Censor revision with 1 offense
 (this also tests file pattern matching: with 'path:' scheme)
 
   $ hg --config extensions.censor= --cwd foo/bar/baz censor -r $C1 path:target
+  checking for the censored content in 2 heads
+  checking for the censored content in the working directory
+  censoring 1 file revisions
   $ hg cat -r $H1 target | head -n 10
   Tainted file is now sanitized
   $ hg cat -r $H2 target | head -n 10
@@ -235,6 +241,9 @@ with the file censored, but we can't censor at a head, so advance H1.
   $ hg ci -m 'advance head H1' target
   $ H1=`hg id --debug -i`
   $ hg --config extensions.censor= censor -r $C3 target
+  checking for the censored content in 2 heads
+  checking for the censored content in the working directory
+  censoring 1 file revisions
   $ hg update -r $H2
   1 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ hg merge -r $C3
@@ -247,6 +256,7 @@ Revisions present in repository heads may not be censored
   $ hg update -C -r $H2
   1 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ hg --config extensions.censor= censor -r $H2 target
+  checking for the censored content in 2 heads
   abort: cannot censor file in heads (78a8fc215e79)
   (clean/delete and commit first)
   [255]
@@ -254,6 +264,7 @@ Revisions present in repository heads may not be censored
   $ hg ci -m 'bystander commit'
   $ H2=`hg id --debug -i`
   $ hg --config extensions.censor= censor -r "$H2^" target
+  checking for the censored content in 2 heads
   abort: cannot censor file in heads (efbe78065929)
   (clean/delete and commit first)
   [255]
@@ -266,6 +277,8 @@ Cannot censor working directory
   $ hg update -r "$H2^"
   1 files updated, 0 files merged, 0 files removed, 0 files unresolved
   $ hg --config extensions.censor= censor -r . target
+  checking for the censored content in 2 heads
+  checking for the censored content in the working directory
   abort: cannot censor working directory
   (clean/delete/update first)
   [255]
@@ -279,6 +292,9 @@ Can re-add file after being deleted + censored
   $ hg ci -m 'delete target so it may be censored'
   $ H2=`hg id --debug -i`
   $ hg --config extensions.censor= censor -r $C4 target
+  checking for the censored content in 2 heads
+  checking for the censored content in the working directory
+  censoring 1 file revisions
   $ hg cat -r $C4 target | head -n 10
   $ hg cat -r "$H2^^" target | head -n 10
   Tainted file now super sanitized
@@ -294,22 +310,43 @@ Can re-add file after being deleted + censored
   $ hg cat -r "$H2^^^" target | head -n 10
   Tainted file now super sanitized
 
-Can censor after revlog has expanded to no longer permit inline storage
+Can censor enough revision to move back to inline storage
 
-  $ for x in `"$PYTHON" $TESTDIR/seq.py 0 50000`
-  > do
-  >   echo "Password: hunter$x" >> target
-  > done
+  $ hg debugrevlogstats | grep target
+  rev-count   data-size inl type      target 
+          8         ??? no  file      target (glob) (revlogv2 !)
+          8         ??? yes file      target (glob) (revlogv1 !)
+  $ $TESTDIR/seq.py 4000 | $TESTDIR/sha256line.py > target
   $ hg ci -m 'add 100k passwords'
   $ H2=`hg id --debug -i`
   $ C5=$H2
   $ hg revert -r "$H2^" target
   $ hg ci -m 'cleaned 100k passwords'
   $ H2=`hg id --debug -i`
+  $ hg debugrevlogstats | grep target
+  rev-count   data-size inl type      target 
+         10      ?????? no  file      target (glob)
   $ hg --config extensions.censor= censor -r $C5 target
+  checking for the censored content in 2 heads
+  checking for the censored content in the working directory
+  censoring 1 file revisions
+
+The important part is for the censor operation to not crash and the repository
+to not be corrupted.  Right now this involve keeping the revlog split.
+
+  $ hg debugrevlogstats | grep target
+  rev-count   data-size inl type      target 
+         10         ??? no  file      target (glob)
   $ hg cat -r $C5 target | head -n 10
   $ hg cat -r $H2 target | head -n 10
   fresh start
+  $ hg verify
+  checking changesets
+  checking manifests
+  crosschecking files in changesets and manifests
+  checking files
+  checking dirstate
+  checked 12 changesets with 13 changes to 2 files
 
 Repo with censored nodes can be cloned and cloned nodes are censored
 
@@ -341,7 +378,7 @@ Repo cloned before tainted content introduced can pull censored nodes
   adding manifests
   adding file changes
   added 11 changesets with 11 changes to 2 files (+1 heads)
-  new changesets 186fb27560c3:683e4645fded
+  new changesets * (glob)
   (run 'hg heads' to see heads, 'hg merge' to merge)
   $ hg update 4
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
@@ -371,6 +408,9 @@ Censored nodes can be pushed if they censor previously unexchanged nodes
   $ hg cat -r $REV target | head -n 10
   Passwords: hunter2hunter2
   $ hg --config extensions.censor= censor -r $REV target
+  checking for the censored content in 3 heads
+  checking for the censored content in the working directory
+  censoring 1 file revisions
   $ hg cat -r $REV target | head -n 10
   $ hg cat -r $CLEANREV target | head -n 10
   Re-sanitized; nothing to see here
@@ -401,7 +441,7 @@ Censored nodes can be bundled up and unbundled in another repo
   adding manifests
   adding file changes
   added 2 changesets with 2 changes to 2 files (+1 heads)
-  new changesets 075be80ac777:dcbaf17bf3a1 (2 drafts)
+  new changesets * (glob)
   (run 'hg heads .' to see heads, 'hg merge' to merge)
   $ hg cat -r $REV target | head -n 10
   $ hg cat -r $CLEANREV target | head -n 10
@@ -458,7 +498,7 @@ Censored nodes can be imported on top of censored nodes, consecutively
   adding manifests
   adding file changes
   added 6 changesets with 5 changes to 2 files (+1 heads)
-  new changesets efbe78065929:683e4645fded (6 drafts)
+  new changesets * (glob)
   (run 'hg heads .' to see heads, 'hg merge' to merge)
   $ hg update $H2
   2 files updated, 0 files merged, 0 files removed, 0 files unresolved
@@ -471,6 +511,9 @@ Can import bundle where first revision of a file is censored
 
   $ hg init ../rinit
   $ hg --config extensions.censor= censor -r 0 target
+  checking for the censored content in 3 heads
+  checking for the censored content in the working directory
+  censoring 1 file revisions
   $ hg bundle -r 0 --base null ../rinit/initbundle
   1 changesets found
   $ cd ../rinit
@@ -482,6 +525,22 @@ Can import bundle where first revision of a file is censored
   new changesets e97f55b2665a (1 drafts)
   (run 'hg update' to get a working copy)
   $ hg cat -r 0 target | head -n 10
+
+Can skip the head checking steps
+
+  $ hg --config extensions.censor= censor -r 0  --no-check-heads target
+  checking for the censored content in the working directory
+  censoring 1 file revisions
+
+Can censor multiple revision in one go.
+
+  $ cd ../r
+  $ hg --config extensions.censor= censor -r 0+1  target
+  checking for the censored content in 3 heads
+  checking for the censored content in the working directory
+  censoring 2 file revisions
+
+
 
 #if revlogv2
 
@@ -521,6 +580,9 @@ Censor the file
   $ hg cat -r $B1 target | wc -l
    *50002 (re)
   $ hg --config extensions.censor= censor -r $B1 target
+  checking for the censored content in 1 heads
+  checking for the censored content in the working directory
+  censoring 1 file revisions
   $ hg cat -r $B1 target | wc -l
    *0 (re)
 
@@ -530,3 +592,74 @@ Check the children is fine
    *50003 (re)
 
 #endif
+
+Testing repository upgrade with censors revision
+================================================
+
+  $ cd ../rclone
+
+With the "abort" policy
+=======================
+
+  $ hg verify --config censor.policy=ignore
+  checking changesets
+  checking manifests
+  crosschecking files in changesets and manifests
+  checking files
+  checking dirstate
+  checked 14 changesets with 15 changes to 2 files
+  $ hg debugupgraderepo --run --quiet \
+  > --optimize re-delta-parent \
+  > --config censor.policy=abort
+  upgrade will perform the following actions:
+  
+  requirements
+     preserved: * (glob)
+  
+  optimisations: re-delta-parent
+  
+  processed revlogs:
+    - all-filelogs
+    - changelog
+    - manifest
+  
+  $ hg verify  --config censor.policy=ignore
+  checking changesets
+  checking manifests
+  crosschecking files in changesets and manifests
+  checking files
+  checking dirstate
+  checked 14 changesets with 15 changes to 2 files
+
+With the "ignore" policy
+========================
+
+  $ hg verify --config censor.policy=ignore
+  checking changesets
+  checking manifests
+  crosschecking files in changesets and manifests
+  checking files
+  checking dirstate
+  checked 14 changesets with 15 changes to 2 files
+  $ hg debugupgraderepo --run --quiet \
+  > --optimize re-delta-parent \
+  > --config censor.policy=ignore
+  upgrade will perform the following actions:
+  
+  requirements
+     preserved: * (glob)
+  
+  optimisations: re-delta-parent
+  
+  processed revlogs:
+    - all-filelogs
+    - changelog
+    - manifest
+  
+  $ hg verify --config censor.policy=ignore
+  checking changesets
+  checking manifests
+  crosschecking files in changesets and manifests
+  checking files
+  checking dirstate
+  checked 14 changesets with 15 changes to 2 files

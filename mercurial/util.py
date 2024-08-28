@@ -34,13 +34,19 @@ import time
 import traceback
 import warnings
 
+from typing import (
+    Any,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+)
+
 from .node import hex
 from .thirdparty import attr
 from .pycompat import (
-    delattr,
-    getattr,
     open,
-    setattr,
 )
 from hgdemandimport import tracing
 from . import (
@@ -58,14 +64,14 @@ from .utils import (
     stringutil,
 )
 
-if pycompat.TYPE_CHECKING:
-    from typing import (
-        Iterable,
-        Iterator,
-        List,
-        Optional,
-        Tuple,
-    )
+# keeps pyflakes happy
+assert [
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+]
 
 
 base85 = policy.importmod('base85')
@@ -142,8 +148,7 @@ unlink = platform.unlink
 username = platform.username
 
 
-def setumask(val):
-    # type: (int) -> None
+def setumask(val: int) -> None:
     '''updates the umask. used by chg server'''
     if pycompat.iswindows:
         return
@@ -436,6 +441,13 @@ class bufferedinputpipe:
 
 
 def mmapread(fp, size=None):
+    """Read a file content using mmap
+
+    The responsability of checking the file system is mmap safe is the
+    responsability of the caller.
+
+    In some case, a normal string might be returned.
+    """
     if size == 0:
         # size of 0 to mmap.mmap() means "all data"
         # rather than "zero bytes", so special case that.
@@ -1523,7 +1535,6 @@ class lrucachedict:
                 raise
             return default
 
-        assert node is not None  # help pytype
         value = node.value
         self.totalcost -= node.cost
         node.markempty()
@@ -1551,7 +1562,6 @@ class lrucachedict:
         """
         try:
             node = self._cache[k]
-            assert node is not None  # help pytype
             return node.value
         except KeyError:
             if default is _notset:
@@ -1610,12 +1620,8 @@ class lrucachedict:
         # a non-empty node.
         n = self._head.prev
 
-        assert n is not None  # help pytype
-
         while n.key is _notset:
             n = n.prev
-
-        assert n is not None  # help pytype
 
         key, value = n.key, n.value
 
@@ -1626,7 +1632,7 @@ class lrucachedict:
 
         return key, value
 
-    def _movetohead(self, node):
+    def _movetohead(self, node: _lrucachenode):
         """Mark a node as the newest, making it the new head.
 
         When a node is accessed, it becomes the freshest entry in the LRU
@@ -1673,7 +1679,7 @@ class lrucachedict:
 
         self._head = node
 
-    def _addcapacity(self):
+    def _addcapacity(self) -> _lrucachenode:
         """Add a node to the circular linked list.
 
         The new node is inserted before the head node.
@@ -1814,7 +1820,7 @@ def never(fn):
     return False
 
 
-def nogc(func):
+def nogc(func=None) -> Any:
     """disable garbage collector
 
     Python's garbage collector triggers a GC each time a certain number of
@@ -1827,15 +1833,27 @@ def nogc(func):
     This garbage collector issue have been fixed in 2.7. But it still affect
     CPython's performance.
     """
+    if func is None:
+        return _nogc_context()
+    else:
+        return _nogc_decorator(func)
 
+
+@contextlib.contextmanager
+def _nogc_context():
+    gcenabled = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if gcenabled:
+            gc.enable()
+
+
+def _nogc_decorator(func):
     def wrapper(*args, **kwargs):
-        gcenabled = gc.isenabled()
-        gc.disable()
-        try:
+        with _nogc_context():
             return func(*args, **kwargs)
-        finally:
-            if gcenabled:
-                gc.enable()
 
     return wrapper
 
@@ -1845,8 +1863,7 @@ if pycompat.ispypy:
     nogc = lambda x: x
 
 
-def pathto(root, n1, n2):
-    # type: (bytes, bytes, bytes) -> bytes
+def pathto(root: bytes, n1: bytes, n2: bytes) -> bytes:
     """return the relative path from one place to another.
     root should use os.sep to separate directories
     n1 should use os.sep to separate directories
@@ -2057,8 +2074,7 @@ _winreservednames = {
 _winreservedchars = b':*?"<>|'
 
 
-def checkwinfilename(path):
-    # type: (bytes) -> Optional[bytes]
+def checkwinfilename(path: bytes) -> Optional[bytes]:
     r"""Check that the base-relative path is a valid filename on Windows.
     Returns None if the path is ok, or a UI string describing the problem.
 
@@ -2124,7 +2140,7 @@ timer = getattr(time, "perf_counter", None)
 if pycompat.iswindows:
     checkosfilename = checkwinfilename
     if not timer:
-        timer = time.clock
+        timer = time.clock  # pytype: disable=module-attr
 else:
     # mercurial.windows doesn't have platform.checkosfilename
     checkosfilename = platform.checkosfilename  # pytype: disable=module-attr
@@ -2152,8 +2168,7 @@ def makelock(info, pathname):
     os.close(ld)
 
 
-def readlock(pathname):
-    # type: (bytes) -> bytes
+def readlock(pathname: bytes) -> bytes:
     try:
         return readlink(pathname)
     except OSError as why:
@@ -2176,8 +2191,7 @@ def fstat(fp):
 # File system features
 
 
-def fscasesensitive(path):
-    # type: (bytes) -> bool
+def fscasesensitive(path: bytes) -> bool:
     """
     Return true if the given path is on a case-sensitive filesystem
 
@@ -2202,6 +2216,8 @@ def fscasesensitive(path):
 
 
 _re2_input = lambda x: x
+# google-re2 will need to be tell to not output error on its own
+_re2_options = None
 try:
     import re2  # pytype: disable=import-error
 
@@ -2222,6 +2238,7 @@ class _re:
     def _checkre2():
         global _re2
         global _re2_input
+        global _re2_options
         if _re2 is not None:
             # we already have the answer
             return
@@ -2240,6 +2257,12 @@ class _re:
             check_input = pycompat.sysstr(check_input)
             _re2 = bool(re2.match(check_pattern, check_input))
             _re2_input = pycompat.sysstr
+        try:
+            quiet = re2.Options()
+            quiet.log_errors = False
+            _re2_options = quiet
+        except AttributeError:
+            pass
 
     def compile(self, pat, flags=0):
         """Compile a regular expression, using re2 if possible
@@ -2255,7 +2278,12 @@ class _re:
             if flags & remod.MULTILINE:
                 pat = b'(?m)' + pat
             try:
-                return re2.compile(_re2_input(pat))
+                input_regex = _re2_input(pat)
+                if _re2_options is not None:
+                    compiled = re2.compile(input_regex, options=_re2_options)
+                else:
+                    compiled = re2.compile(input_regex)
+                return compiled
             except re2.error:
                 pass
         return remod.compile(pat, flags)
@@ -2281,8 +2309,7 @@ re = _re()
 _fspathcache = {}
 
 
-def fspath(name, root):
-    # type: (bytes, bytes) -> bytes
+def fspath(name: bytes, root: bytes) -> bytes:
     """Get name in the case stored in the filesystem
 
     The name should be relative to root, and be normcase-ed for efficiency.
@@ -2326,8 +2353,7 @@ def fspath(name, root):
     return b''.join(result)
 
 
-def checknlink(testfile):
-    # type: (bytes) -> bool
+def checknlink(testfile: bytes) -> bool:
     '''check whether hardlink count reporting works properly'''
 
     # testfile may be open, so we need a separate file for checking to
@@ -2360,8 +2386,7 @@ def checknlink(testfile):
                 pass
 
 
-def endswithsep(path):
-    # type: (bytes) -> bool
+def endswithsep(path: bytes) -> bool:
     '''Check path ends with os.sep or os.altsep.'''
     return bool(  # help pytype
         path.endswith(pycompat.ossep)
@@ -2370,8 +2395,7 @@ def endswithsep(path):
     )
 
 
-def splitpath(path):
-    # type: (bytes) -> List[bytes]
+def splitpath(path: bytes) -> List[bytes]:
     """Split path by os.sep.
     Note that this function does not use os.altsep because this is
     an alternative of simple "xxx.split(os.sep)".
@@ -2583,7 +2607,7 @@ class atomictempfile:
             self._fp.close()
 
     def __del__(self):
-        if safehasattr(self, '_fp'):  # constructor actually did something
+        if hasattr(self, '_fp'):  # constructor actually did something
             self.discard()
 
     def __enter__(self):
@@ -2604,8 +2628,9 @@ def tryrmdir(f):
             raise
 
 
-def unlinkpath(f, ignoremissing=False, rmdir=True):
-    # type: (bytes, bool, bool) -> None
+def unlinkpath(
+    f: bytes, ignoremissing: bool = False, rmdir: bool = True
+) -> None:
     """unlink and remove the directory if it is empty"""
     if ignoremissing:
         tryunlink(f)
@@ -2619,17 +2644,21 @@ def unlinkpath(f, ignoremissing=False, rmdir=True):
             pass
 
 
-def tryunlink(f):
-    # type: (bytes) -> None
-    """Attempt to remove a file, ignoring FileNotFoundError."""
+def tryunlink(f: bytes) -> bool:
+    """Attempt to remove a file, ignoring FileNotFoundError.
+
+    Returns False in case the file did not exit, True otherwise
+    """
     try:
         unlink(f)
+        return True
     except FileNotFoundError:
-        pass
+        return False
 
 
-def makedirs(name, mode=None, notindexed=False):
-    # type: (bytes, Optional[int], bool) -> None
+def makedirs(
+    name: bytes, mode: Optional[int] = None, notindexed: bool = False
+) -> None:
     """recursive directory creation with parent mode inheritance
 
     Newly created directories are marked as "not to be indexed by
@@ -2658,20 +2687,17 @@ def makedirs(name, mode=None, notindexed=False):
         os.chmod(name, mode)
 
 
-def readfile(path):
-    # type: (bytes) -> bytes
+def readfile(path: bytes) -> bytes:
     with open(path, b'rb') as fp:
         return fp.read()
 
 
-def writefile(path, text):
-    # type: (bytes, bytes) -> None
+def writefile(path: bytes, text: bytes) -> None:
     with open(path, b'wb') as fp:
         fp.write(text)
 
 
-def appendfile(path, text):
-    # type: (bytes, bytes) -> None
+def appendfile(path: bytes, text: bytes) -> None:
     with open(path, b'ab') as fp:
         fp.write(text)
 
@@ -2832,8 +2858,7 @@ def unitcountfn(*unittable):
     return go
 
 
-def processlinerange(fromline, toline):
-    # type: (int, int) -> Tuple[int, int]
+def processlinerange(fromline: int, toline: int) -> Tuple[int, int]:
     """Check that linerange <fromline>:<toline> makes sense and return a
     0-based range.
 
@@ -2892,13 +2917,11 @@ class transformingwriter:
 _eolre = remod.compile(br'\r*\n')
 
 
-def tolf(s):
-    # type: (bytes) -> bytes
+def tolf(s: bytes) -> bytes:
     return _eolre.sub(b'\n', s)
 
 
-def tocrlf(s):
-    # type: (bytes) -> bytes
+def tocrlf(s: bytes) -> bytes:
     return _eolre.sub(b'\r\n', s)
 
 
@@ -2921,15 +2944,13 @@ def iterfile(fp):
     return fp
 
 
-def iterlines(iterator):
-    # type: (Iterable[bytes]) -> Iterator[bytes]
+def iterlines(iterator: Iterable[bytes]) -> Iterator[bytes]:
     for chunk in iterator:
         for line in chunk.splitlines():
             yield line
 
 
-def expandpath(path):
-    # type: (bytes) -> bytes
+def expandpath(path: bytes) -> bytes:
     return os.path.expanduser(os.path.expandvars(path))
 
 
@@ -3057,8 +3078,7 @@ _sizeunits = (
 )
 
 
-def sizetoint(s):
-    # type: (bytes) -> int
+def sizetoint(s: bytes) -> int:
     """Convert a space specifier to a byte count.
 
     >>> sizetoint(b'30')
@@ -3280,8 +3300,7 @@ def with_lc_ctype():
         yield
 
 
-def _estimatememory():
-    # type: () -> Optional[int]
+def _estimatememory() -> Optional[int]:
     """Provide an estimate for the available system memory in Bytes.
 
     If no estimate can be provided on the platform, returns None.

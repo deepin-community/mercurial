@@ -148,9 +148,17 @@ test with empty repo (issue965)
   $ hg paths
   default = static-http://localhost:$HGPORT/remotempty
 
-test with non-repo
+test autodetecting static-http: scheme (issue6833)
 
   $ cd ..
+  $ hg init actually-static
+  $ hg clone http://localhost:$HGPORT/actually-static local4
+  no changes found
+  updating to branch default
+  0 files updated, 0 files merged, 0 files removed, 0 files unresolved
+
+test with non-repo
+
   $ mkdir notarepo
   $ hg clone static-http://localhost:$HGPORT/notarepo local3
   abort: 'http://localhost:$HGPORT/notarepo' does not appear to be an hg repository
@@ -217,6 +225,7 @@ List of files accessed over HTTP:
   /.hg/cache/hgtagsfnodes1
   /.hg/dirstate
   /.hg/requires
+  /.hg/store/00changelog.d
   /.hg/store/00changelog.i
   /.hg/store/00manifest.i
   /.hg/store/data/%7E2ehgsub.i (no-py37 !)
@@ -225,6 +234,15 @@ List of files accessed over HTTP:
   /.hg/store/data/~2ehgsub.i (py37 !)
   /.hg/store/data/~2ehgsubstate.i (py37 !)
   /.hg/store/requires
+  /actually-static/.hg/bookmarks
+  /actually-static/.hg/bookmarks.current
+  /actually-static/.hg/dirstate
+  /actually-static/.hg/requires
+  /actually-static/.hg/store/00changelog.i
+  /actually-static/.hg/store/00manifest.i
+  /actually-static/.hg/store/requires
+  /actually-static/?cmd=capabilities
+  /actually-static?cmd=capabilities
   /notarepo/.hg/00changelog.i
   /notarepo/.hg/requires
   /remote-with-names/.hg/bookmarks
@@ -235,6 +253,7 @@ List of files accessed over HTTP:
   /remote-with-names/.hg/dirstate
   /remote-with-names/.hg/localtags
   /remote-with-names/.hg/requires
+  /remote-with-names/.hg/store/00changelog.d
   /remote-with-names/.hg/store/00changelog.i
   /remote-with-names/.hg/store/00manifest.i
   /remote-with-names/.hg/store/data/%7E2ehgtags.i (no-py37 !)
@@ -253,6 +272,7 @@ List of files accessed over HTTP:
   /remote/.hg/dirstate
   /remote/.hg/localtags
   /remote/.hg/requires
+  /remote/.hg/store/00changelog.d
   /remote/.hg/store/00changelog.i
   /remote/.hg/store/00manifest.i
   /remote/.hg/store/data/%7E2edotfile%20with%20spaces.i (no-py37 !)
@@ -275,6 +295,7 @@ List of files accessed over HTTP:
   /sub/.hg/cache/hgtagsfnodes1
   /sub/.hg/dirstate
   /sub/.hg/requires
+  /sub/.hg/store/00changelog.d
   /sub/.hg/store/00changelog.i
   /sub/.hg/store/00manifest.i
   /sub/.hg/store/data/%7E2ehgtags.i (no-py37 !)

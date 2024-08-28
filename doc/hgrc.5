@@ -1809,6 +1809,14 @@ Run after updating the working directory. The changeset ID of first
 new parent is in \fB$HG_PARENT1\fP. If updating to a merge, the ID of second new
 parent is in \fB$HG_PARENT2\fP. If the update succeeded, \fB$HG_ERROR=0\fP. If the
 update failed (e.g. because conflicts were not resolved), \fB$HG_ERROR=1\fP.
+.TP
+.B \fBprelock\fP
+.sp
+run before the store lock is taken, mostly used for test and debug.
+.TP
+.B \fBprewlock\fP
+.sp
+run before the working copy lock is taken, mostly used for test and debug.
 .UNINDENT
 .IP Note
 .
@@ -3684,6 +3692,113 @@ hgrc file)
 .B \fBverbose\fP
 .sp
 Increase the amount of output printed. (default: False)
+.UNINDENT
+.SS \fBusage\fP
+.INDENT 0.0
+.TP
+.B \fBrepository\-role\fP
+.sp
+What this repository is used for.
+.sp
+This is used to adjust behavior and performance to best fit the repository purpose.
+.sp
+Currently recognised values are:
+.INDENT 7.0
+.IP \(bu 2
+.
+\fBdefault\fP: an all purpose repository
+.UNINDENT
+.TP
+.B \fBresources\fP
+.sp
+How aggressive Mercurial can be with resource usage:
+.sp
+Currently recognised values are:
+.INDENT 7.0
+.IP \(bu 2
+.
+\fBdefault\fP: the default value currently is equivalent to medium,
+.IP \(bu 2
+.
+\fBhigh\fP: allows for higher cpu, memory and disk\-space usage to improve
+performance of some operations.
+.IP \(bu 2
+.
+\fBmedium\fP: aims at a moderate resource usage,
+.IP \(bu 2
+.
+\fBlow\fP: reduces resources usage when possible, decreasing overall
+performance.
+.UNINDENT
+.sp
+For finer configuration, see also \fIusage.resources.cpu\fP,
+\fIusage.resources.disk\fP and \fIusage.resources.memory\fP.
+.TP
+.B \fBresources.cpu\fP
+.sp
+How aggressive Mercurial can be in terms of cpu usage:
+.sp
+Currently recognised values are:
+.INDENT 7.0
+.IP \(bu 2
+.
+\fBdefault\fP: the default value, inherits the value from \fIusage.resources\fP,
+.IP \(bu 2
+.
+\fBhigh\fP: allows for more aggressive cpu usage, improving storage quality
+and the performance of some operations at the expense of machine load
+.IP \(bu 2
+.
+\fImedium\fP:  aims at a moderate cpu usage,
+.IP \(bu 2
+.
+\fIlow\fP:  reduces cpu usage when possible, potentially at the expense of
+slower operations, increased storage and exchange payload.
+.UNINDENT
+.TP
+.B \fBresources.disk\fP
+.sp
+How aggressive Mercurial can be in terms of disk usage:
+.sp
+Currently recognised values are::
+\- \fBdefault\fP: the default value, inherits the value from \fIusage.resources\fP,
+.INDENT 7.0
+.IP \(bu 2
+.
+\fBhigh\fP: allows for more disk space usage where it can improve performance,
+.IP \(bu 2
+.
+\fBmedium\fP:  aims at a moderate disk usage,
+.IP \(bu 2
+.
+\fBlow\fP:  reduces disk usage when possible, decreasing performance in some
+occasion.
+.UNINDENT
+.TP
+.B \fBresources.memory\fP
+.sp
+How aggressive Mercurial can be in terms of memory usage:
+.sp
+Currently recognised values are:
+.sp
+.nf
+.ft C
+\- \(ga\(gadefault\(ga\(ga: the default value, inherits the value from \(gausage.resources\(ga,
+.ft P
+.fi
+.INDENT 7.0
+.IP \(bu 2
+.
+\fBhigh\fP: allows for more aggressive memory usage to improve overall
+performance,
+.IP \(bu 2
+.
+\fBmedium\fP:  aims at a moderate memory usage,
+.IP \(bu 2
+.
+\fBlow\fP: reduces memory usage when possible at the cost of overall
+performance.
+.UNINDENT
 .UNINDENT
 .SS \fBcommand\-templates\fP
 .sp

@@ -1,4 +1,5 @@
 use crate::errors::HgError;
+use crate::exit_codes;
 use crate::repo::Repo;
 use crate::revlog::path_encode::path_encode;
 use crate::revlog::NodePrefix;
@@ -8,6 +9,10 @@ use crate::revlog::{Revlog, RevlogError};
 use crate::utils::files::get_path_from_bytes;
 use crate::utils::hg_path::HgPath;
 use crate::utils::SliceExt;
+use crate::Graph;
+use crate::GraphError;
+use crate::RevlogOpenOptions;
+use crate::UncheckedRevision;
 use std::path::PathBuf;
 
 /// A specialized `Revlog` to work with file data logs.
@@ -16,20 +21,31 @@ pub struct Filelog {
     revlog: Revlog,
 }
 
+impl Graph for Filelog {
+    fn parents(&self, rev: Revision) -> Result<[Revision; 2], GraphError> {
+        self.revlog.parents(rev)
+    }
+}
+
 impl Filelog {
     pub fn open_vfs(
         store_vfs: &crate::vfs::Vfs<'_>,
         file_path: &HgPath,
+        options: RevlogOpenOptions,
     ) -> Result<Self, HgError> {
         let index_path = store_path(file_path, b".i");
         let data_path = store_path(file_path, b".d");
         let revlog =
-            Revlog::open(store_vfs, index_path, Some(&data_path), false)?;
+            Revlog::open(store_vfs, index_path, Some(&data_path), options)?;
         Ok(Self { revlog })
     }
 
-    pub fn open(repo: &Repo, file_path: &HgPath) -> Result<Self, HgError> {
-        Self::open_vfs(&repo.store_vfs(), file_path)
+    pub fn open(
+        repo: &Repo,
+        file_path: &HgPath,
+        options: RevlogOpenOptions,
+    ) -> Result<Self, HgError> {
+        Self::open_vfs(&repo.store_vfs(), file_path, options)
     }
 
     /// The given node ID is that of the file as found in a filelog, not of a
@@ -39,14 +55,14 @@ impl Filelog {
         file_node: impl Into<NodePrefix>,
     ) -> Result<FilelogRevisionData, RevlogError> {
         let file_rev = self.revlog.rev_from_node(file_node.into())?;
-        self.data_for_rev(file_rev)
+        self.data_for_rev(file_rev.into())
     }
 
     /// The given revision is that of the file as found in a filelog, not of a
     /// changeset.
     pub fn data_for_rev(
         &self,
-        file_rev: Revision,
+        file_rev: UncheckedRevision,
     ) -> Result<FilelogRevisionData, RevlogError> {
         let data: Vec<u8> = self.revlog.get_rev_data(file_rev)?.into_owned();
         Ok(FilelogRevisionData(data))
@@ -59,16 +75,25 @@ impl Filelog {
         file_node: impl Into<NodePrefix>,
     ) -> Result<FilelogEntry, RevlogError> {
         let file_rev = self.revlog.rev_from_node(file_node.into())?;
-        self.entry_for_rev(file_rev)
+        self.entry_for_checked_rev(file_rev)
     }
 
     /// The given revision is that of the file as found in a filelog, not of a
     /// changeset.
     pub fn entry_for_rev(
         &self,
-        file_rev: Revision,
+        file_rev: UncheckedRevision,
     ) -> Result<FilelogEntry, RevlogError> {
         Ok(FilelogEntry(self.revlog.get_entry(file_rev)?))
+    }
+
+    fn entry_for_checked_rev(
+        &self,
+        file_rev: Revision,
+    ) -> Result<FilelogEntry, RevlogError> {
+        Ok(FilelogEntry(
+            self.revlog.get_entry_for_checked_rev(file_rev)?,
+        ))
     }
 }
 
@@ -165,7 +190,19 @@ impl FilelogEntry<'_> {
     }
 
     pub fn data(&self) -> Result<FilelogRevisionData, HgError> {
-        Ok(FilelogRevisionData(self.0.data()?.into_owned()))
+        let data = self.0.data();
+        match data {
+            Ok(data) => Ok(FilelogRevisionData(data.into_owned())),
+            // Errors other than `HgError` should not happen at this point
+            Err(e) => match e {
+                RevlogError::Other(hg_error) => Err(hg_error),
+                revlog_error => Err(HgError::abort(
+                    revlog_error.to_string(),
+                    exit_codes::ABORT,
+                    None,
+                )),
+            },
+        }
     }
 }
 

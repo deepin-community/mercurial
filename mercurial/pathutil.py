@@ -24,8 +24,7 @@ rustdirs = policy.importrust('dirstate', 'Dirs')
 parsers = policy.importmod('parsers')
 
 
-def _lowerclean(s):
-    # type: (bytes) -> bytes
+def _lowerclean(s: bytes) -> bytes:
     return encoding.hfsignoreclean(s.lower())
 
 
@@ -64,8 +63,7 @@ class pathauditor:
         else:
             self.normcase = lambda x: x
 
-    def __call__(self, path, mode=None):
-        # type: (bytes, Optional[Any]) -> None
+    def __call__(self, path: bytes, mode: Optional[Any] = None) -> None:
         """Check the relative path.
         path may contain a pattern (e.g. foodir/**.txt)"""
 
@@ -162,8 +160,7 @@ class pathauditor:
                     raise error.Abort(msg % (path, pycompat.bytestr(prefix)))
         return True
 
-    def check(self, path):
-        # type: (bytes) -> bool
+    def check(self, path: bytes) -> bool:
         try:
             self(path)
             return True
@@ -183,9 +180,20 @@ class pathauditor:
                 self.auditeddir.clear()
                 self._cached = False
 
+    def clear_audit_cache(self):
+        """reset all audit cache
 
-def canonpath(root, cwd, myname, auditor=None):
-    # type: (bytes, bytes, bytes, Optional[pathauditor]) -> bytes
+        intended for debug and performance benchmark purposes"""
+        self.audited.clear()
+        self.auditeddir.clear()
+
+
+def canonpath(
+    root: bytes,
+    cwd: bytes,
+    myname: bytes,
+    auditor: Optional[pathauditor] = None,
+) -> bytes:
     """return the canonical path of myname, given cwd and root
 
     >>> def check(root, cwd, myname):
@@ -287,8 +295,7 @@ def canonpath(root, cwd, myname, auditor=None):
         )
 
 
-def normasprefix(path):
-    # type: (bytes) -> bytes
+def normasprefix(path: bytes) -> bytes:
     """normalize the specified path as path prefix
 
     Returned value can be used safely for "p.startswith(prefix)",
@@ -311,8 +318,7 @@ def normasprefix(path):
         return path
 
 
-def finddirs(path):
-    # type: (bytes) -> Iterator[bytes]
+def finddirs(path: bytes) -> Iterator[bytes]:
     pos = path.rfind(b'/')
     while pos != -1:
         yield path[:pos]
@@ -347,8 +353,7 @@ class dirs:
             for f in map:
                 addpath(f)
 
-    def addpath(self, path):
-        # type: (bytes) -> None
+    def addpath(self, path: bytes) -> None:
         dirs = self._dirs
         for base in finddirs(path):
             if base.endswith(b'/'):
@@ -360,8 +365,7 @@ class dirs:
                 return
             dirs[base] = 1
 
-    def delpath(self, path):
-        # type: (bytes) -> None
+    def delpath(self, path: bytes) -> None:
         dirs = self._dirs
         for base in finddirs(path):
             if dirs[base] > 1:
@@ -372,12 +376,11 @@ class dirs:
     def __iter__(self):
         return iter(self._dirs)
 
-    def __contains__(self, d):
-        # type: (bytes) -> bool
+    def __contains__(self, d: bytes) -> bool:
         return d in self._dirs
 
 
-if util.safehasattr(parsers, 'dirs'):
+if hasattr(parsers, 'dirs'):
     dirs = parsers.dirs
 
 if rustdirs is not None:
@@ -388,4 +391,4 @@ if rustdirs is not None:
 # rather not let our internals know that we're thinking in posix terms
 # - instead we'll let them be oblivious.
 join = posixpath.join
-dirname = posixpath.dirname  # type: Callable[[bytes], bytes]
+dirname: Callable[[bytes], bytes] = posixpath.dirname

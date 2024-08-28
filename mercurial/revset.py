@@ -12,7 +12,6 @@ import random
 import re
 
 from .i18n import _
-from .pycompat import getattr
 from .node import (
     bin,
     nullrev,
@@ -148,6 +147,22 @@ def rawsmartset(repo, subset, x, order):
         return subset & x
     else:
         return x & subset
+
+
+def raw_node_set(repo, subset, x, order):
+    """argument is a list of nodeid, resolve and use them"""
+    nodes = _ordered_node_set(repo, x)
+    if order == followorder:
+        return subset & nodes
+    else:
+        return nodes & subset
+
+
+def _ordered_node_set(repo, nodes):
+    if not nodes:
+        return baseset()
+    to_rev = repo.changelog.index.rev
+    return baseset([to_rev(r) for r in nodes])
 
 
 def rangeset(repo, subset, x, y, order):
@@ -2773,6 +2788,7 @@ methods = {
     b"parent": parentspec,
     b"parentpost": parentpost,
     b"smartset": rawsmartset,
+    b"nodeset": raw_node_set,
 }
 
 relations = {

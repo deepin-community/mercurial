@@ -7,7 +7,6 @@ import time
 
 from mercurial.i18n import _
 from mercurial.pycompat import (
-    getattr,
     open,
 )
 from mercurial.node import hex
@@ -502,7 +501,7 @@ class mutablebasepack(versionmixin):
         self.idxfp.write(rawindex)
         self.idxfp.close()
 
-    def createindex(self, nodelocations):
+    def createindex(self, nodelocations, indexoffset):
         raise NotImplementedError()
 
     def _writeheader(self, indexparams):

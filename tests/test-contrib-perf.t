@@ -59,8 +59,11 @@ perfstatus
     number of run to perform before starting measurement.
   
   "profile-benchmark"
-    Enable profiling for the benchmarked section. (The first iteration is
-    benchmarked)
+    Enable profiling for the benchmarked section. (by default, the first
+    iteration is benchmarked)
+  
+  "profiled-runs"
+    list of iteration to profile (starting from 0)
   
   "run-limits"
     Control the number of runs each benchmark will perform. The option value
@@ -194,7 +197,7 @@ perfstatus
                  benchmark the full generation of a stream clone
    perf::stream-locked-section
                  benchmark the initial, repo-locked, section of a stream-clone
-   perf::tags    (no help text available)
+   perf::tags    Benchmark tags retrieval in various situation
    perf::templating
                  test the rendering time of a given template
    perf::unbundle
@@ -293,6 +296,7 @@ perfstatus
   $ hg perfwalk
   $ hg perfparents
   $ hg perfdiscovery -q .
+  $ hg perf::phases
 
 Test run control
 ----------------
@@ -301,23 +305,38 @@ Simple single entry
 
   $ hg perfparents --config perf.stub=no --config perf.run-limits='0.000000001-15'
   ! wall * comb * user * sys * (best of 15) (glob)
+  ! wall * comb * user * sys * (max of 15) (glob)
+  ! wall * comb * user * sys * (avg of 15) (glob)
+  ! wall * comb * user * sys * (median of 15) (glob)
 
 Multiple entries
 
   $ hg perfparents --config perf.stub=no --config perf.run-limits='500000-1, 0.000000001-50'
   ! wall * comb * user * sys * (best of 50) (glob)
+  ! wall * comb * user * sys * (max of 50) (glob)
+  ! wall * comb * user * sys * (avg of 50) (glob)
+  ! wall * comb * user * sys * (median of 50) (glob)
 
 error case are ignored
 
   $ hg perfparents --config perf.stub=no --config perf.run-limits='500, 0.000000001-50'
   malformatted run limit entry, missing "-": 500
   ! wall * comb * user * sys * (best of 50) (glob)
+  ! wall * comb * user * sys * (max of 50) (glob)
+  ! wall * comb * user * sys * (avg of 50) (glob)
+  ! wall * comb * user * sys * (median of 50) (glob)
   $ hg perfparents --config perf.stub=no --config perf.run-limits='aaa-120, 0.000000001-50'
   malformatted run limit entry, could not convert string to float: 'aaa': aaa-120
   ! wall * comb * user * sys * (best of 50) (glob)
+  ! wall * comb * user * sys * (max of 50) (glob)
+  ! wall * comb * user * sys * (avg of 50) (glob)
+  ! wall * comb * user * sys * (median of 50) (glob)
   $ hg perfparents --config perf.stub=no --config perf.run-limits='120-aaaaaa, 0.000000001-50'
   malformatted run limit entry, invalid literal for int() with base 10: 'aaaaaa': 120-aaaaaa
   ! wall * comb * user * sys * (best of 50) (glob)
+  ! wall * comb * user * sys * (max of 50) (glob)
+  ! wall * comb * user * sys * (avg of 50) (glob)
+  ! wall * comb * user * sys * (median of 50) (glob)
 
 test actual output
 ------------------
@@ -326,6 +345,9 @@ normal output:
 
   $ hg perfheads --config perf.stub=no
   ! wall * comb * user * sys * (best of *) (glob)
+  ! wall * comb * user * sys * (max of *) (glob)
+  ! wall * comb * user * sys * (avg of *) (glob)
+  ! wall * comb * user * sys * (median of *) (glob)
 
 detailed output:
 
@@ -343,8 +365,23 @@ normal output:
   $ hg perfheads --template json --config perf.stub=no
   [
    {
+    "avg.comb": *, (glob)
+    "avg.count": *, (glob)
+    "avg.sys": *, (glob)
+    "avg.user": *, (glob)
+    "avg.wall": *, (glob)
     "comb": *, (glob)
     "count": *, (glob)
+    "max.comb": *, (glob)
+    "max.count": *, (glob)
+    "max.sys": *, (glob)
+    "max.user": *, (glob)
+    "max.wall": *, (glob)
+    "median.comb": *, (glob)
+    "median.count": *, (glob)
+    "median.sys": *, (glob)
+    "median.user": *, (glob)
+    "median.wall": *, (glob)
     "sys": *, (glob)
     "user": *, (glob)
     "wall": * (glob)
@@ -386,13 +423,22 @@ Test pre-run feature
 
   $ hg perfdiscovery . --config perf.stub=no --config perf.run-limits='0.000000001-1' --config perf.pre-run=0
   ! wall * comb * user * sys * (best of 1) (glob)
+  ! wall * comb * user * sys * (max of 1) (glob)
+  ! wall * comb * user * sys * (avg of 1) (glob)
+  ! wall * comb * user * sys * (median of 1) (glob)
   searching for changes
   $ hg perfdiscovery . --config perf.stub=no --config perf.run-limits='0.000000001-1' --config perf.pre-run=1
   ! wall * comb * user * sys * (best of 1) (glob)
+  ! wall * comb * user * sys * (max of 1) (glob)
+  ! wall * comb * user * sys * (avg of 1) (glob)
+  ! wall * comb * user * sys * (median of 1) (glob)
   searching for changes
   searching for changes
   $ hg perfdiscovery . --config perf.stub=no --config perf.run-limits='0.000000001-1' --config perf.pre-run=3
   ! wall * comb * user * sys * (best of 1) (glob)
+  ! wall * comb * user * sys * (max of 1) (glob)
+  ! wall * comb * user * sys * (avg of 1) (glob)
+  ! wall * comb * user * sys * (median of 1) (glob)
   searching for changes
   searching for changes
   searching for changes

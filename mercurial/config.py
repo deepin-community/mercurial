@@ -9,8 +9,12 @@
 import errno
 import os
 
+from typing import (
+    List,
+    Tuple,
+)
+
 from .i18n import _
-from .pycompat import getattr
 from . import (
     encoding,
     error,
@@ -108,7 +112,7 @@ class config:
     def sections(self):
         return sorted(self._data.keys())
 
-    def items(self, section):
+    def items(self, section: bytes) -> List[Tuple[bytes, bytes]]:
         items = self._data.get(section, {}).items()
         return [(k, v[0]) for (k, v) in items]
 

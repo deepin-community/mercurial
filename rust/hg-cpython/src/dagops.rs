@@ -9,15 +9,15 @@
 //! `hg-core` package.
 //!
 //! From Python, this will be seen as `mercurial.rustext.dagop`
+use crate::PyRevision;
 use crate::{conversion::rev_pyiter_collect, exceptions::GraphError};
 use cpython::{PyDict, PyModule, PyObject, PyResult, Python};
 use hg::dagops;
 use hg::Revision;
 use std::collections::HashSet;
-use vcsgraph::ancestors::node_rank;
-use vcsgraph::graph::{Parents, Rank};
+use vcsgraph::graph::Rank;
 
-use crate::revlog::pyindex_to_graph;
+use crate::revlog::py_rust_index_to_graph;
 
 /// Using the the `index`, return heads out of any Python iterable of Revisions
 ///
@@ -26,23 +26,35 @@ pub fn headrevs(
     py: Python,
     index: PyObject,
     revs: PyObject,
-) -> PyResult<HashSet<Revision>> {
-    let mut as_set: HashSet<Revision> = rev_pyiter_collect(py, &revs)?;
-    dagops::retain_heads(&pyindex_to_graph(py, index)?, &mut as_set)
+) -> PyResult<HashSet<PyRevision>> {
+    let py_leaked = py_rust_index_to_graph(py, index)?;
+    // Safety: we don't leak the "faked" reference out of `UnsafePyLeaked`
+    let index = &*unsafe { py_leaked.try_borrow(py)? };
+    let mut as_set: HashSet<Revision> = rev_pyiter_collect(py, &revs, index)?;
+    dagops::retain_heads(index, &mut as_set)
         .map_err(|e| GraphError::pynew(py, e))?;
-    Ok(as_set)
+    Ok(as_set.into_iter().map(Into::into).collect())
 }
 
 /// Computes the rank, i.e. the number of ancestors including itself,
 /// of a node represented by its parents.
+///
+/// Currently, the pure Rust index supports only the REVLOGV1 format, hence
+/// the only possible return value is that the rank is unknown.
+///
+/// References:
+/// - C implementation, function `index_fast_rank()`.
+/// - `impl vcsgraph::graph::RankedGraph for Index` in `crate::cindex`.
 pub fn rank(
     py: Python,
-    index: PyObject,
-    p1r: Revision,
-    p2r: Revision,
+    _index: PyObject,
+    _p1r: PyRevision,
+    _p2r: PyRevision,
 ) -> PyResult<Rank> {
-    node_rank(&pyindex_to_graph(py, index)?, &Parents([p1r, p2r]))
-        .map_err(|e| GraphError::pynew_from_vcsgraph(py, e))
+    Err(GraphError::pynew_from_vcsgraph(
+        py,
+        vcsgraph::graph::GraphReadError::InconsistentGraphData,
+    ))
 }
 
 /// Create the module, with `__package__` given from parent
@@ -59,7 +71,7 @@ pub fn init_module(py: Python, package: &str) -> PyResult<PyModule> {
     m.add(
         py,
         "rank",
-        py_fn!(py, rank(index: PyObject, p1r: Revision, p2r: Revision)),
+        py_fn!(py, rank(index: PyObject, p1r: PyRevision, p2r: PyRevision)),
     )?;
 
     let sys = PyModule::import(py, "sys")?;

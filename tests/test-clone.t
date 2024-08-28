@@ -47,11 +47,7 @@ Ensure branchcache got copied over:
 
   $ ls .hg/cache
   branch2-base
-  branch2-immutable
   branch2-served
-  branch2-served.hidden
-  branch2-visible
-  branch2-visible-hidden
   rbc-names-v1
   rbc-revs-v1
   tags2
@@ -71,22 +67,34 @@ No update, with debug option:
 
 #if hardlink
   $ hg --debug clone -U . ../c --config progress.debug=true
-  linking: 1/15 files (6.67%)
-  linking: 2/15 files (13.33%)
-  linking: 3/15 files (20.00%)
-  linking: 4/15 files (26.67%)
-  linking: 5/15 files (33.33%)
-  linking: 6/15 files (40.00%)
-  linking: 7/15 files (46.67%)
-  linking: 8/15 files (53.33%)
-  linking: 9/15 files (60.00%)
-  linking: 10/15 files (66.67%)
-  linking: 11/15 files (73.33%)
-  linking: 12/15 files (80.00%)
-  linking: 13/15 files (86.67%)
-  linking: 14/15 files (93.33%)
-  linking: 15/15 files (100.00%)
-  linked 15 files
+  linking: 1/12 files (8.33%) (no-rust !)
+  linking: 2/12 files (16.67%) (no-rust !)
+  linking: 3/12 files (25.00%) (no-rust !)
+  linking: 4/12 files (33.33%) (no-rust !)
+  linking: 5/12 files (41.67%) (no-rust !)
+  linking: 6/12 files (50.00%) (no-rust !)
+  linking: 7/12 files (58.33%) (no-rust !)
+  linking: 8/12 files (66.67%) (no-rust !)
+  linking: 9/12 files (75.00%) (no-rust !)
+  linking: 10/12 files (83.33%) (no-rust !)
+  linking: 11/12 files (91.67%) (no-rust !)
+  linking: 12/12 files (100.00%) (no-rust !)
+  linked 12 files (no-rust !)
+  linking: 1/14 files (7.14%) (rust !)
+  linking: 2/14 files (14.29%) (rust !)
+  linking: 3/14 files (21.43%) (rust !)
+  linking: 4/14 files (28.57%) (rust !)
+  linking: 5/14 files (35.71%) (rust !)
+  linking: 6/14 files (42.86%) (rust !)
+  linking: 7/14 files (50.00%) (rust !)
+  linking: 8/14 files (57.14%) (rust !)
+  linking: 9/14 files (64.29%) (rust !)
+  linking: 10/14 files (71.43%) (rust !)
+  linking: 11/14 files (78.57%) (rust !)
+  linking: 12/14 files (85.71%) (rust !)
+  linking: 13/14 files (92.86%) (rust !)
+  linking: 14/14 files (100.00%) (rust !)
+  linked 14 files (rust !)
   updating the branch cache
 #else
   $ hg --debug clone -U . ../c --config progress.debug=true
@@ -105,11 +113,7 @@ Ensure branchcache got copied over:
 
   $ ls .hg/cache
   branch2-base
-  branch2-immutable
   branch2-served
-  branch2-served.hidden
-  branch2-visible
-  branch2-visible-hidden
   rbc-names-v1
   rbc-revs-v1
   tags2
