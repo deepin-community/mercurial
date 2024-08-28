@@ -20,6 +20,10 @@ use std::fmt;
 /// the future.
 pub const NODE_BYTES_LENGTH: usize = 20;
 
+/// The length in bytes set aside on disk for a `Node`. Revlog up to v1 only
+/// use 20 out of those 32.
+pub const STORED_NODE_ID_BYTES: usize = 32;
+
 /// Id of the null node.
 ///
 /// Used to indicate the absence of node.
@@ -348,7 +352,7 @@ mod tests {
         assert_eq!(Node::from_hex(SAMPLE_NODE_HEX).unwrap(), SAMPLE_NODE);
         assert!(Node::from_hex(not_hex).is_err());
         assert!(Node::from_hex(too_short).is_err());
-        assert!(Node::from_hex(&too_long).is_err());
+        assert!(Node::from_hex(too_long).is_err());
     }
 
     #[test]

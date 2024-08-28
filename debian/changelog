@@ -1,3 +1,101 @@
+mercurial (6.8-3) unstable; urgency=high
+
+  * Adjust test-lfs-serve-access.t expected output to account to new
+    variation.
+
+ -- Julien Cristau <jcristau@debian.org>  Mon, 22 Jul 2024 21:20:36 +0200
+
+mercurial (6.8-2) unstable; urgency=high
+
+  * Fix demandimport breakage with recent python changes (see #1076449).
+
+ -- Julien Cristau <jcristau@debian.org>  Mon, 22 Jul 2024 18:26:26 +0200
+
+mercurial (6.8-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Skip test-dirstate-read-race.t on riscv64; buildds are too slow and
+    the test fails with a timeout.
+  * Remove long-obsolete hack for test-pull-pull-corruption.t failure.
+    Fixed upstream in changeset 37e0872b5ced, back in 2012.
+  * Skip test for hg serve profiling, broken with python 3.12.
+
+ -- Julien Cristau <jcristau@debian.org>  Tue, 09 Jul 2024 18:23:42 +0200
+
+mercurial (6.7.4-1) unstable; urgency=high
+
+  * New upstream bugfix release.  Fixes critical regression in 6.7.x
+    causing possible data loss.
+
+ -- Julien Cristau <jcristau@debian.org>  Wed, 12 Jun 2024 12:11:15 +0200
+
+mercurial (6.7.3-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+
+ -- Julien Cristau <jcristau@debian.org>  Tue, 07 May 2024 17:26:47 +0200
+
+mercurial (6.7.2-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+
+ -- Julien Cristau <jcristau@debian.org>  Sun, 31 Mar 2024 15:25:51 +0200
+
+mercurial (6.7.1-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Julien Cristau <jcristau@debian.org>  Thu, 21 Mar 2024 23:15:19 +0100
+
+mercurial (6.7~rc0-1) experimental; urgency=medium
+
+  * New upstream release candidate.
+
+ -- Julien Cristau <jcristau@debian.org>  Mon, 04 Mar 2024 15:50:41 +0100
+
+mercurial (6.6.3-1) unstable; urgency=medium
+
+  * New upstream bugfix release
+    - histedit-ncurses.patch: remove, applied upstream
+
+ -- Julien Cristau <jcristau@debian.org>  Tue, 27 Feb 2024 15:03:16 +0100
+
+mercurial (6.6.1-2) unstable; urgency=medium
+
+  * histedit: remove superfluous echo() and endwin() calls.  Fixes
+    incompatibility with ncurses patch level 20231111, see #1058041.
+    Thanks, Sven Joachim!
+
+ -- Julien Cristau <jcristau@debian.org>  Tue, 12 Dec 2023 13:28:02 +0100
+
+mercurial (6.6.1-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+  * Mark test-copies-chain-merge as slow, so it's skipped.
+
+ -- Julien Cristau <jcristau@debian.org>  Mon, 11 Dec 2023 14:23:00 +0100
+
+mercurial (6.6-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Julien Cristau <jcristau@debian.org>  Tue, 05 Dec 2023 15:17:28 +0100
+
+mercurial (6.6~rc0-1) experimental; urgency=medium
+
+  * New upstream release candidate.
+
+ -- Julien Cristau <jcristau@debian.org>  Fri, 17 Nov 2023 10:11:37 +0100
+
+mercurial (6.5.3-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+  * Delete mercurial.egg-info/ on clean.
+  * Pass DEB_PYTHON_INSTALL_LAYOUT to make install to work around
+    distutils/setuptools being a mess.
+
+ -- Julien Cristau <jcristau@debian.org>  Thu, 16 Nov 2023 17:57:14 +0100
+
 mercurial (6.5.2-2) unstable; urgency=medium
 
   * Fix test-clone-stream.t failure causing FTBFS on big endian

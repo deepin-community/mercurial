@@ -13,7 +13,6 @@ import stat
 import uuid
 
 from .i18n import _
-from .pycompat import delattr
 
 from hgdemandimport import tracing
 
@@ -42,9 +41,6 @@ from .interfaces import (
 
 parsers = policy.importmod('parsers')
 rustmod = policy.importrust('dirstate')
-
-# use to detect lack of a parameter
-SENTINEL = object()
 
 HAS_FAST_DIRSTATE_V2 = rustmod is not None
 
@@ -344,11 +340,52 @@ class dirstate:
 
     @contextlib.contextmanager
     def changing_parents(self, repo):
+        """Wrap a dirstate change related to a change of working copy parents
+
+        This context scopes a series of dirstate modifications that match an
+        update of the working copy parents (typically `hg update`, `hg merge`
+        etc).
+
+        The dirstate's methods that perform this kind of modifications require
+        this context to be present before being called.
+        Such methods are decorated with `@requires_changing_parents`.
+
+        The new dirstate contents will be written to disk when the top-most
+        `changing_parents` context exits successfully. If an exception is
+        raised during a `changing_parents` context of any level, all changes
+        are invalidated. If this context is open within an open transaction,
+        the dirstate writing is delayed until that transaction is successfully
+        committed (and the dirstate is invalidated on transaction abort).
+
+        The `changing_parents` operation is mutually exclusive with the
+        `changing_files` one.
+        """
         with self._changing(repo, CHANGE_TYPE_PARENTS) as c:
             yield c
 
     @contextlib.contextmanager
     def changing_files(self, repo):
+        """Wrap a dirstate change related to the set of tracked files
+
+        This context scopes a series of dirstate modifications that change the
+        set of tracked files. (typically `hg add`, `hg remove` etc) or some
+        dirstate stored information (like `hg rename --after`) but preserve
+        the working copy parents.
+
+        The dirstate's methods that perform this kind of modifications require
+        this context to be present before being called.
+        Such methods are decorated with `@requires_changing_files`.
+
+        The new dirstate contents will be written to disk when the top-most
+        `changing_files` context exits successfully. If an exception is raised
+        during a `changing_files` context of any level, all changes are
+        invalidated.  If this context is open within an open transaction, the
+        dirstate writing is delayed until that transaction is successfully
+        committed (and the dirstate is invalidated on transaction abort).
+
+        The `changing_files` operation is mutually exclusive with the
+        `changing_parents` one.
+        """
         with self._changing(repo, CHANGE_TYPE_FILES) as c:
             yield c
 
@@ -367,16 +404,6 @@ class dirstate:
         This returns True for any kind of change.
         """
         return self._changing_level > 0
-
-    def pendingparentchange(self):
-        return self.is_changing_parent()
-
-    def is_changing_parent(self):
-        """Returns true if the dirstate is in the middle of a set of changes
-        that modify the dirstate parent.
-        """
-        self._ui.deprecwarn(b"dirstate.is_changing_parents", b"6.5")
-        return self.is_changing_parents
 
     @property
     def is_changing_parents(self):
@@ -630,12 +657,8 @@ class dirstate:
         fold_p2 = oldp2 != nullid and p2 == nullid
         return self._map.setparents(p1, p2, fold_p2=fold_p2)
 
-    def setbranch(self, branch, transaction=SENTINEL):
+    def setbranch(self, branch, transaction):
         self.__class__._branch.set(self, encoding.fromlocal(branch))
-        if transaction is SENTINEL:
-            msg = b"setbranch needs a `transaction` argument"
-            self._ui.deprecwarn(msg, b'6.5')
-            transaction = None
         if transaction is not None:
             self._setup_tr_abort(transaction)
             transaction.addfilegenerator(
@@ -1574,7 +1597,7 @@ class dirstate:
                         )
                     )
 
-        for fn, message in bad:
+        for fn, message in sorted(bad):
             matcher.bad(fn, encoding.strtolocal(message))
 
         status = scmutil.status(
@@ -1616,25 +1639,12 @@ class dirstate:
 
         use_rust = True
 
-        allowed_matchers = (
-            matchmod.alwaysmatcher,
-            matchmod.differencematcher,
-            matchmod.exactmatcher,
-            matchmod.includematcher,
-            matchmod.intersectionmatcher,
-            matchmod.nevermatcher,
-            matchmod.unionmatcher,
-        )
-
         if rustmod is None:
             use_rust = False
         elif self._checkcase:
             # Case-insensitive filesystems are not handled yet
             use_rust = False
         elif subrepos:
-            use_rust = False
-        elif not isinstance(match, allowed_matchers):
-            # Some matchers have yet to be implemented
             use_rust = False
 
         # Get the time from the filesystem so we can disambiguate files that

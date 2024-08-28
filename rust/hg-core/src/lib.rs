@@ -25,7 +25,7 @@ pub use dirstate::{
     DirstateEntry, DirstateParents, EntryState,
 };
 pub mod copy_tracing;
-mod filepatterns;
+pub mod filepatterns;
 pub mod matchers;
 pub mod repo;
 pub mod revlog;
@@ -41,7 +41,7 @@ pub mod vfs;
 
 use crate::utils::hg_path::{HgPathBuf, HgPathError};
 pub use filepatterns::{
-    parse_pattern_syntax, read_pattern_file, IgnorePattern,
+    parse_pattern_syntax_kind, read_pattern_file, IgnorePattern,
     PatternFileWarning, PatternSyntax,
 };
 use std::collections::HashMap;
@@ -66,6 +66,12 @@ pub enum DirstateMapError {
     InvalidPath(HgPathError),
 }
 
+impl From<HgPathError> for DirstateMapError {
+    fn from(error: HgPathError) -> Self {
+        Self::InvalidPath(error)
+    }
+}
+
 impl fmt::Display for DirstateMapError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -81,6 +87,12 @@ impl fmt::Display for DirstateMapError {
 pub enum DirstateError {
     Map(DirstateMapError),
     Common(errors::HgError),
+}
+
+impl From<HgPathError> for DirstateError {
+    fn from(error: HgPathError) -> Self {
+        Self::Map(DirstateMapError::InvalidPath(error))
+    }
 }
 
 impl fmt::Display for DirstateError {

@@ -11,7 +11,6 @@ import os
 
 from .i18n import _
 from .node import hex
-from .pycompat import getattr
 
 from . import (
     bundle2,
@@ -313,6 +312,7 @@ def clonebundles(repo, proto):
         if line.startswith(bundlecaches.CLONEBUNDLESCHEME):
             continue
         modified_manifest.append(line)
+    modified_manifest.append(b'')
     return wireprototypes.bytesresponse(b'\n'.join(modified_manifest))
 
 
@@ -721,7 +721,7 @@ def unbundle(repo, proto, heads):
                 r = exchange.unbundle(
                     repo, gen, their_heads, b'serve', proto.client()
                 )
-                if util.safehasattr(r, 'addpart'):
+                if hasattr(r, 'addpart'):
                     # The return looks streamable, we are in the bundle2 case
                     # and should return a stream.
                     return wireprototypes.streamreslegacy(gen=r.getchunks())

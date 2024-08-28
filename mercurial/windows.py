@@ -33,7 +33,6 @@ from typing import (
 )
 
 from .i18n import _
-from .pycompat import getattr
 from . import (
     encoding,
     error,
@@ -62,13 +61,7 @@ testpid = win32.testpid
 unlink = win32.unlink
 
 if typing.TYPE_CHECKING:
-    # Replace the various overloads that come along with aliasing stdlib methods
-    # with the narrow definition that we care about in the type checking phase
-    # only.  This ensures that both Windows and POSIX see only the definition
-    # that is actually available.
-    #
-    # Note that if we check pycompat.TYPE_CHECKING here, it is always False, and
-    # the methods aren't replaced.
+
     def split(p: bytes) -> Tuple[bytes, bytes]:
         raise NotImplementedError
 

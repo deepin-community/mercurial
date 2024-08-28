@@ -32,21 +32,19 @@ ARCH_IS_KFREEBSD-i386 := $(if $(subst kfreebsd-i386,,$(DEB_HOST_ARCH)),,T)
 ARCH_IS_ARMEL := $(if $(subst armel,,$(DEB_HOST_ARCH)),,T)
 ARCH_IS_SPARC := $(if $(subst sparc,,$(DEB_HOST_ARCH)),,T)
 
-override_dh_auto_test:
-ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
-# test-pull-pull-corruption tries to execute two hg commands at the
-# same time to test for corruption.  It does so by running an hg
-# command in the background, sleeping one second and running the
-# second command.  In architectures with slow buildds, one second is
-# not enough and the second test starts before the first one has
-# started printing.  This is hacky and we just enhance the hack by
-# incrementing the sleep time in those architectures.
-ifneq ($(or $(ARCH_IS_MIPS), $(ARCH_IS_KFREEBSD-i386), $(ARCH_IS_ARMEL), $(ARCH_IS_SPARC)),)
-		sed -i.deb-backup -e 's/sleep 1/sleep 2/' $(CURDIR)/tests/test-pull-pull-corruption.t
+test_flags = \
+    --verbose \
+    --timeout 1800 \
+    $(PARALLEL_TEST_JOBS) \
+    --blacklist $(CURDIR)/debian/mercurial.test_blacklist
+ifeq ($(DEB_HOST_ARCH), riscv64)
+test_flags += \
+    --blacklist $(CURDIR)/debian/mercurial.test_blacklist_riscv64
 endif
 
-	http_proxy='' dh_auto_test -- PYTHON=python3 TESTFLAGS="--verbose --timeout 1800 $(PARALLEL_TEST_JOBS) --blacklist $(CURDIR)/debian/mercurial.test_blacklist"
-	file-rename 's/\.deb-backup$$//' $(CURDIR)/tests/*
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	http_proxy='' dh_auto_test -- PYTHON=python3 TESTFLAGS="$(test_flags)"
 	# run blacklisted tests but ignore their results
 	-cd tests && python3 run-tests.py --verbose `grep ^test ../debian/mercurial.test_blacklist`
 endif
@@ -58,7 +56,7 @@ override_dh_auto_install: $(PYVERS:%=install-python%)
 	rm -rf debian/tmp/usr/lib/python*/*-packages/hgext/git
 
 install-python%:
-	dh_auto_install -- PREFIX=/usr PYTHON=python$*
+	dh_auto_install -- PREFIX=/usr PYTHON=python$* DEB_PYTHON_INSTALL_LAYOUT=deb
 
 execute_after_dh_install:
 	if test -d $(CURDIR)/debian/mercurial ; then \

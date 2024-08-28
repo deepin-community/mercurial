@@ -2124,6 +2124,11 @@ it detects as binary. With \-a, annotate will annotate the file
 anyway, although the results will probably be neither useful
 nor desirable.
 .sp
+Use \-L/\-\-line\-range FILE,M:N options to filter the output to the lines
+from M to N in FILE. This option is incompatible with \-\-no\-follow and
+cannot be combined with file pattern arguments. When combined with \-\-rev
+the line ranges refer to the state of the file at the requested revision.
+.sp
 Template:
 .sp
 The following keywords are supported in addition to the common template
@@ -2206,6 +2211,10 @@ show line number at the first appearance
 .BI \-\-skip \ <REV[+]>
 .
 revset to not display (EXPERIMENTAL)
+.TP
+.BI \-L,  \-\-line\-range \ <FILE,RANGE[+]>
+.
+follow line range of specified file (EXPERIMENTAL)
 .TP
 .B \-w,  \-\-ignore\-all\-space
 .
@@ -5614,6 +5623,32 @@ Options:
 update to new branch head if changesets were unbundled
 .UNINDENT
 .SS Repository maintenance
+.SS admin::verify
+.sp
+verify the integrity of the repository:
+.sp
+.nf
+.ft C
+hg admin::verify
+.ft P
+.fi
+.sp
+Alternative UI to \fIhg verify\fP with a lot more control over the
+verification process and better error reporting.
+.sp
+Options:
+.INDENT 0.0
+.TP
+.BI \-c,  \-\-check \ <CHECK[+]>
+.
+add a check
+.TP
+.BI \-o,  \-\-option \ <OPTION[+]>
+.
+pass an option to a check
+.UNINDENT
+.sp
+[+] marked option can be specified multiple times
 .SS manifest
 .sp
 output the current or given revision of the project manifest:
@@ -5768,6 +5803,9 @@ integrity of their crosslinks and indices.
 Please see \%https://mercurial\-scm.org/wiki/RepositoryCorruption\:
 for more information about recovery from corruption of the
 repository.
+.sp
+For an alternative UI with a lot more control over the verification
+process and better error reporting, try \fIhg help admin::verify\fP.
 .sp
 Returns 0 on success, 1 if errors are encountered.
 .sp
@@ -5963,6 +6001,96 @@ Options:
 display with template
 .UNINDENT
 .SS Uncategorized commands
+.SS admin::chainsaw\-update
+.sp
+pull and update to a given revision, no matter what, (EXPERIMENTAL):
+.sp
+.nf
+.ft C
+hg admin::chainsaw\-update [OPTION] \-\-rev REV \-\-source SOURCE \-\-dest DEST
+.ft P
+.fi
+.sp
+Context of application: \fIsome\fP Continuous Integration (CI) systems,
+packaging or deployment tools.
+.sp
+Wanted end result: local repository at the given REPO_PATH, having the
+latest changes to the given revision and with a clean working directory
+updated at the given revision.
+.sp
+chainsaw\-update pulls from one source, then updates the working directory
+to the given revision, overcoming anything that would stand in the way.
+.sp
+By default, it will:
+.INDENT 0.0
+.IP \(bu 2
+.
+clone if the local repo does not exist yet, \fBremoving any directory
+at the given path\fP that would not be a Mercurial repository.
+The initial clone is full by default, so that clonebundles can be
+applied. Use the \-\-initial\-clone\-minimal flag to avoid this.
+.IP \(bu 2
+.
+break locks if needed, leading to possible corruption if there
+is a concurrent write access.
+.IP \(bu 2
+.
+perform recovery actions if needed
+.IP \(bu 2
+.
+revert any local modification.
+.IP \(bu 2
+.
+purge unknown and ignored files.
+.IP \(bu 2
+.
+go as far as to reclone if everything else failed (not implemented yet).
+.UNINDENT
+.sp
+DO NOT use it for anything else than performing a series
+of unattended updates, with full exclusive repository access each time
+and without any other local work than running build scripts.
+In case the local repository is a share (see \%\fBhg help share\fP\:), exclusive
+write access to the share source is also mandatory.
+.sp
+It is recommended to run these commands with the \fBHGPLAIN\fP environment
+variable (see \%\fBhg scripting\fP\:).
+.sp
+Motivation: in Continuous Integration and Delivery systems (CI/CD), the
+occasional remnant or bogus lock are common sources of waste of time (both
+working time and calendar time). CI/CD scripts tend to grow with counter\-
+measures, often done in urgency. Also, whilst it is neat to keep
+repositories from one job to the next (especially with large
+repositories), an exceptional recloning is better than missing a release
+deadline.
+.sp
+Options:
+.INDENT 0.0
+.TP
+.B \-\-purge\-unknown
+.
+Remove unversioned files before update. Disabling this can in some cases interfere with the update.See also \%\fBhg purge\fP\:. (default: True)
+.TP
+.B \-\-purge\-ignored
+.
+Remove ignored files before update. Disable this for instance to reuse previous compiler object files. See also \%\fBhg purge\fP\:. (default: True)
+.TP
+.BI \-\-rev \ <VALUE>
+.
+revision to update to
+.TP
+.BI \-\-source \ <VALUE>
+.
+repository to clone from
+.TP
+.BI \-\-dest \ <VALUE>
+.
+repository to update to REV (possibly cloning)
+.TP
+.B \-\-initial\-clone\-minimal
+.
+Pull only the prescribed revision upon initial cloning. This has the side effect of ignoring clone\-bundles, which if often slower on the client side and stressful to the server than applying available clone bundles.
+.UNINDENT
 .SH BUNDLE FILE FORMATS
 .sp
 Mercurial supports generating standalone "bundle" files that hold repository
@@ -6204,10 +6332,11 @@ where \(aqE\(aq is substituted with an escape character.
 Text receives color effects depending on the labels that it has. Many
 default Mercurial commands emit labelled text. You can also define
 your own labels in templates using the label function, see \%\fBhg help
-templates\fP\:. A single portion of text may have more than one label. In
-that case, effects given to the last label will override any other
-effects. This includes the special "none" effect, which nullifies
-other effects.
+templates\fP\:. In order to receive effects, labels must have a dot, such
+as \fIlog.secret\fP or \fIbranch.active\fP. A single portion of text may have
+more than one label. In that case, effects given to the last label
+will override any other effects. This includes the special "none"
+effect, which nullifies other effects.
 .sp
 Labels are normally invisible. In order to see these labels and their
 position in the text, use the global \-\-color=debug option. The same
@@ -10622,9 +10751,10 @@ Join items in a list with a delimiter.
 .TP
 .B label(label, expr)
 .
-Apply a label to generated content. Content with
-a label applied can result in additional post\-processing, such as
-automatic colorization.
+Apply a label to generated content. Content with a label
+applied can result in additional post\-processing, such as
+automatic colorization. In order to receive effects, labels must
+have a dot, such as \fIlog.secret\fP or \fIbranch.active\fP.
 .TP
 .B latesttag([pattern])
 .
@@ -12056,7 +12186,9 @@ data needs to be materialized. Some commands, like \fBhg cat\fP/\fBhg revert\fP,
 simply fail when asked to produce censored data. Others, like \fBhg verify\fP and
 \fBhg update\fP, must be capable of tolerating censored data to continue to
 function in a meaningful way. Such commands only tolerate censored file
-revisions if they are allowed by the "censor.policy=ignore" config option.
+As having a censored version in a checkout is impractical. The current head
+revisions of the repository are checked. If the revision to be censored is in
+any of them the command will abort.
 .sp
 A few informative commands such as \fBhg grep\fP will unconditionally
 ignore censored data and merely report that it was encountered.
@@ -12073,14 +12205,20 @@ hg censor \-r REV [\-t TEXT] [FILE]
 Options:
 .INDENT 0.0
 .TP
-.BI \-r,  \-\-rev \ <REV>
+.BI \-r,  \-\-rev \ <REV[+]>
 .
 censor file from specified revision
+.TP
+.B \-\-check\-heads
+.
+check that repository heads are not affected (default: True)
 .TP
 .BI \-t,  \-\-tombstone \ <TEXT>
 .
 replacement tombstone data
 .UNINDENT
+.sp
+[+] marked option can be specified multiple times
 .SS children
 .sp
 command to display child changesets (DEPRECATED)
@@ -14890,97 +15028,6 @@ The implementation of the hooks is subject to change, e.g. whether to
 implement them as individual hooks or merge them into the notify
 extension as option. The functionality itself is planned to be supported
 long\-term.
-.SS infinitepush
-.INDENT 0.0
-.INDENT 3.5
-.sp
-store some pushes in a remote blob store on the server (EXPERIMENTAL)
-.UNINDENT
-.UNINDENT
-.sp
-IMPORTANT: if you use this extension, please contact
-\%mercurial\-devel@mercurial\-scm.org\: ASAP. This extension is believed to
-be unused and barring learning of users of this functionality, we will
-delete this code at the end of 2020.
-.INDENT 0.0
-.INDENT 3.5
-.sp
-[infinitepush]
-# Server\-side and client\-side option. Pattern of the infinitepush bookmark
-branchpattern = PATTERN
-.sp
-# Server or client
-server = False
-.sp
-# Server\-side option. Possible values: \(aqdisk\(aq or \(aqsql\(aq. Fails if not set
-indextype = disk
-.sp
-# Server\-side option. Used only if indextype=sql.
-# Format: \(aqIP:PORT:DB_NAME:USER:PASSWORD\(aq
-sqlhost = IP:PORT:DB_NAME:USER:PASSWORD
-.sp
-# Server\-side option. Used only if indextype=disk.
-# Filesystem path to the index store
-indexpath = PATH
-.sp
-# Server\-side option. Possible values: \(aqdisk\(aq or \(aqexternal\(aq
-# Fails if not set
-storetype = disk
-.sp
-# Server\-side option.
-# Path to the binary that will save bundle to the bundlestore
-# Formatted cmd line will be passed to it (see \fIput_args\fP)
-put_binary = put
-.sp
-# Serser\-side option. Used only if storetype=external.
-# Format cmd\-line string for put binary. Placeholder: {filename}
-put_args = {filename}
-.sp
-# Server\-side option.
-# Path to the binary that get bundle from the bundlestore.
-# Formatted cmd line will be passed to it (see \fIget_args\fP)
-get_binary = get
-.sp
-# Serser\-side option. Used only if storetype=external.
-# Format cmd\-line string for get binary. Placeholders: {filename} {handle}
-get_args = {filename} {handle}
-.sp
-# Server\-side option
-logfile = FIlE
-.sp
-# Server\-side option
-loglevel = DEBUG
-.sp
-# Server\-side option. Used only if indextype=sql.
-# Sets mysql wait_timeout option.
-waittimeout = 300
-.sp
-# Server\-side option. Used only if indextype=sql.
-# Sets mysql innodb_lock_wait_timeout option.
-locktimeout = 120
-.sp
-# Server\-side option. Used only if indextype=sql.
-# Name of the repository
-reponame = \(aq\(aq
-.sp
-# Client\-side option. Used by \-\-list\-remote option. List of remote scratch
-# patterns to list if no patterns are specified.
-defaultremotepatterns = [\(aq*\(aq]
-.sp
-# Instructs infinitepush to forward all received bundle2 parts to the
-# bundle for storage. Defaults to False.
-storeallparts = True
-.sp
-# routes each incoming push to the bundlestore. defaults to False
-pushtobundlestore = True
-.sp
-[remotenames]
-# Client\-side option
-# This option should be set only if remotenames extension is enabled.
-# Whether remote bookmarks are tracked by remotenames extension.
-bookmarks = True
-.UNINDENT
-.UNINDENT
 .SS journal
 .sp
 track previous positions of bookmarks (EXPERIMENTAL)

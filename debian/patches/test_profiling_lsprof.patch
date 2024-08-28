@@ -1,0 +1,16 @@
+Skip test for hg serve profiling
+
+Errors out with python 3.12:
+https://bz.mercurial-scm.org/show_bug.cgi?id=6846
+
+--- a/tests/test-profile.t
++++ b/tests/test-profile.t
+@@ -50,7 +50,7 @@ In alias
+ 
+ #endif
+ 
+-#if lsprof serve
++#if false
+ 
+ Profiling of HTTP requests works
+ 

@@ -1,0 +1,2 @@
+# times out on riscv64 buildds
+test-dirstate-read-race.t

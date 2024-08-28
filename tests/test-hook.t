@@ -458,14 +458,18 @@ more there after
 (Check that no 'changelog.i.a' file were left behind)
 
   $ ls -1 .hg/store/
+  00changelog-1335303a.nd (rust !)
+  00changelog.d
   00changelog.i
+  00changelog.n (rust !)
   00manifest.i
   data
-  fncache (repofncache !)
+  fncache
   phaseroots
   requires
   undo
-  undo.backup.fncache.bck (repofncache !)
+  undo.backup.00changelog.n.bck (rust !)
+  undo.backup.fncache.bck
   undo.backupfiles
 
 
@@ -991,7 +995,7 @@ test python hooks
   Traceback (most recent call last):
   ModuleNotFoundError: No module named 'hgext_syntaxerror'
   Traceback (most recent call last):
-      raise error.HookLoadError( (py38 !)
+      raise error.HookLoadError(msg, hint=tracebackhint) (py37 !)
   mercurial.error.HookLoadError: preoutgoing.syntaxerror hook is invalid: import of "syntaxerror" failed
   abort: preoutgoing.syntaxerror hook is invalid: import of "syntaxerror" failed
 
@@ -1156,7 +1160,7 @@ make sure --traceback works on hook import failure
   Traceback (most recent call last):
   ModuleNotFoundError: No module named 'hgext_importfail'
   Traceback (most recent call last):
-      raise error.HookLoadError( (py38 !)
+      raise error.HookLoadError(msg, hint=tracebackhint) (py37 !)
   mercurial.error.HookLoadError: precommit.importfail hook is invalid: import of "importfail" failed
   abort: precommit.importfail hook is invalid: import of "importfail" failed
 

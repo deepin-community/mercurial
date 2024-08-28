@@ -28,10 +28,6 @@ from .node import (
     sha1nodeconstants,
     short,
 )
-from .pycompat import (
-    delattr,
-    getattr,
-)
 from . import (
     bookmarks,
     branchmap,
@@ -58,6 +54,7 @@ from . import (
     obsolete,
     pathutil,
     phases,
+    policy,
     pushkey,
     pycompat,
     rcutil,
@@ -372,7 +369,7 @@ class localpeer(repository.peer):
         common=None,
         bundlecaps=None,
         remote_sidedata=None,
-        **kwargs
+        **kwargs,
     ):
         chunks = exchange.getbundlechunks(
             self._repo,
@@ -381,7 +378,7 @@ class localpeer(repository.peer):
             common=common,
             bundlecaps=bundlecaps,
             remote_sidedata=remote_sidedata,
-            **kwargs
+            **kwargs,
         )[1]
         cb = util.chunkbuffer(chunks)
 
@@ -419,7 +416,7 @@ class localpeer(repository.peer):
             try:
                 bundle = exchange.readbundle(self.ui, bundle, None)
                 ret = exchange.unbundle(self._repo, bundle, heads, b'push', url)
-                if util.safehasattr(ret, 'getchunks'):
+                if hasattr(ret, 'getchunks'):
                     # This is a bundle20 object, turn it into an unbundler.
                     # This little dance should be dropped eventually when the
                     # API is finally improved.
@@ -1071,6 +1068,10 @@ def resolverevlogstorevfsoptions(ui, requirements, features):
     options = {}
     options[b'flagprocessors'] = {}
 
+    feature_config = options[b'feature-config'] = revlog.FeatureConfig()
+    data_config = options[b'data-config'] = revlog.DataConfig()
+    delta_config = options[b'delta-config'] = revlog.DeltaConfig()
+
     if requirementsmod.REVLOGV1_REQUIREMENT in requirements:
         options[b'revlogv1'] = True
     if requirementsmod.REVLOGV2_REQUIREMENT in requirements:
@@ -1086,18 +1087,23 @@ def resolverevlogstorevfsoptions(ui, requirements, features):
     # experimental config: format.chunkcachesize
     chunkcachesize = ui.configint(b'format', b'chunkcachesize')
     if chunkcachesize is not None:
-        options[b'chunkcachesize'] = chunkcachesize
+        data_config.chunk_cache_size = chunkcachesize
 
-    deltabothparents = ui.configbool(
+    memory_profile = scmutil.get_resource_profile(ui, b'memory')
+    if memory_profile >= scmutil.RESOURCE_MEDIUM:
+        data_config.uncompressed_cache_count = 10_000
+        data_config.uncompressed_cache_factor = 4
+        if memory_profile >= scmutil.RESOURCE_HIGH:
+            data_config.uncompressed_cache_factor = 10
+
+    delta_config.delta_both_parents = ui.configbool(
         b'storage', b'revlog.optimize-delta-parent-choice'
     )
-    options[b'deltabothparents'] = deltabothparents
-    dps_cgds = ui.configint(
+    delta_config.candidate_group_chunk_size = ui.configint(
         b'storage',
         b'revlog.delta-parent-search.candidate-group-chunk-size',
     )
-    options[b'delta-parent-search.candidate-group-chunk-size'] = dps_cgds
-    options[b'debug-delta'] = ui.configbool(b'debug', b'revlog.debug-delta')
+    delta_config.debug_delta = ui.configbool(b'debug', b'revlog.debug-delta')
 
     issue6528 = ui.configbool(b'storage', b'revlog.issue6528.fix-incoming')
     options[b'issue6528.fix-incoming'] = issue6528
@@ -1108,32 +1114,33 @@ def resolverevlogstorevfsoptions(ui, requirements, features):
         lazydeltabase = ui.configbool(
             b'storage', b'revlog.reuse-external-delta-parent'
         )
-    if lazydeltabase is None:
-        lazydeltabase = not scmutil.gddeltaconfig(ui)
-    options[b'lazydelta'] = lazydelta
-    options[b'lazydeltabase'] = lazydeltabase
+        if lazydeltabase is None:
+            lazydeltabase = not scmutil.gddeltaconfig(ui)
+    delta_config.lazy_delta = lazydelta
+    delta_config.lazy_delta_base = lazydeltabase
 
     chainspan = ui.configbytes(b'experimental', b'maxdeltachainspan')
     if 0 <= chainspan:
-        options[b'maxdeltachainspan'] = chainspan
+        delta_config.max_deltachain_span = chainspan
 
     mmapindexthreshold = ui.configbytes(b'experimental', b'mmapindexthreshold')
     if mmapindexthreshold is not None:
-        options[b'mmapindexthreshold'] = mmapindexthreshold
+        data_config.mmap_index_threshold = mmapindexthreshold
 
     withsparseread = ui.configbool(b'experimental', b'sparse-read')
     srdensitythres = float(
         ui.config(b'experimental', b'sparse-read.density-threshold')
     )
     srmingapsize = ui.configbytes(b'experimental', b'sparse-read.min-gap-size')
-    options[b'with-sparse-read'] = withsparseread
-    options[b'sparse-read-density-threshold'] = srdensitythres
-    options[b'sparse-read-min-gap-size'] = srmingapsize
+    data_config.with_sparse_read = withsparseread
+    data_config.sr_density_threshold = srdensitythres
+    data_config.sr_min_gap_size = srmingapsize
 
     sparserevlog = requirementsmod.SPARSEREVLOG_REQUIREMENT in requirements
-    options[b'sparse-revlog'] = sparserevlog
+    delta_config.sparse_revlog = sparserevlog
     if sparserevlog:
         options[b'generaldelta'] = True
+        data_config.with_sparse_read = True
 
     maxchainlen = None
     if sparserevlog:
@@ -1141,7 +1148,7 @@ def resolverevlogstorevfsoptions(ui, requirements, features):
     # experimental config: format.maxchainlen
     maxchainlen = ui.configint(b'format', b'maxchainlen', maxchainlen)
     if maxchainlen is not None:
-        options[b'maxchainlen'] = maxchainlen
+        delta_config.max_chain_len = maxchainlen
 
     for r in requirements:
         # we allow multiple compression engine requirement to co-exist because
@@ -1150,21 +1157,23 @@ def resolverevlogstorevfsoptions(ui, requirements, features):
         # The compression used for new entries will be "the last one"
         prefix = r.startswith
         if prefix(b'revlog-compression-') or prefix(b'exp-compression-'):
-            options[b'compengine'] = r.split(b'-', 2)[2]
+            feature_config.compression_engine = r.split(b'-', 2)[2]
 
-    options[b'zlib.level'] = ui.configint(b'storage', b'revlog.zlib.level')
-    if options[b'zlib.level'] is not None:
-        if not (0 <= options[b'zlib.level'] <= 9):
+    zlib_level = ui.configint(b'storage', b'revlog.zlib.level')
+    if zlib_level is not None:
+        if not (0 <= zlib_level <= 9):
             msg = _(b'invalid value for `storage.revlog.zlib.level` config: %d')
-            raise error.Abort(msg % options[b'zlib.level'])
-    options[b'zstd.level'] = ui.configint(b'storage', b'revlog.zstd.level')
-    if options[b'zstd.level'] is not None:
-        if not (0 <= options[b'zstd.level'] <= 22):
+            raise error.Abort(msg % zlib_level)
+    feature_config.compression_engine_options[b'zlib.level'] = zlib_level
+    zstd_level = ui.configint(b'storage', b'revlog.zstd.level')
+    if zstd_level is not None:
+        if not (0 <= zstd_level <= 22):
             msg = _(b'invalid value for `storage.revlog.zstd.level` config: %d')
-            raise error.Abort(msg % options[b'zstd.level'])
+            raise error.Abort(msg % zstd_level)
+    feature_config.compression_engine_options[b'zstd.level'] = zstd_level
 
     if requirementsmod.NARROW_REQUIREMENT in requirements:
-        options[b'enableellipsis'] = True
+        feature_config.enable_ellipsis = True
 
     if ui.configbool(b'experimental', b'rust.index'):
         options[b'rust.index'] = True
@@ -1460,7 +1469,7 @@ class localrepository:
         if self.ui.configbool(b'devel', b'all-warnings') or self.ui.configbool(
             b'devel', b'check-locks'
         ):
-            if util.safehasattr(self.svfs, 'vfs'):  # this is filtervfs
+            if hasattr(self.svfs, 'vfs'):  # this is filtervfs
                 self.svfs.vfs.audit = self._getsvfsward(self.svfs.vfs.audit)
             else:  # standard vfs
                 self.svfs.audit = self._getsvfsward(self.svfs.audit)
@@ -1522,8 +1531,8 @@ class localrepository:
             repo = rref()
             if (
                 repo is None
-                or not util.safehasattr(repo, '_wlockref')
-                or not util.safehasattr(repo, '_lockref')
+                or not hasattr(repo, '_wlockref')
+                or not hasattr(repo, '_lockref')
             ):
                 return
             if mode in (None, b'r', b'rb'):
@@ -1571,7 +1580,7 @@ class localrepository:
         def checksvfs(path, mode=None):
             ret = origfunc(path, mode=mode)
             repo = rref()
-            if repo is None or not util.safehasattr(repo, '_lockref'):
+            if repo is None or not hasattr(repo, '_lockref'):
                 return
             if mode in (None, b'r', b'rb'):
                 return
@@ -2389,7 +2398,7 @@ class localrepository:
         data: bytes,
         flags: bytes,
         backgroundclose=False,
-        **kwargs
+        **kwargs,
     ) -> int:
         """write ``data`` into ``filename`` in the working directory
 
@@ -2572,7 +2581,7 @@ class localrepository:
                     repo.hook(
                         b'pretxnclose-bookmark',
                         throw=True,
-                        **pycompat.strkwargs(args)
+                        **pycompat.strkwargs(args),
                     )
             if hook.hashook(repo.ui, b'pretxnclose-phase'):
                 cl = repo.unfiltered().changelog
@@ -2584,7 +2593,7 @@ class localrepository:
                         repo.hook(
                             b'pretxnclose-phase',
                             throw=True,
-                            **pycompat.strkwargs(args)
+                            **pycompat.strkwargs(args),
                         )
 
             repo.hook(
@@ -2659,7 +2668,7 @@ class localrepository:
                         repo.hook(
                             b'txnclose-bookmark',
                             throw=False,
-                            **pycompat.strkwargs(args)
+                            **pycompat.strkwargs(args),
                         )
 
                 if hook.hashook(repo.ui, b'txnclose-phase'):
@@ -2675,7 +2684,7 @@ class localrepository:
                             repo.hook(
                                 b'txnclose-phase',
                                 throw=False,
-                                **pycompat.strkwargs(args)
+                                **pycompat.strkwargs(args),
                             )
 
                 repo.hook(
@@ -2909,27 +2918,19 @@ class localrepository:
 
         unfi = self.unfiltered()
 
-        if full:
-            msg = (
-                "`full` argument for `repo.updatecaches` is deprecated\n"
-                "(use `caches=repository.CACHE_ALL` instead)"
-            )
-            self.ui.deprecwarn(msg, b"5.9")
-            caches = repository.CACHES_ALL
-            if full == b"post-clone":
-                caches = repository.CACHES_POST_CLONE
-            caches = repository.CACHES_ALL
-        elif caches is None:
+        if caches is None:
             caches = repository.CACHES_DEFAULT
 
         if repository.CACHE_BRANCHMAP_SERVED in caches:
             if tr is None or tr.changes[b'origrepolen'] < len(self):
-                # accessing the 'served' branchmap should refresh all the others,
                 self.ui.debug(b'updating the branch cache\n')
-                self.filtered(b'served').branchmap()
-                self.filtered(b'served.hidden').branchmap()
-                # flush all possibly delayed write.
-                self._branchcaches.write_delayed(self)
+                dpt = repository.CACHE_BRANCHMAP_DETECT_PURE_TOPO in caches
+                served = self.filtered(b'served')
+                self._branchcaches.update_disk(served, detect_pure_topo=dpt)
+                served_hidden = self.filtered(b'served.hidden')
+                self._branchcaches.update_disk(
+                    served_hidden, detect_pure_topo=dpt
+                )
 
         if repository.CACHE_CHANGELOG_CACHE in caches:
             self.changelog.update_caches(transaction=tr)
@@ -2958,7 +2959,7 @@ class localrepository:
 
         if repository.CACHE_FILE_NODE_TAGS in caches:
             # accessing fnode cache warms the cache
-            tagsmod.fnoderevs(self.ui, unfi, unfi.changelog.revs())
+            tagsmod.warm_cache(self)
 
         if repository.CACHE_TAGS_DEFAULT in caches:
             # accessing tags warm the cache
@@ -2972,9 +2973,14 @@ class localrepository:
             # even if they haven't explicitly been requested yet (if they've
             # never been used by hg, they won't ever have been written, even if
             # they're a subset of another kind of cache that *has* been used).
+            dpt = repository.CACHE_BRANCHMAP_DETECT_PURE_TOPO in caches
+
             for filt in repoview.filtertable.keys():
                 filtered = self.filtered(filt)
-                filtered.branchmap().write(filtered)
+                self._branchcaches.update_disk(filtered, detect_pure_topo=dpt)
+
+        # flush all possibly delayed write.
+        self._branchcaches.write_dirty(self)
 
     def invalidatecaches(self):
         if '_tagscache' in vars(self):
@@ -3017,7 +3023,7 @@ class localrepository:
             if (
                 k == b'changelog'
                 and self.currenttransaction()
-                and self.changelog._delayed
+                and self.changelog.is_delaying
             ):
                 # The changelog object may store unwritten revisions. We don't
                 # want to lose them.
@@ -3027,7 +3033,11 @@ class localrepository:
             if clearfilecache:
                 del self._filecache[k]
             try:
-                delattr(unfiltered, k)
+                # XXX ideally, the key would be a unicode string to match the
+                # fact it refers to an attribut name. However changing this was
+                # a bit a scope creep compared to the series cleaning up
+                # del/set/getattr so we kept thing simple here.
+                delattr(unfiltered, pycompat.sysstr(k))
             except AttributeError:
                 pass
         self.invalidatecaches()
@@ -3069,6 +3079,9 @@ class localrepository:
             warntimeout = self.ui.configint(b"ui", b"timeout.warn")
         # internal config: ui.signal-safe-lock
         signalsafe = self.ui.configbool(b'ui', b'signal-safe-lock')
+        sync_file = self.ui.config(b'devel', b'lock-wait-sync-file')
+        if not sync_file:
+            sync_file = None
 
         l = lockmod.trylock(
             self.ui,
@@ -3080,6 +3093,7 @@ class localrepository:
             acquirefn=acquirefn,
             desc=desc,
             signalsafe=signalsafe,
+            devel_wait_sync_file=sync_file,
         )
         return l
 
@@ -3108,6 +3122,7 @@ class localrepository:
             l.lock()
             return l
 
+        self.hook(b'prelock', throw=True)
         l = self._lock(
             vfs=self.svfs,
             lockname=b"lock",
@@ -3132,6 +3147,7 @@ class localrepository:
             l.lock()
             return l
 
+        self.hook(b'prewlock', throw=True)
         # We do not need to check for non-waiting lock acquisition.  Such
         # acquisition would not cause dead-lock as they would just fail.
         if wait and (
@@ -3360,7 +3376,7 @@ class localrepository:
         # dirty after committing. Then when we strip, the repo is invalidated,
         # causing those changes to disappear.
         if '_phasecache' in vars(self):
-            self._phasecache.write()
+            self._phasecache.write(self)
 
     @unfilteredmethod
     def destroyed(self):
@@ -3368,17 +3384,6 @@ class localrepository:
         Intended for use by strip and rollback, so there's a common
         place for anything that has to be done after destroying history.
         """
-        # When one tries to:
-        # 1) destroy nodes thus calling this method (e.g. strip)
-        # 2) use phasecache somewhere (e.g. commit)
-        #
-        # then 2) will fail because the phasecache contains nodes that were
-        # removed. We can either remove phasecache from the filecache,
-        # causing it to reload next time it is accessed, or simply filter
-        # the removed nodes now and write the updated cache.
-        self._phasecache.filterunknown(self)
-        self._phasecache.write()
-
         # refresh all repository caches
         self.updatecaches()
 
@@ -3763,7 +3768,11 @@ def newreporequirements(ui, createopts):
     if ui.configbool(b'format', b'bookmarks-in-store'):
         requirements.add(requirementsmod.BOOKMARKS_IN_STORE_REQUIREMENT)
 
-    if ui.configbool(b'format', b'use-persistent-nodemap'):
+    # The feature is disabled unless a fast implementation is available.
+    persistent_nodemap_default = policy.importrust('revlog') is not None
+    if ui.configbool(
+        b'format', b'use-persistent-nodemap', persistent_nodemap_default
+    ):
         requirements.add(requirementsmod.NODEMAP_REQUIREMENT)
 
     # if share-safe is enabled, let's create the new repository with the new

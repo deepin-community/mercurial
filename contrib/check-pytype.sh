@@ -3,7 +3,7 @@
 set -e
 set -u
 
-cd `hg root`
+cd "$(hg root)"
 
 # Many of the individual files that are excluded here confuse pytype
 # because they do a mix of Python 2 and Python 3 things
@@ -26,7 +26,6 @@ cd `hg root`
 # hgext/githelp.py              # [attribute-error] [wrong-arg-types]
 # hgext/hgk.py                  # [attribute-error]
 # hgext/histedit.py             # [attribute-error], [wrong-arg-types]
-# hgext/infinitepush            # using bytes for str literal; scheduled for removal
 # hgext/keyword.py              # [attribute-error]
 # hgext/largefiles/storefactory.py  # [attribute-error]
 # hgext/lfs/__init__.py         # [attribute-error]
@@ -72,7 +71,7 @@ cd `hg root`
 
 # TODO: include hgext and hgext3rd
 
-pytype -V 3.7 --keep-going --jobs auto \
+pytype --keep-going --jobs auto \
     doc/check-seclevel.py hgdemandimport hgext mercurial \
     -x hgext/absorb.py \
     -x hgext/bugzilla.py \
@@ -88,7 +87,6 @@ pytype -V 3.7 --keep-going --jobs auto \
     -x hgext/githelp.py \
     -x hgext/hgk.py \
     -x hgext/histedit.py \
-    -x hgext/infinitepush \
     -x hgext/keyword.py \
     -x hgext/largefiles/storefactory.py \
     -x hgext/lfs/__init__.py \
@@ -129,5 +127,7 @@ pytype -V 3.7 --keep-going --jobs auto \
     -x mercurial/wireprotov1peer.py \
     -x mercurial/wireprotov1server.py
 
-echo 'pytype crashed while generating the following type stubs:'
-find .pytype/pyi -name '*.pyi' | xargs grep -l '# Caught error' | sort
+if find .pytype/pyi -name '*.pyi' | xargs grep -ql '# Caught error'; then
+    echo 'pytype crashed while generating the following type stubs:'
+    find .pytype/pyi -name '*.pyi' | xargs grep -l '# Caught error' | sort
+fi

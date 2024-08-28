@@ -3,6 +3,8 @@ Show all commands except debug commands
   abort
   add
   addremove
+  admin::chainsaw-update
+  admin::verify
   annotate
   archive
   backout
@@ -65,6 +67,8 @@ Show all commands that start with "a"
   abort
   add
   addremove
+  admin::chainsaw-update
+  admin::verify
   annotate
   archive
 
@@ -80,6 +84,7 @@ Show debug commands if there are no other candidates
   debug-revlog-stats
   debug::stable-tail-sort
   debug::stable-tail-sort-leaps
+  debug::unbundle
   debugancestor
   debugantivirusrunning
   debugapplystreamclonebundle
@@ -257,7 +262,9 @@ Show all commands + options
   abort: dry-run
   add: include, exclude, subrepos, dry-run
   addremove: similarity, subrepos, include, exclude, dry-run
-  annotate: rev, follow, no-follow, text, user, file, date, number, changeset, line-number, skip, ignore-all-space, ignore-space-change, ignore-blank-lines, ignore-space-at-eol, include, exclude, template
+  admin::chainsaw-update: purge-unknown, purge-ignored, rev, source, dest, initial-clone-minimal
+  admin::verify: check, option
+  annotate: rev, follow, no-follow, text, user, file, date, number, changeset, line-number, skip, line-range, ignore-all-space, ignore-space-change, ignore-blank-lines, ignore-space-at-eol, include, exclude, template
   archive: no-decode, prefix, rev, type, subrepos, include, exclude
   backout: merge, commit, no-commit, parent, rev, edit, tool, include, exclude, message, logfile, date, user
   bisect: reset, good, bad, skip, extend, command, noupdate
@@ -277,6 +284,7 @@ Show all commands + options
   debug-revlog-stats: changelog, manifest, filelogs, template
   debug::stable-tail-sort: template
   debug::stable-tail-sort-leaps: template, specific
+  debug::unbundle: 
   debugancestor: 
   debugantivirusrunning: 
   debugapplystreamclonebundle: 
@@ -293,7 +301,7 @@ Show all commands + options
   debugdag: tags, branches, dots, spaces
   debugdata: changelog, manifest, dir
   debugdate: extended
-  debugdeltachain: changelog, manifest, dir, template
+  debugdeltachain: rev, all-info, size-info, dist-info, sparse-info, changelog, manifest, dir, template
   debugdirstateignorepatternshash: 
   debugdirstate: nodates, dates, datesort, docket, all
   debugdiscovery: old, nonheads, rev, seed, local-as-revs, remote-as-revs, ssh, remotecmd, insecure, template

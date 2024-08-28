@@ -79,15 +79,16 @@
 <li><a class="reference internal" href="#templates" id="toc-entry-46"><tt class="docutils literal">templates</tt></a></li>
 <li><a class="reference internal" href="#trusted" id="toc-entry-47"><tt class="docutils literal">trusted</tt></a></li>
 <li><a class="reference internal" href="#ui" id="toc-entry-48"><tt class="docutils literal">ui</tt></a></li>
-<li><a class="reference internal" href="#command-templates" id="toc-entry-49"><tt class="docutils literal"><span class="pre">command-templates</span></tt></a></li>
-<li><a class="reference internal" href="#web" id="toc-entry-50"><tt class="docutils literal">web</tt></a></li>
-<li><a class="reference internal" href="#websub" id="toc-entry-51"><tt class="docutils literal">websub</tt></a></li>
-<li><a class="reference internal" href="#worker" id="toc-entry-52"><tt class="docutils literal">worker</tt></a></li>
+<li><a class="reference internal" href="#usage" id="toc-entry-49"><tt class="docutils literal">usage</tt></a></li>
+<li><a class="reference internal" href="#command-templates" id="toc-entry-50"><tt class="docutils literal"><span class="pre">command-templates</span></tt></a></li>
+<li><a class="reference internal" href="#web" id="toc-entry-51"><tt class="docutils literal">web</tt></a></li>
+<li><a class="reference internal" href="#websub" id="toc-entry-52"><tt class="docutils literal">websub</tt></a></li>
+<li><a class="reference internal" href="#worker" id="toc-entry-53"><tt class="docutils literal">worker</tt></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#author" id="toc-entry-53">Author</a></li>
-<li><a class="reference internal" href="#see-also" id="toc-entry-54">See Also</a></li>
-<li><a class="reference internal" href="#copying" id="toc-entry-55">Copying</a></li>
+<li><a class="reference internal" href="#author" id="toc-entry-54">Author</a></li>
+<li><a class="reference internal" href="#see-also" id="toc-entry-55">See Also</a></li>
+<li><a class="reference internal" href="#copying" id="toc-entry-56">Copying</a></li>
 </ul>
 </div>
 <div class="section" id="description">
@@ -1352,6 +1353,10 @@ the repository if <tt class="docutils literal">$HG_LOCAL=0</tt>.</dd>
 new parent is in <tt class="docutils literal">$HG_PARENT1</tt>. If updating to a merge, the ID of second new
 parent is in <tt class="docutils literal">$HG_PARENT2</tt>. If the update succeeded, <tt class="docutils literal">$HG_ERROR=0</tt>. If the
 update failed (e.g. because conflicts were not resolved), <tt class="docutils literal">$HG_ERROR=1</tt>.</dd>
+<dt><tt class="docutils literal">prelock</tt></dt>
+<dd>run before the store lock is taken, mostly used for test and debug.</dd>
+<dt><tt class="docutils literal">prewlock</tt></dt>
+<dd>run before the working copy lock is taken, mostly used for test and debug.</dd>
 </dl>
 <div class="admonition note">
 <p class="first admonition-title">Note</p>
@@ -2733,6 +2738,70 @@ hgrc file)</p>
 </dd>
 <dt><tt class="docutils literal">verbose</tt></dt>
 <dd>Increase the amount of output printed. (default: False)</dd>
+</dl>
+</div>
+<div class="section" id="usage">
+<h2><a class="toc-backref" href="#contents"><tt class="docutils literal">usage</tt></a></h2>
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">repository-role</span></tt></dt>
+<dd><p class="first">What this repository is used for.</p>
+<p>This is used to adjust behavior and performance to best fit the repository purpose.</p>
+<p>Currently recognised values are:</p>
+<ul class="last simple">
+<li><tt class="docutils literal">default</tt>: an all purpose repository</li>
+</ul>
+</dd>
+<dt><tt class="docutils literal">resources</tt></dt>
+<dd><p class="first">How aggressive Mercurial can be with resource usage:</p>
+<p>Currently recognised values are:</p>
+<ul class="simple">
+<li><tt class="docutils literal">default</tt>: the default value currently is equivalent to medium,</li>
+<li><tt class="docutils literal">high</tt>: allows for higher cpu, memory and disk-space usage to improve
+performance of some operations.</li>
+<li><tt class="docutils literal">medium</tt>: aims at a moderate resource usage,</li>
+<li><tt class="docutils literal">low</tt>: reduces resources usage when possible, decreasing overall
+performance.</li>
+</ul>
+<p class="last">For finer configuration, see also <cite>usage.resources.cpu</cite>,
+<cite>usage.resources.disk</cite> and <cite>usage.resources.memory</cite>.</p>
+</dd>
+<dt><tt class="docutils literal">resources.cpu</tt></dt>
+<dd><p class="first">How aggressive Mercurial can be in terms of cpu usage:</p>
+<p>Currently recognised values are:</p>
+<ul class="last simple">
+<li><tt class="docutils literal">default</tt>: the default value, inherits the value from <cite>usage.resources</cite>,</li>
+<li><tt class="docutils literal">high</tt>: allows for more aggressive cpu usage, improving storage quality
+and the performance of some operations at the expense of machine load</li>
+<li><cite>medium</cite>:  aims at a moderate cpu usage,</li>
+<li><cite>low</cite>:  reduces cpu usage when possible, potentially at the expense of
+slower operations, increased storage and exchange payload.</li>
+</ul>
+</dd>
+<dt><tt class="docutils literal">resources.disk</tt></dt>
+<dd><p class="first">How aggressive Mercurial can be in terms of disk usage:</p>
+<p>Currently recognised values are::
+- <tt class="docutils literal">default</tt>: the default value, inherits the value from <cite>usage.resources</cite>,</p>
+<ul class="last simple">
+<li><tt class="docutils literal">high</tt>: allows for more disk space usage where it can improve performance,</li>
+<li><tt class="docutils literal">medium</tt>:  aims at a moderate disk usage,</li>
+<li><tt class="docutils literal">low</tt>:  reduces disk usage when possible, decreasing performance in some
+occasion.</li>
+</ul>
+</dd>
+<dt><tt class="docutils literal">resources.memory</tt></dt>
+<dd><p class="first">How aggressive Mercurial can be in terms of memory usage:</p>
+<p>Currently recognised values are:</p>
+<pre class="literal-block">
+- ``default``: the default value, inherits the value from `usage.resources`,
+</pre>
+<ul class="last simple">
+<li><tt class="docutils literal">high</tt>: allows for more aggressive memory usage to improve overall
+performance,</li>
+<li><tt class="docutils literal">medium</tt>:  aims at a moderate memory usage,</li>
+<li><tt class="docutils literal">low</tt>: reduces memory usage when possible at the cost of overall
+performance.</li>
+</ul>
+</dd>
 </dl>
 </div>
 <div class="section" id="command-templates">

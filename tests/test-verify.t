@@ -132,6 +132,16 @@ Entire changelog and manifest log missing
   dirstate inconsistent with current parent's manifest
   1 dirstate errors
   [1]
+
+We can check the dirstate in isolation
+  $ hg admin::verify -c dirstate
+  running 1 checks
+  running working-copy.dirstate
+  checking dirstate
+  warning: ignoring unknown working parent c5ddb05ab828!
+  file marked as tracked in p1 (000000000000) but not in manifest1
+  found 1 errors
+
   $ cp -R .hg/store-full/. .hg/store
 
 Entire changelog and filelog missing
@@ -335,6 +345,9 @@ test revlog format 0
   checked 1 changesets with 1 changes to 1 files
   $ cd ..
 
+# rust index does not allow creation of new flags dynamically
+#if no-rust
+
 test flag processor and skipflags
 
   $ hg init skipflags
@@ -363,3 +376,4 @@ test flag processor and skipflags
   [1]
   $ hg verify --config verify.skipflags=2147483647 -q
 
+#endif

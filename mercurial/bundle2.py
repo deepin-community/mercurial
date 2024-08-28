@@ -896,7 +896,7 @@ class unbundle20(unpackermixin):
         """utility to transfer a bundle2 as binary
 
         This is made necessary by the fact the 'getbundle' command over 'ssh'
-        have no way to know then the reply end, relying on the bundle to be
+        have no way to know when the reply ends, relying on the bundle to be
         interpreted to know its end. This is terrible and we are sorry, but we
         needed to move forward to get general delta enabled.
         """
@@ -980,7 +980,7 @@ class unbundle20(unpackermixin):
 
     def close(self):
         """close underlying file"""
-        if util.safehasattr(self._fp, 'close'):
+        if hasattr(self._fp, 'close'):
             return self._fp.close()
 
 
@@ -1068,7 +1068,7 @@ class bundlepart:
 
         The new part have the very same content but no partid assigned yet.
         Parts with generated data cannot be copied."""
-        assert not util.safehasattr(self.data, 'next')
+        assert not hasattr(self.data, 'next')
         return self.__class__(
             self.type,
             self._mandatoryparams,
@@ -1137,9 +1137,7 @@ class bundlepart:
                 msg.append(b')')
             if not self.data:
                 msg.append(b' empty payload')
-            elif util.safehasattr(self.data, 'next') or util.safehasattr(
-                self.data, b'__next__'
-            ):
+            elif hasattr(self.data, 'next') or hasattr(self.data, '__next__'):
                 msg.append(b' streamed payload')
             else:
                 msg.append(b' %i bytes payload' % len(self.data))
@@ -1233,9 +1231,7 @@ class bundlepart:
         Exists to handle the different methods to provide data to a part."""
         # we only support fixed size data now.
         # This will be improved in the future.
-        if util.safehasattr(self.data, 'next') or util.safehasattr(
-            self.data, '__next__'
-        ):
+        if hasattr(self.data, 'next') or hasattr(self.data, '__next__'):
             buff = util.chunkbuffer(self.data)
             chunk = buff.read(preferedchunksize)
             while chunk:
@@ -1380,9 +1376,7 @@ class unbundlepart(unpackermixin):
 
     def __init__(self, ui, header, fp):
         super(unbundlepart, self).__init__(fp)
-        self._seekable = util.safehasattr(fp, 'seek') and util.safehasattr(
-            fp, 'tell'
-        )
+        self._seekable = hasattr(fp, 'seek') and hasattr(fp, 'tell')
         self.ui = ui
         # unbundle state attr
         self._headerdata = header
@@ -1734,9 +1728,10 @@ def writenewbundle(
     caps = {}
     if opts.get(b'obsolescence', False):
         caps[b'obsmarkers'] = (b'V1',)
-    if opts.get(b'streamv2'):
+    stream_version = opts.get(b'stream', b"")
+    if stream_version == b"v2":
         caps[b'stream'] = [b'v2']
-    elif opts.get(b'streamv3-exp'):
+    elif stream_version == b"v3-exp":
         caps[b'stream'] = [b'v3-exp']
     bundle = bundle20(ui, caps)
     bundle.setcompression(compression, compopts)
@@ -1780,10 +1775,10 @@ def _addpartsfromopts(ui, repo, bundler, source, outgoing, opts):
     if repository.REPO_FEATURE_SIDE_DATA in repo.features:
         part.addparam(b'exp-sidedata', b'1')
 
-    if opts.get(b'streamv2', False):
+    if opts.get(b'stream', b"") == b"v2":
         addpartbundlestream2(bundler, repo, stream=True)
 
-    if opts.get(b'streamv3-exp', False):
+    if opts.get(b'stream', b"") == b"v3-exp":
         addpartbundlestream2(bundler, repo, stream=True)
 
     if opts.get(b'tagsfnodescache', True):
@@ -1828,7 +1823,11 @@ def addparttagsfnodescache(repo, bundler, outgoing):
             chunks.extend([node, fnode])
 
     if chunks:
-        bundler.newpart(b'hgtagsfnodes', data=b''.join(chunks))
+        bundler.newpart(
+            b'hgtagsfnodes',
+            mandatory=False,
+            data=b''.join(chunks),
+        )
 
 
 def addpartrevbranchcache(repo, bundler, outgoing):

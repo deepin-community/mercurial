@@ -12,7 +12,6 @@ This contains aliases to hide python version-specific details from the core.
 import builtins
 import codecs
 import concurrent.futures as futures
-import functools
 import getopt
 import http.client as httplib
 import http.cookiejar as cookielib
@@ -203,6 +202,13 @@ class bytestr(bytes):
     >>> bytestr(bytesable())
     'bytes'
 
+    ...unless the argument is the bytes *type* itself: it gets a
+    __bytes__() method in Python 3.11, which cannot be used as in an instance
+    of bytes:
+
+    >>> bytestr(bytes)
+    "<class 'bytes'>"
+
     There's no implicit conversion from non-ascii str as its encoding is
     unknown:
 
@@ -252,10 +258,9 @@ class bytestr(bytes):
     def __new__(cls: Type[_Tbytestr], s: object = b'') -> _Tbytestr:
         if isinstance(s, bytestr):
             return s
-        if not isinstance(
-            s, (bytes, bytearray)
-        ) and not builtins.hasattr(  # hasattr-py3-only
-            s, u'__bytes__'
+        if not isinstance(s, (bytes, bytearray)) and (
+            isinstance(s, type)
+            or not builtins.hasattr(s, u'__bytes__')  # hasattr-py3-only
         ):
             s = str(s).encode('ascii')
         return bytes.__new__(cls, s)
@@ -352,19 +357,11 @@ def getdoc(obj: object) -> Optional[bytes]:
     return sysbytes(doc)
 
 
-def _wrapattrfunc(f):
-    @functools.wraps(f)
-    def w(object, name, *args):
-        return f(object, sysstr(name), *args)
-
-    return w
-
-
 # these wrappers are automagically imported by hgloader
-delattr = _wrapattrfunc(builtins.delattr)
-getattr = _wrapattrfunc(builtins.getattr)
-hasattr = _wrapattrfunc(builtins.hasattr)
-setattr = _wrapattrfunc(builtins.setattr)
+delattr = builtins.delattr
+getattr = builtins.getattr
+hasattr = builtins.hasattr
+setattr = builtins.setattr
 xrange = builtins.range
 unicode = str
 
@@ -379,7 +376,7 @@ def open(
     return builtins.open(name, sysstr(mode), buffering, encoding)
 
 
-safehasattr = _wrapattrfunc(builtins.hasattr)
+safehasattr = builtins.hasattr
 
 
 def _getoptbwrapper(

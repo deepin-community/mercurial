@@ -395,8 +395,17 @@ def _donormalize(patterns, default, root, cwd, auditor=None, warn=None):
 
 class basematcher:
     def __init__(self, badfn=None):
+        self._was_tampered_with = False
         if badfn is not None:
             self.bad = badfn
+
+    def was_tampered_with_nonrec(self):
+        # [_was_tampered_with] is used to track if when extensions changed the matcher
+        # behavior (crazy stuff!), so we disable the rust fast path.
+        return self._was_tampered_with
+
+    def was_tampered_with(self):
+        return self.was_tampered_with_nonrec()
 
     def __call__(self, fn):
         return self.matchfn(fn)
@@ -638,7 +647,15 @@ class patternmatcher(basematcher):
         super(patternmatcher, self).__init__(badfn)
         kindpats.sort()
 
+        if rustmod is not None:
+            # We need to pass the patterns to Rust because they can contain
+            # patterns from the user interface
+            self._kindpats = kindpats
+
+        roots, dirs, parents = _rootsdirsandparents(kindpats)
         self._files = _explicitfiles(kindpats)
+        self._dirs_explicit = set(dirs)
+        self._dirs = parents
         self._prefix = _prefix(kindpats)
         self._pats, self._matchfn = _buildmatch(kindpats, b'$', root)
 
@@ -647,14 +664,14 @@ class patternmatcher(basematcher):
             return True
         return self._matchfn(fn)
 
-    @propertycache
-    def _dirs(self):
-        return set(pathutil.dirs(self._fileset))
-
     def visitdir(self, dir):
         if self._prefix and dir in self._fileset:
             return b'all'
-        return dir in self._dirs or path_or_parents_in_set(dir, self._fileset)
+        return (
+            dir in self._dirs
+            or path_or_parents_in_set(dir, self._fileset)
+            or path_or_parents_in_set(dir, self._dirs_explicit)
+        )
 
     def visitchildrenset(self, dir):
         ret = self.visitdir(dir)
@@ -877,6 +894,13 @@ class differencematcher(basematcher):
         self.bad = m1.bad
         self.traversedir = m1.traversedir
 
+    def was_tampered_with(self):
+        return (
+            self.was_tampered_with_nonrec()
+            or self._m1.was_tampered_with()
+            or self._m2.was_tampered_with()
+        )
+
     def matchfn(self, f):
         return self._m1(f) and not self._m2(f)
 
@@ -959,6 +983,13 @@ class intersectionmatcher(basematcher):
         self._m2 = m2
         self.bad = m1.bad
         self.traversedir = m1.traversedir
+
+    def was_tampered_with(self):
+        return (
+            self.was_tampered_with_nonrec()
+            or self._m1.was_tampered_with()
+            or self._m2.was_tampered_with()
+        )
 
     @propertycache
     def _files(self):
@@ -1056,6 +1087,11 @@ class subdirmatcher(basematcher):
         # a prefix matcher, this submatcher always matches.
         if matcher.prefix():
             self._always = any(f == path for f in matcher._files)
+
+    def was_tampered_with(self):
+        return (
+            self.was_tampered_with_nonrec() or self._matcher.was_tampered_with()
+        )
 
     def bad(self, f, msg):
         self._matcher.bad(self._path + b"/" + f, msg)
@@ -1190,6 +1226,11 @@ class unionmatcher(basematcher):
         super(unionmatcher, self).__init__()
         self.traversedir = m1.traversedir
         self._matchers = matchers
+
+    def was_tampered_with(self):
+        return self.was_tampered_with_nonrec() or any(
+            map(lambda m: m.was_tampered_with(), self._matchers)
+        )
 
     def matchfn(self, f):
         for match in self._matchers:
@@ -1461,7 +1502,7 @@ def _buildregexmatch(kindpats, globsuffix):
         allgroups = []
         regexps = []
         exact = set()
-        for (kind, pattern, _source) in kindpats:
+        for kind, pattern, _source in kindpats:
             if kind == b'filepath':
                 exact.add(pattern)
                 continue

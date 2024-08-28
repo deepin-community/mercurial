@@ -23,7 +23,6 @@ from .node import (
     short,
     wdirrev,
 )
-from .pycompat import getattr
 from .thirdparty import attr
 from . import (
     copies as copiesmod,
@@ -233,11 +232,7 @@ def callcatch(ui, func):
             reason = encoding.unitolocal(reason)
         ui.error(_(b"abort: error: %s\n") % stringutil.forcebytestr(reason))
     except (IOError, OSError) as inst:
-        if (
-            util.safehasattr(inst, "args")
-            and inst.args
-            and inst.args[0] == errno.EPIPE
-        ):
+        if hasattr(inst, "args") and inst.args and inst.args[0] == errno.EPIPE:
             pass
         elif getattr(inst, "strerror", None):  # common IOError or OSError
             if getattr(inst, "filename", None) is not None:
@@ -354,7 +349,7 @@ class casecollisionauditor:
         self._newfiles.add(f)
 
 
-def filteredhash(repo, maxrev, needobsolete=False):
+def combined_filtered_and_obsolete_hash(repo, maxrev, needobsolete=False):
     """build hash of filtered revisions in the current repoview.
 
     Multiple caches perform up-to-date validation by checking that the
@@ -380,14 +375,67 @@ def filteredhash(repo, maxrev, needobsolete=False):
 
     result = cl._filteredrevs_hashcache.get(key)
     if not result:
-        revs = sorted(r for r in cl.filteredrevs | obsrevs if r <= maxrev)
+        revs, obs_revs = _filtered_and_obs_revs(repo, maxrev)
+        if needobsolete:
+            revs = revs | obs_revs
+        revs = sorted(revs)
         if revs:
-            s = hashutil.sha1()
-            for rev in revs:
-                s.update(b'%d;' % rev)
-            result = s.digest()
+            result = _hash_revs(revs)
             cl._filteredrevs_hashcache[key] = result
     return result
+
+
+def filtered_and_obsolete_hash(repo, maxrev):
+    """build hashs of filtered and obsolete revisions in the current repoview.
+
+    Multiple caches perform up-to-date validation by checking that the
+    tiprev and tipnode stored in the cache file match the current repository.
+    However, this is not sufficient for validating repoviews because the set
+    of revisions in the view may change without the repository tiprev and
+    tipnode changing.
+
+    This function hashes all the revs filtered from the view up to maxrev and
+    returns that SHA-1 digest. The obsolete revisions hashed are only the
+    non-filtered one.
+    """
+    cl = repo.changelog
+    obs_set = obsolete.getrevs(repo, b'obsolete')
+    key = (maxrev, hash(cl.filteredrevs), hash(obs_set))
+
+    result = cl._filteredrevs_hashcache.get(key)
+    if result is None:
+        filtered_hash = None
+        obs_hash = None
+        filtered_revs, obs_revs = _filtered_and_obs_revs(repo, maxrev)
+        if filtered_revs:
+            filtered_hash = _hash_revs(filtered_revs)
+        if obs_revs:
+            obs_hash = _hash_revs(obs_revs)
+        result = (filtered_hash, obs_hash)
+        cl._filteredrevs_hashcache[key] = result
+    return result
+
+
+def _filtered_and_obs_revs(repo, max_rev):
+    """return the set of filtered and non-filtered obsolete revision"""
+    cl = repo.changelog
+    obs_set = obsolete.getrevs(repo, b'obsolete')
+    filtered_set = cl.filteredrevs
+    if cl.filteredrevs:
+        obs_set = obs_set - cl.filteredrevs
+    if max_rev < (len(cl) - 1):
+        # there might be revision to filter out
+        filtered_set = set(r for r in filtered_set if r <= max_rev)
+        obs_set = set(r for r in obs_set if r <= max_rev)
+    return (filtered_set, obs_set)
+
+
+def _hash_revs(revs):
+    """return a hash from a list of revision numbers"""
+    s = hashutil.sha1()
+    for rev in revs:
+        s.update(b'%d;' % rev)
+    return s.digest()
 
 
 def walkrepos(path, followsym=False, seen_dirs=None, recurse=False):
@@ -560,20 +608,23 @@ def shortesthexnodeidprefix(repo, node, minlength=1, cache=None):
             nodetree = None
             if cache is not None:
                 nodetree = cache.get(b'disambiguationnodetree')
+            is_invalidated = getattr(nodetree, 'is_invalidated', lambda: False)
+            if is_invalidated():
+                nodetree = None
             if not nodetree:
-                if util.safehasattr(parsers, 'nodetree'):
-                    # The CExt is the only implementation to provide a nodetree
-                    # class so far.
+                if hasattr(parsers, 'nodetree') and isinstance(
+                    cl.index, parsers.index
+                ):
                     index = cl.index
-                    if util.safehasattr(index, 'get_cindex'):
-                        # the rust wrapped need to give access to its internal index
-                        index = index.get_cindex()
                     nodetree = parsers.nodetree(index, len(revs))
-                    for r in revs:
-                        nodetree.insert(r)
-                    if cache is not None:
-                        cache[b'disambiguationnodetree'] = nodetree
+            elif getattr(cl.index, 'is_rust', False):
+                nodetree = rustrevlog.NodeTree(cl.index)
+
             if nodetree is not None:
+                for r in revs:
+                    nodetree.insert(r)
+                if cache is not None:
+                    cache[b'disambiguationnodetree'] = nodetree
                 length = max(nodetree.shortest(node), minlength)
                 prefix = hexnode[:length]
                 return disambiguate(prefix)
@@ -1066,7 +1117,7 @@ def cleanupnodes(
         return
 
     # translate mapping's other forms
-    if not util.safehasattr(replacements, 'items'):
+    if not hasattr(replacements, 'items'):
         replacements = {(n,): () for n in replacements}
     else:
         # upgrading non tuple "source" to tuple ones for BC
@@ -1692,6 +1743,10 @@ class filecache:
     def __call__(self, func):
         self.func = func
         self.sname = func.__name__
+        # XXX We should be using a unicode string instead of bytes for the main
+        # name (and the _filecache key). The fact we use bytes is a remains
+        # from Python2, since the name is derived from an attribute name a
+        # `str` is a better fit now that we support Python3 only
         self.name = pycompat.sysbytes(self.sname)
         return self
 
@@ -2323,3 +2378,34 @@ def ismember(ui, username, userlist):
     schemes.
     """
     return userlist == [b'*'] or username in userlist
+
+
+RESOURCE_HIGH = 3
+RESOURCE_MEDIUM = 2
+RESOURCE_LOW = 1
+RESOURCE_DEFAULT = 0
+
+RESOURCE_MAPPING = {
+    b'default': RESOURCE_DEFAULT,
+    b'low': RESOURCE_LOW,
+    b'medium': RESOURCE_MEDIUM,
+    b'high': RESOURCE_HIGH,
+}
+
+DEFAULT_RESOURCE = RESOURCE_MEDIUM
+
+
+def get_resource_profile(ui, dimension=None):
+    """return the resource profile for a dimension
+
+    If no dimension is specified, the generic value is returned"""
+    generic_name = ui.config(b'usage', b'resources')
+    value = RESOURCE_MAPPING.get(generic_name, RESOURCE_DEFAULT)
+    if value == RESOURCE_DEFAULT:
+        value = DEFAULT_RESOURCE
+    if dimension is not None:
+        sub_name = ui.config(b'usage', b'resources.%s' % dimension)
+        sub_value = RESOURCE_MAPPING.get(sub_name, RESOURCE_DEFAULT)
+        if sub_value != RESOURCE_DEFAULT:
+            value = sub_value
+    return value

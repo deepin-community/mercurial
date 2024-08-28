@@ -1,0 +1,24 @@
+---
+ tests/test-lfs-serve-access.t |    1 +
+ 1 file changed, 1 insertion(+)
+
+--- a/tests/test-lfs-serve-access.t
++++ b/tests/test-lfs-serve-access.t
+@@ -359,16 +359,17 @@ Test a checksum failure during the proce
+   $LOCALIP - - [$ERRDATE$] HG error:      _(b'corrupt remote lfs object: %s') % oid (glob) (no-py38 !)
+   $LOCALIP - - [$ERRDATE$] HG error:  hgext.lfs.blobstore.LfsCorruptionError: corrupt remote lfs object: b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c (glob)
+   $LOCALIP - - [$ERRDATE$] HG error:   (glob)
+   $LOCALIP - - [$ERRDATE$] Exception happened during processing request '/.hg/lfs/objects/276f73cfd75f9fb519810df5f5d96d6594ca2521abd86cbcd92122f7d51a1f3d': (glob)
+   Traceback (most recent call last):
+       self.do_write()
+       self.do_hgweb()
+       for chunk in self.server.application(env, self._start_response):
++                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ (?)
+       for r in self._runwsgi(req, res, repo):
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ (py311 !)
+       handled = wireprotoserver.handlewsgirequest( (py38 !)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ (py311 !)
+       return _processbasictransfer( (py38 !)
+              ^^^^^^^^^^^^^^^^^^^^^^ (py311 !)
+       rctx, req, res, self.check_perm (no-py38 !)
+       rctx.repo, req, res, lambda perm: checkperm(rctx, req, perm) (no-py38 !)

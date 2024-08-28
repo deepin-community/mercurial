@@ -72,8 +72,7 @@ def _bin(bs):
     return v
 
 
-def _str(v, l):
-    # type: (int, int) -> bytes
+def _str(v: int, l: int) -> bytes:
     bs = b""
     for p in range(l):
         bs = pycompat.bytechr(v & 255) + bs
@@ -159,7 +158,7 @@ def _flipbit(v, node):
 def ctxpvec(ctx):
     '''construct a pvec for ctx while filling in the cache'''
     r = ctx.repo()
-    if not util.safehasattr(r, "_pveccache"):
+    if not hasattr(r, "_pveccache"):
         r._pveccache = {}
     pvc = r._pveccache
     if ctx.rev() not in pvc:

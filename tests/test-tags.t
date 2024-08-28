@@ -72,7 +72,7 @@ Try corrupting the cache
 
 Create local tag with long name:
 
-  $ T=`hg identify --debug --id`
+  $ T=`hg identify -r . -T '{node}'`
   $ hg tag -l "This is a local tag with a really long name!"
   $ hg tags
   tip                                0:acb14030fe0a
@@ -792,11 +792,6 @@ Missing tags2* files means the cache wasn't written through the normal mechanism
 
   $ ls tagsclient/.hg/cache
   branch2-base
-  branch2-immutable
-  branch2-served
-  branch2-served.hidden
-  branch2-visible
-  branch2-visible-hidden
   hgtagsfnodes1
   rbc-names-v1
   rbc-revs-v1
@@ -823,11 +818,6 @@ Running hg tags should produce tags2* file and not change cache
 
   $ ls tagsclient/.hg/cache
   branch2-base
-  branch2-immutable
-  branch2-served
-  branch2-served.hidden
-  branch2-visible
-  branch2-visible-hidden
   hgtagsfnodes1
   rbc-names-v1
   rbc-revs-v1
@@ -855,7 +845,7 @@ Check that the bundle includes cache data
       c4dab0c2fd337eb9191f80c3024830a4889a8f34
       f63cc8fe54e4d326f8d692805d70e092f851ddb1
       40f0358cb314c824a5929ee527308d90e023bc10
-  hgtagsfnodes -- {} (mandatory: True)
+  hgtagsfnodes -- {} (mandatory: False)
   cache:rev-branch-cache -- {} (mandatory: False)
 
 Check that local clone includes cache data

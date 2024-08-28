@@ -75,8 +75,6 @@ from mercurial.node import (
     short,
 )
 from mercurial.pycompat import (
-    delattr,
-    getattr,
     open,
 )
 from mercurial import (
@@ -4075,7 +4073,7 @@ def mqphasedefaults(repo, roots):
         else:
             mqphase = phases.draft
         qbase = repo[repo.mq.applied[0].node]
-        roots[mqphase].add(qbase.node())
+        roots[mqphase].add(qbase.rev())
     return roots
 
 
@@ -4186,7 +4184,7 @@ def reposetup(ui, repo):
 
 
 def mqimport(orig, ui, repo, *args, **kwargs):
-    if util.safehasattr(repo, b'abortifwdirpatched') and not kwargs.get(
+    if hasattr(repo, 'abortifwdirpatched') and not kwargs.get(
         'no_commit', False
     ):
         repo.abortifwdirpatched(

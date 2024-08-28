@@ -1,7 +1,10 @@
-test-clone-stream-bigendian.patch
+demandimport-threading.patch
 proposed_upstream__doctest.path
 deb_specific__hgk.py.patch
 deb_specific__optional-dependencies
 deb_specific__disable_libdir_replacement.patch
 0005-Tolerate-SIGINT-getting-the-kill-in-test-stdio.py.patch
 test-hghave-testrepo.patch
+test_copies_chain_merge_slow.patch
+test_profiling_lsprof.patch
+test_lfs_serve_access.patch

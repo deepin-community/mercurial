@@ -36,7 +36,6 @@ from typing import (
 
 from .i18n import _
 from .pycompat import (
-    getattr,
     open,
 )
 from . import (
@@ -71,13 +70,6 @@ rename = os.rename
 removedirs = os.removedirs
 
 if typing.TYPE_CHECKING:
-    # Replace the various overloads that come along with aliasing stdlib methods
-    # with the narrow definition that we care about in the type checking phase
-    # only.  This ensures that both Windows and POSIX see only the definition
-    # that is actually available.
-    #
-    # Note that if we check pycompat.TYPE_CHECKING here, it is always False, and
-    # the methods aren't replaced.
 
     def normpath(path: bytes) -> bytes:
         raise NotImplementedError
@@ -551,6 +543,12 @@ if pycompat.sysplatform == b'cygwin':
     # problems when Mercurial is used from both Cygwin and native
     # Windows, with other native tools, or on shared volumes
     def checklink(path: bytes) -> bool:
+        return False
+
+
+if pycompat.sysplatform == b'OpenVMS':
+    # OpenVMS's symlink emulation is broken on some OpenVMS versions.
+    def checklink(path):
         return False
 
 

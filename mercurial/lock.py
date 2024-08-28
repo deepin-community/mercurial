@@ -12,10 +12,10 @@ import os
 import signal
 import socket
 import time
+import typing
 import warnings
 
 from .i18n import _
-from .pycompat import getattr
 
 from . import (
     encoding,
@@ -115,6 +115,7 @@ def trylock(ui, vfs, lockname, timeout, warntimeout, *args, **kwargs):
 
     This function is responsible to issue warnings and or debug messages about
     the held lock while trying to acquires it."""
+    devel_wait_file = kwargs.pop("devel_wait_sync_file", None)
 
     def printwarning(printer, locker):
         """issue the usual "waiting on lock" message through any channel"""
@@ -150,13 +151,22 @@ def trylock(ui, vfs, lockname, timeout, warntimeout, *args, **kwargs):
             l._trylock()
             break
         except error.LockHeld as inst:
+            if devel_wait_file is not None:
+                # create the file to signal we are waiting
+                with open(devel_wait_file, 'w'):
+                    pass
+
             if delay == debugidx:
                 printwarning(ui.debug, inst.locker)
             if delay == warningidx:
                 printwarning(ui.warn, inst.locker)
             if timeout <= delay:
+                assert isinstance(inst.filename, bytes)
                 raise error.LockHeld(
-                    errno.ETIMEDOUT, inst.filename, l.desc, inst.locker
+                    errno.ETIMEDOUT,
+                    typing.cast(bytes, inst.filename),
+                    l.desc,
+                    inst.locker,
                 )
             time.sleep(1)
             delay += 1
@@ -291,8 +301,13 @@ class lock:
                             locker,
                         )
                 else:
+                    assert isinstance(why.filename, bytes)
+                    assert isinstance(why.strerror, str)
                     raise error.LockUnavailable(
-                        why.errno, why.strerror, why.filename, self.desc
+                        why.errno,
+                        why.strerror,
+                        typing.cast(bytes, why.filename),
+                        self.desc,
                     )
 
         if not self.held:

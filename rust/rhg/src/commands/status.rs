@@ -7,7 +7,8 @@
 
 use crate::error::CommandError;
 use crate::ui::{
-    format_pattern_file_warning, print_narrow_sparse_warnings, Ui,
+    format_pattern_file_warning, print_narrow_sparse_warnings, relative_paths,
+    RelativePaths, Ui,
 };
 use crate::utils::path_utils::RelativizePaths;
 use clap::Arg;
@@ -17,22 +18,27 @@ use hg::dirstate::has_exec_bit;
 use hg::dirstate::status::StatusPath;
 use hg::dirstate::TruncatedTimestamp;
 use hg::errors::{HgError, IoResultExt};
+use hg::filepatterns::parse_pattern_args;
 use hg::lock::LockError;
 use hg::manifest::Manifest;
 use hg::matchers::{AlwaysMatcher, IntersectionMatcher};
 use hg::repo::Repo;
 use hg::utils::debug::debug_wait_for_file;
-use hg::utils::files::get_bytes_from_os_string;
-use hg::utils::files::get_path_from_bytes;
+use hg::utils::files::{
+    get_bytes_from_os_str, get_bytes_from_os_string, get_path_from_bytes,
+};
 use hg::utils::hg_path::{hg_path_to_path_buf, HgPath};
-use hg::DirstateStatus;
 use hg::PatternFileWarning;
+use hg::Revision;
 use hg::StatusError;
 use hg::StatusOptions;
 use hg::{self, narrow, sparse};
+use hg::{DirstateStatus, RevlogOpenOptions};
 use log::info;
 use rayon::prelude::*;
+use std::borrow::Cow;
 use std::io;
+use std::mem::take;
 use std::path::PathBuf;
 
 pub const HELP_TEXT: &str = "
@@ -47,6 +53,12 @@ pub fn args() -> clap::Command {
     clap::command!("status")
         .alias("st")
         .about(HELP_TEXT)
+        .arg(
+            Arg::new("file")
+                .value_parser(clap::value_parser!(std::ffi::OsString))
+                .help("show only these files")
+                .action(clap::ArgAction::Append),
+        )
         .arg(
             Arg::new("all")
                 .help("show status of all files")
@@ -131,6 +143,38 @@ pub fn args() -> clap::Command {
                 .action(clap::ArgAction::SetTrue)
                 .long("verbose"),
         )
+        .arg(
+            Arg::new("rev")
+                .help("show difference from/to revision")
+                .long("rev")
+                .num_args(1)
+                .action(clap::ArgAction::Append)
+                .value_name("REV"),
+        )
+}
+
+fn parse_revpair(
+    repo: &Repo,
+    revs: Option<Vec<String>>,
+) -> Result<Option<(Revision, Revision)>, CommandError> {
+    let revs = match revs {
+        None => return Ok(None),
+        Some(revs) => revs,
+    };
+    if revs.is_empty() {
+        return Ok(None);
+    }
+    if revs.len() != 2 {
+        return Err(CommandError::unsupported("expected 0 or 2 --rev flags"));
+    }
+
+    let rev1 = &revs[0];
+    let rev2 = &revs[1];
+    let rev1 = hg::revset::resolve_single(rev1, repo)
+        .map_err(|e| (e, rev1.as_str()))?;
+    let rev2 = hg::revset::resolve_single(rev2, repo)
+        .map_err(|e| (e, rev2.as_str()))?;
+    Ok(Some((rev1, rev2)))
 }
 
 /// Pure data type allowing the caller to specify file states to display
@@ -220,6 +264,7 @@ pub fn run(invocation: &crate::CliInvocation) -> Result<(), CommandError> {
     let config = invocation.config;
     let args = invocation.subcommand_args;
 
+    let revs = args.get_many::<String>("rev");
     let print0 = args.get_flag("print0");
     let verbose = args.get_flag("verbose")
         || config.get_bool(b"ui", b"verbose")?
@@ -253,6 +298,7 @@ pub fn run(invocation: &crate::CliInvocation) -> Result<(), CommandError> {
         || config.get_bool(b"ui", b"statuscopies")?;
 
     let repo = invocation.repo?;
+    let revpair = parse_revpair(repo, revs.map(|i| i.cloned().collect()))?;
 
     if verbose && has_unfinished_state(repo)? {
         return Err(CommandError::unsupported(
@@ -276,13 +322,37 @@ pub fn run(invocation: &crate::CliInvocation) -> Result<(), CommandError> {
     type StatusResult<'a> =
         Result<(DirstateStatus<'a>, Vec<PatternFileWarning>), StatusError>;
 
+    let relative_status = config
+        .get_option(b"commands", b"status.relative")?
+        .expect("commands.status.relative should have a default value");
+
+    let relativize_paths = relative_status || {
+        // See in Python code with `getuipathfn` usage in `commands.py`.
+        let legacy_relative_behavior = args.contains_id("file");
+        match relative_paths(invocation.config)? {
+            RelativePaths::Legacy => legacy_relative_behavior,
+            RelativePaths::Bool(v) => v,
+        }
+    };
+
+    let mut output = DisplayStatusPaths {
+        ui,
+        no_status,
+        relativize: if relativize_paths {
+            Some(RelativizePaths::new(repo)?)
+        } else {
+            None
+        },
+        print0,
+    };
+
     let after_status = |res: StatusResult| -> Result<_, CommandError> {
         let (mut ds_status, pattern_warnings) = res?;
         for warning in pattern_warnings {
             ui.write_stderr(&format_pattern_file_warning(&warning, repo))?;
         }
 
-        for (path, error) in ds_status.bad {
+        for (path, error) in take(&mut ds_status.bad) {
             let error = match error {
                 hg::BadMatch::OsError(code) => {
                     std::io::Error::from_raw_os_error(code).to_string()
@@ -313,8 +383,8 @@ pub fn run(invocation: &crate::CliInvocation) -> Result<(), CommandError> {
             })?;
             let working_directory_vfs = repo.working_directory_vfs();
             let store_vfs = repo.store_vfs();
-            let res: Vec<_> = ds_status
-                .unsure
+            let revlog_open_options = repo.default_revlog_options(false)?;
+            let res: Vec<_> = take(&mut ds_status.unsure)
                 .into_par_iter()
                 .map(|to_check| {
                     // The compiler seems to get a bit confused with complex
@@ -327,6 +397,7 @@ pub fn run(invocation: &crate::CliInvocation) -> Result<(), CommandError> {
                         check_exec,
                         &manifest,
                         &to_check.path,
+                        revlog_open_options,
                     ) {
                         Err(HgError::IoError { .. }) => {
                             // IO errors most likely stem from the file being
@@ -360,44 +431,12 @@ pub fn run(invocation: &crate::CliInvocation) -> Result<(), CommandError> {
                 }
             }
         }
-        let relative_paths = config
-            .get_option(b"commands", b"status.relative")?
-            .unwrap_or(config.get_bool(b"ui", b"relative-paths")?);
-        let output = DisplayStatusPaths {
-            ui,
-            no_status,
-            relativize: if relative_paths {
-                Some(RelativizePaths::new(repo)?)
-            } else {
-                None
-            },
-            print0,
-        };
-        if display_states.modified {
-            output.display(b"M ", "status.modified", ds_status.modified)?;
-        }
-        if display_states.added {
-            output.display(b"A ", "status.added", ds_status.added)?;
-        }
-        if display_states.removed {
-            output.display(b"R ", "status.removed", ds_status.removed)?;
-        }
-        if display_states.deleted {
-            output.display(b"! ", "status.deleted", ds_status.deleted)?;
-        }
-        if display_states.unknown {
-            output.display(b"? ", "status.unknown", ds_status.unknown)?;
-        }
-        if display_states.ignored {
-            output.display(b"I ", "status.ignored", ds_status.ignored)?;
-        }
-        if display_states.clean {
-            output.display(b"C ", "status.clean", ds_status.clean)?;
-        }
 
         let dirstate_write_needed = ds_status.dirty;
         let filesystem_time_at_status_start =
             ds_status.filesystem_time_at_status_start;
+
+        output.output(display_states, ds_status)?;
 
         Ok((
             fixup,
@@ -406,6 +445,54 @@ pub fn run(invocation: &crate::CliInvocation) -> Result<(), CommandError> {
         ))
     };
     let (narrow_matcher, narrow_warnings) = narrow::matcher(repo)?;
+
+    if let Some((rev1, rev2)) = revpair {
+        let mut ds_status = DirstateStatus::default();
+        if list_copies {
+            return Err(CommandError::unsupported(
+                "status --rev --rev with copy information is not implemented yet",
+            ));
+        }
+
+        let stat = hg::operations::status_rev_rev_no_copies(
+            repo,
+            rev1,
+            rev2,
+            narrow_matcher,
+        )?;
+        for entry in stat.iter() {
+            let (path, status) = entry?;
+            let path = StatusPath {
+                path: Cow::Borrowed(path),
+                copy_source: None,
+            };
+            match status {
+                hg::operations::DiffStatus::Removed => {
+                    if display_states.removed {
+                        ds_status.removed.push(path)
+                    }
+                }
+                hg::operations::DiffStatus::Added => {
+                    if display_states.added {
+                        ds_status.added.push(path)
+                    }
+                }
+                hg::operations::DiffStatus::Modified => {
+                    if display_states.modified {
+                        ds_status.modified.push(path)
+                    }
+                }
+                hg::operations::DiffStatus::Matching => {
+                    if display_states.clean {
+                        ds_status.clean.push(path)
+                    }
+                }
+            }
+        }
+        output.output(display_states, ds_status)?;
+        return Ok(());
+    }
+
     let (sparse_matcher, sparse_warnings) = sparse::matcher(repo)?;
     let matcher = match (repo.has_narrow(), repo.has_sparse()) {
         (true, true) => {
@@ -414,6 +501,29 @@ pub fn run(invocation: &crate::CliInvocation) -> Result<(), CommandError> {
         (true, false) => narrow_matcher,
         (false, true) => sparse_matcher,
         (false, false) => Box::new(AlwaysMatcher),
+    };
+    let matcher = match args.get_many::<std::ffi::OsString>("file") {
+        None => matcher,
+        Some(files) => {
+            let patterns: Vec<Vec<u8>> = files
+                .filter(|s| !s.is_empty())
+                .map(get_bytes_from_os_str)
+                .collect();
+            for file in &patterns {
+                if file.starts_with(b"set:") {
+                    return Err(CommandError::unsupported("fileset"));
+                }
+            }
+            let cwd = hg::utils::current_dir()?;
+            let root = repo.working_directory_path();
+            let ignore_patterns = parse_pattern_args(patterns, &cwd, root)?;
+            let files_matcher =
+                hg::matchers::PatternMatcher::new(ignore_patterns)?;
+            Box::new(IntersectionMatcher::new(
+                Box::new(files_matcher),
+                matcher,
+            ))
+        }
     };
 
     print_narrow_sparse_warnings(
@@ -585,6 +695,35 @@ impl DisplayStatusPaths<'_> {
         }
         Ok(())
     }
+
+    fn output(
+        &mut self,
+        display_states: DisplayStates,
+        ds_status: DirstateStatus,
+    ) -> Result<(), CommandError> {
+        if display_states.modified {
+            self.display(b"M ", "status.modified", ds_status.modified)?;
+        }
+        if display_states.added {
+            self.display(b"A ", "status.added", ds_status.added)?;
+        }
+        if display_states.removed {
+            self.display(b"R ", "status.removed", ds_status.removed)?;
+        }
+        if display_states.deleted {
+            self.display(b"! ", "status.deleted", ds_status.deleted)?;
+        }
+        if display_states.unknown {
+            self.display(b"? ", "status.unknown", ds_status.unknown)?;
+        }
+        if display_states.ignored {
+            self.display(b"I ", "status.ignored", ds_status.ignored)?;
+        }
+        if display_states.clean {
+            self.display(b"C ", "status.clean", ds_status.clean)?;
+        }
+        Ok(())
+    }
 }
 
 /// Outcome of the additional check for an ambiguous tracked file
@@ -607,6 +746,7 @@ fn unsure_is_modified(
     check_exec: bool,
     manifest: &Manifest,
     hg_path: &HgPath,
+    revlog_open_options: RevlogOpenOptions,
 ) -> Result<UnsureOutcome, HgError> {
     let vfs = working_directory_vfs;
     let fs_path = hg_path_to_path_buf(hg_path).expect("HgPath conversion");
@@ -638,7 +778,11 @@ fn unsure_is_modified(
     if entry_flags != fs_flags {
         return Ok(UnsureOutcome::Modified);
     }
-    let filelog = hg::filelog::Filelog::open_vfs(&store_vfs, hg_path)?;
+    let filelog = hg::filelog::Filelog::open_vfs(
+        &store_vfs,
+        hg_path,
+        revlog_open_options,
+    )?;
     let fs_len = fs_metadata.len();
     let file_node = entry.node_id()?;
     let filelog_entry = filelog.entry_for_node(file_node).map_err(|_| {
